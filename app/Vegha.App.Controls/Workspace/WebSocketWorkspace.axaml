@@ -1,0 +1,176 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="Vegha.App.Controls.Workspace.WebSocketWorkspace"
+             x:DataType="vm:WebSocketViewModel">
+    <DockPanel Background="{DynamicResource Bg2Brush}">
+        <!-- URL bar + Connect / Disconnect + connection settings -->
+        <Border DockPanel.Dock="Top" Padding="12,10"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                    <TextBlock Grid.Column="0" Text="WS"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text2Brush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,10,0" />
+                    <TextBox Grid.Column="1"
+                             Text="{Binding Url}"
+                             Watermark="wss://example.com/ws"
+                             FontFamily="{StaticResource MonoFont}" FontSize="12"
+                             Background="{DynamicResource BgInputBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="8,6" CornerRadius="3" />
+                    <Button Grid.Column="2"
+                            Command="{Binding ConnectCommand}"
+                            Content="Connect"
+                            Background="{DynamicResource AccentBrush}"
+                            Foreground="White"
+                            Padding="14,6" Margin="8,0,4,0"
+                            IsVisible="{Binding !IsConnected}" />
+                    <Button Grid.Column="3"
+                            Command="{Binding DisconnectCommand}"
+                            Content="Disconnect"
+                            Background="{DynamicResource Bg3Brush}"
+                            Foreground="{DynamicResource Text0Brush}"
+                            Padding="14,6" Margin="8,0,0,0"
+                            IsVisible="{Binding IsConnected}" />
+                </Grid>
+
+                <!-- Subprotocols + auto-format / reconnect toggles -->
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                    <TextBox Grid.Column="0"
+                             Text="{Binding Subprotocols}"
+                             IsEnabled="{Binding !IsConnected}"
+                             Watermark="subprotocols (comma-separated, e.g. graphql-ws, json)"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource BgInputBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="6,4" CornerRadius="3" />
+                    <CheckBox Grid.Column="1"
+                              IsChecked="{Binding AutoFormatReceivedJson}"
+                              Content="Auto-format JSON"
+                              FontSize="11"
+                              Foreground="{DynamicResource Text0Brush}"
+                              Margin="8,0,0,0"
+                              VerticalAlignment="Center"
+                              ToolTip.Tip="Pretty-print received text frames that parse as JSON" />
+                    <CheckBox Grid.Column="2"
+                              IsChecked="{Binding ReconnectOnError}"
+                              Content="Reconnect on error"
+                              FontSize="11"
+                              Foreground="{DynamicResource Text0Brush}"
+                              Margin="8,0,0,0"
+                              VerticalAlignment="Center"
+                              ToolTip.Tip="When the reader loop fails, attempt to reconnect after a 2s back-off" />
+                </Grid>
+
+                <!-- Connection-time headers (one Key: Value per line) -->
+                <Expander Header="Connection headers"
+                          FontSize="11"
+                          Foreground="{DynamicResource Text2Brush}">
+                    <TextBox Text="{Binding RequestHeadersText}"
+                             IsEnabled="{Binding !IsConnected}"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             Height="60"
+                             Watermark="Authorization: Bearer xyz&#x0A;X-Trace: abc123"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource BgInputBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="6,4" CornerRadius="3" />
+                </Expander>
+            </StackPanel>
+        </Border>
+
+        <!-- Send box -->
+        <Border DockPanel.Dock="Bottom" Padding="12,8"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <ComboBox Grid.Column="0"
+                          ItemsSource="{Binding OutgoingFormatOptions}"
+                          SelectedItem="{Binding OutgoingFormat}"
+                          Width="92"
+                          FontFamily="{StaticResource MonoFont}" FontSize="11"
+                          Background="{DynamicResource Bg3Brush}"
+                          BorderBrush="{DynamicResource Border1Brush}"
+                          Foreground="{DynamicResource Text0Brush}"
+                          ToolTip.Tip="text = UTF-8 string · json = pretty-printed JSON · binary = parse hex string into a binary frame" />
+                <TextBox Grid.Column="1"
+                         Text="{Binding OutgoingMessage}"
+                         Watermark="message…"
+                         FontFamily="{StaticResource MonoFont}" FontSize="12"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         AcceptsReturn="False"
+                         IsEnabled="{Binding IsConnected}"
+                         Padding="8,6" CornerRadius="3"
+                         Margin="6,0,0,0" />
+                <Button Grid.Column="2"
+                        Command="{Binding SendTextCommand}"
+                        Content="Send"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="White"
+                        Padding="14,6" Margin="8,0,0,0" />
+                <Button Grid.Column="3"
+                        Command="{Binding ClearCommand}"
+                        Content="Clear"
+                        Background="{DynamicResource Bg3Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="14,6" Margin="8,0,0,0" />
+            </Grid>
+        </Border>
+
+        <!-- Status -->
+        <Border DockPanel.Dock="Bottom" Padding="12,4"
+                IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                Background="{DynamicResource Bg3Brush}">
+            <TextBlock Text="{Binding StatusMessage}"
+                       FontSize="11"
+                       Foreground="{DynamicResource Text2Brush}" />
+        </Border>
+
+        <!-- Message log -->
+        <ScrollViewer Background="{DynamicResource Bg2Brush}">
+            <ItemsControl ItemsSource="{Binding Messages}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:WebSocketMessageRow">
+                        <Border Padding="12,4"
+                                BorderBrush="{DynamicResource Border0Brush}"
+                                BorderThickness="0,0,0,1">
+                            <Grid ColumnDefinitions="20,80,*">
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding DirectionLabel}"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           FontSize="13" FontWeight="SemiBold"
+                                           VerticalAlignment="Top" Margin="0,1,0,0" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Timestamp}"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource Text3Brush}"
+                                           VerticalAlignment="Top" Margin="0,3,0,0" />
+                                <SelectableTextBlock Grid.Column="2"
+                                                     Text="{Binding Payload}"
+                                                     FontFamily="{StaticResource MonoFont}"
+                                                     FontSize="11"
+                                                     TextWrapping="Wrap"
+                                                     Foreground="{DynamicResource Text0Brush}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

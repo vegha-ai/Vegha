@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Vegha.Tests.Integration</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="WireMock.Net" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\app\Vegha.App.ViewModels\Vegha.App.ViewModels.csproj" />
+    <ProjectReference Include="..\..\app\Vegha.Core.Requests\Vegha.Core.Requests.csproj" />
+    <ProjectReference Include="..\..\app\Vegha.Core.Bru.Parser\Vegha.Core.Bru.Parser.csproj" />
+  </ItemGroup>
+
+  <!-- WireMock pulls in protobuf-net.Reflection, which defines colliding
+       Google.Protobuf.Reflection.FileDescriptorProto / FieldDescriptorProto types.
+       Tag those assemblies with an alias so test code can refer to the Google.Protobuf
+       types unambiguously through `extern alias GoogleProto;`. -->
+  <Target Name="AddProtobufNetAlias" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <ResolvedCompileFileDefinitions
+        Condition="$([System.String]::Copy('%(Filename)').StartsWith('protobuf-net'))"
+        Aliases="ProtobufNet" />
+      <ResolvedCompileFileDefinitions
+        Condition="'%(Filename)' == 'Google.Protobuf'"
+        Aliases="GoogleProto" />
+    </ItemGroup>
+  </Target>
+</Project>

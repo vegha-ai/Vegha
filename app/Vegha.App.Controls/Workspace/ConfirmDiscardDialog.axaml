@@ -1,0 +1,47 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="200"
+        x:Class="Vegha.App.Controls.Workspace.ConfirmDiscardDialog"
+        Title="Discard changes?"
+        Width="460"
+        SizeToContent="Height"
+        CanResize="False"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="20">
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto" Margin="0,16,0,0">
+            <Border Grid.Column="0" />
+            <Button Grid.Column="1" Content="Cancel" Click="OnCancel_Click"
+                    Background="Transparent"
+                    BorderBrush="{DynamicResource Border1Brush}"
+                    BorderThickness="1"
+                    Foreground="{DynamicResource Text0Brush}"
+                    Padding="14,6" Margin="0,0,8,0"
+                    CornerRadius="4" />
+            <Button Grid.Column="2" Content="Discard changes" Click="OnOk_Click"
+                    IsDefault="True"
+                    Background="{DynamicResource StatusErrBrush}"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Padding="18,6"
+                    CornerRadius="4"
+                    FontWeight="SemiBold" />
+        </Grid>
+        <StackPanel Spacing="10">
+            <TextBlock x:Name="MessageText"
+                       FontSize="12" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Text0Brush}" />
+            <CheckBox x:Name="RecycleBinBox"
+                      Content="Move new files to recycle bin first"
+                      IsChecked="True"
+                      FontSize="11"
+                      Foreground="{DynamicResource Text1Brush}" />
+            <TextBlock Text="This cannot be undone for tracked files."
+                       FontSize="11" FontStyle="Italic"
+                       Foreground="{DynamicResource Text2Brush}" />
+        </StackPanel>
+    </DockPanel>
+</Window>

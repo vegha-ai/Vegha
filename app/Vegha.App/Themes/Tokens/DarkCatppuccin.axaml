@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Dark Catppuccin Mocha — warm dark palette with mauve accent and pastel highlights. -->
+
+    <SolidColorBrush x:Key="Bg0Brush" Color="#11111b" />
+    <SolidColorBrush x:Key="Bg1Brush" Color="#181825" />
+    <SolidColorBrush x:Key="Bg2Brush" Color="#1e1e2e" />
+    <SolidColorBrush x:Key="Bg3Brush" Color="#252535" />
+    <SolidColorBrush x:Key="Bg4Brush" Color="#313244" />
+    <SolidColorBrush x:Key="BgInputBrush" Color="#11111b" />
+    <SolidColorBrush x:Key="BgTabActiveBrush" Color="#1e1e2e" />
+    <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#11111b" />
+
+    <SolidColorBrush x:Key="Border0Brush" Color="#252535" />
+    <SolidColorBrush x:Key="Border1Brush" Color="#313244" />
+    <SolidColorBrush x:Key="Border2Brush" Color="#45475a" />
+
+    <SolidColorBrush x:Key="Text0Brush" Color="#cdd6f4" />
+    <SolidColorBrush x:Key="Text1Brush" Color="#bac2de" />
+    <SolidColorBrush x:Key="Text2Brush" Color="#9399b2" />
+    <SolidColorBrush x:Key="Text3Brush" Color="#6c7086" />
+    <SolidColorBrush x:Key="TextInverseBrush" Color="#11111b" />
+
+    <SolidColorBrush x:Key="AccentBrush" Color="#cba6f7" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#b58df6" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#22cba6f7" />
+    <SolidColorBrush x:Key="AccentSoftStrongBrush" Color="#3acba6f7" />
+
+    <SolidColorBrush x:Key="MethodGetBrush" Color="#a6e3a1" />
+    <SolidColorBrush x:Key="MethodPostBrush" Color="#f9e2af" />
+    <SolidColorBrush x:Key="MethodPutBrush" Color="#89b4fa" />
+    <SolidColorBrush x:Key="MethodPatchBrush" Color="#cba6f7" />
+    <SolidColorBrush x:Key="MethodDeleteBrush" Color="#f38ba8" />
+    <SolidColorBrush x:Key="MethodHeadBrush" Color="#94e2d5" />
+    <SolidColorBrush x:Key="MethodOptionsBrush" Color="#7f849c" />
+
+    <SolidColorBrush x:Key="StatusOkBrush" Color="#a6e3a1" />
+    <SolidColorBrush x:Key="StatusWarnBrush" Color="#fab387" />
+    <SolidColorBrush x:Key="StatusErrBrush" Color="#f38ba8" />
+
+    <SolidColorBrush x:Key="CodeBgBrush" Color="#11111b" />
+
+    <SolidColorBrush x:Key="SelectionBrush" Color="#44cba6f7" />
+
+    <SolidColorBrush x:Key="MacRedBrush" Color="#ff5f57" />
+    <SolidColorBrush x:Key="MacAmberBrush" Color="#ffbd2e" />
+    <SolidColorBrush x:Key="MacGreenBrush" Color="#28c840" />
+</ResourceDictionary>

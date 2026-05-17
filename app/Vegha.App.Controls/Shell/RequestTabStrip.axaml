@@ -1,0 +1,126 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:tabs="using:Vegha.App.ViewModels.Tabs"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="36"
+             x:Class="Vegha.App.Controls.Shell.RequestTabStrip"
+             x:DataType="tabs:OpenTabsViewModel">
+    <UserControl.Styles>
+        <Style Selector="Button.scrollArrow">
+            <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.scrollArrow:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        </Style>
+        <Style Selector="Button.scrollArrow:disabled">
+            <Setter Property="Opacity" Value="0.25" />
+        </Style>
+    </UserControl.Styles>
+    <Border Background="{DynamicResource Bg2Brush}"
+            BorderBrush="{DynamicResource Border0Brush}"
+            BorderThickness="0,0,0,1"
+            Height="36">
+        <DockPanel>
+            <!-- Trailing "+" button to open a new draft tab -->
+            <Button DockPanel.Dock="Right"
+                    Click="OnNewTab_Click"
+                    ToolTip.Tip="New request (Ctrl+T)"
+                    Background="Transparent" BorderThickness="0"
+                    Width="34" Height="36"
+                    Padding="0"
+                    Foreground="{DynamicResource Text2Brush}"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Cursor="Hand">
+                <TextBlock Text="+" FontSize="18" FontWeight="SemiBold" />
+            </Button>
+            <!-- Right scroll arrow — only enabled when there's content to the right of the
+                 viewport. Click scrolls by one tab-width-ish chunk. -->
+            <Button DockPanel.Dock="Right"
+                    x:Name="ScrollRightButton"
+                    Classes="scrollArrow"
+                    Click="OnScrollRight_Click"
+                    ToolTip.Tip="Scroll tabs right">
+                <TextBlock Text="›" FontSize="18" FontWeight="SemiBold" />
+            </Button>
+            <!-- Left scroll arrow — appears only when the strip is scrolled right of zero. -->
+            <Button DockPanel.Dock="Left"
+                    x:Name="ScrollLeftButton"
+                    Classes="scrollArrow"
+                    Click="OnScrollLeft_Click"
+                    ToolTip.Tip="Scroll tabs left">
+                <TextBlock Text="‹" FontSize="18" FontWeight="SemiBold" />
+            </Button>
+            <!-- Hidden (not Auto) so the bar can't overlap the 36px-tall tab row.
+                 Mouse wheel still scrolls; the user can still see overflowed tabs. -->
+            <ScrollViewer x:Name="TabsScrollViewer"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Disabled"
+                          ScrollChanged="OnTabsScrollChanged">
+                <ItemsControl x:Name="TabsItemsControl" ItemsSource="{Binding VisibleTabs}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="tabs:RequestTabViewModel">
+                            <Border Classes="reqTab"
+                                    Classes.active="{Binding IsActive}"
+                                    PointerPressed="OnTab_PointerPressed"
+                                    Tag="{Binding}">
+                                <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding Method}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{Binding Method, Converter={StaticResource MethodToBrushConverter}}"
+                                               VerticalAlignment="Center"
+                                               Margin="10,0,8,0" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="●"
+                                               IsVisible="{Binding IsDirty}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,4,0" />
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding Name}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Text0Brush}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxWidth="160" />
+                                    <Button Grid.Column="3"
+                                            Click="OnClose_Click"
+                                            Tag="{Binding}"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Width="22" Height="22"
+                                            Padding="0"
+                                            Margin="6,0,4,0"
+                                            Foreground="{DynamicResource Text3Brush}"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center"
+                                            Cursor="Hand">
+                                        <TextBlock Text="✕" FontSize="11" />
+                                    </Button>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</UserControl>

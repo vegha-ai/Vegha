@@ -1,0 +1,82 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="32"
+             x:Class="Vegha.App.Controls.Workspace.KvTableRow"
+             x:DataType="vm:KvEntry"
+             x:Name="Root"
+             HorizontalAlignment="Stretch">
+    <!-- Shared 4-column key/value row used by Params, Headers, Vars editors.
+         Layout matches the bordered-cell pattern from OAuth2 Additional Parameters and
+         multipart/form-urlencoded rows so the visual treatment stays consistent. The row
+         stretches to fill its container — without HorizontalAlignment=Stretch (on both
+         this UserControl and the ItemContainer in KvEditor), Avalonia's ItemsControl
+         sizes rows to their content and they collapse to the left third of the pane. -->
+    <Grid ColumnDefinitions="32,1*,1*,32" Margin="0,3,0,0" HorizontalAlignment="Stretch">
+        <CheckBox Grid.Column="0"
+                  IsChecked="{Binding Enabled}"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Center" />
+
+        <!-- Plain TextBox for the Key cell when no autocomplete suggestions are provided.
+             Hidden when HeaderSuggestions is set so the AutoCompleteBox takes over. -->
+        <TextBox Grid.Column="1"
+                 IsVisible="{Binding #Root.HeaderSuggestions, Converter={x:Static ObjectConverters.IsNull}}"
+                 Text="{Binding Name}"
+                 Watermark="{Binding #Root.KeyWatermark}"
+                 FontFamily="{StaticResource MonoFont}"
+                 FontSize="11"
+                 Background="{DynamicResource BgInputBrush}"
+                 BorderBrush="{DynamicResource Border1Brush}"
+                 Foreground="{DynamicResource Text0Brush}"
+                 Padding="6,3" CornerRadius="3"
+                 Margin="0,0,4,0"
+                 VerticalContentAlignment="Center" />
+
+        <!-- AutoCompleteBox for the Key cell when HeaderSuggestions is supplied (Headers mode).
+             FilterMode=Contains so partial matches like "ct" → "Content-Type" work. -->
+        <AutoCompleteBox Grid.Column="1"
+                         IsVisible="{Binding #Root.HeaderSuggestions, Converter={x:Static ObjectConverters.IsNotNull}}"
+                         ItemsSource="{Binding #Root.HeaderSuggestions}"
+                         Text="{Binding Name, Mode=TwoWay}"
+                         Watermark="{Binding #Root.KeyWatermark}"
+                         FilterMode="Contains"
+                         MinimumPrefixLength="1"
+                         FontFamily="{StaticResource MonoFont}"
+                         FontSize="11"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         Padding="6,3"
+                         Margin="0,0,4,0" />
+
+        <!-- Variable-aware editor for the Value cell so {{token}}/{{baseUrl}} highlight and
+             autocomplete. Bordered=True (default) gives the same boxed look as the Key cell. -->
+        <ws:VariableAwareTextEditor Grid.Column="2"
+                 Text="{Binding Value, Mode=TwoWay}"
+                 Variables="{Binding #Root.Variables}"
+                 Watermark="{Binding #Root.ValueWatermark}"
+                 SingleLine="True"
+                 FontSize="11"
+                 Margin="0,0,4,0"
+                 VerticalAlignment="Stretch"
+                 HorizontalAlignment="Stretch" />
+
+        <Button Grid.Column="3"
+                Command="{Binding #Root.RemoveCommand}"
+                CommandParameter="{Binding}"
+                ToolTip.Tip="Remove row"
+                Background="Transparent"
+                BorderThickness="0"
+                Foreground="{DynamicResource Text3Brush}"
+                Padding="0"
+                HorizontalContentAlignment="Center"
+                VerticalContentAlignment="Center"
+                Cursor="Hand">
+            <TextBlock Text="✕" FontSize="11" />
+        </Button>
+    </Grid>
+</UserControl>

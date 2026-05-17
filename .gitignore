@@ -1,0 +1,48 @@
+# Build output
+bin/
+obj/
+out/
+publish/
+stage-msix/
+*.msix
+*.user
+*.suo
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.userprefs
+*.DotSettings.user
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# .NET
+project.lock.json
+artifacts/
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs / scratch
+*.log
+*.tmp
+.local/
+
+# Node (for plugin-vscode/)
+node_modules/
+*.vsix
+
+# Velopack
+Releases/
+releases/

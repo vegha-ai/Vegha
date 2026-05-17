@@ -1,0 +1,26 @@
+meta {
+  name: get-by-id
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/pet/{{petId}}
+  body: none
+  auth: none
+}
+
+vars:pre-request {
+  petId: 1
+}
+
+tests {
+  test('200 or 404', () => {
+    expect([200, 404]).toContain(res.status);
+  });
+}
+
+docs {
+  Lookup a single pet by id. The demo dataset is volatile — 404 is fine and
+  exercises the error path.
+}

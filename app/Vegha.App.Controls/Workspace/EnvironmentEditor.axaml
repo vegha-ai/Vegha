@@ -1,0 +1,115 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:tabs="using:Vegha.App.ViewModels.Tabs"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             xmlns:conv="using:Vegha.App.Controls.Converters"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="500"
+             x:Class="Vegha.App.Controls.Workspace.EnvironmentEditor"
+             x:DataType="tabs:EnvironmentTabViewModel">
+    <UserControl.Resources>
+        <conv:BoolToPasswordCharConverter x:Key="BoolToPasswordCharConverter" />
+    </UserControl.Resources>
+    <DockPanel Background="{DynamicResource Bg2Brush}">
+        <!-- Toolbar -->
+        <Border DockPanel.Dock="Top"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="14,8">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock FontSize="10" FontWeight="SemiBold"
+                               LetterSpacing="1"
+                               Foreground="{DynamicResource Text2Brush}">
+                        ENVIRONMENT
+                    </TextBlock>
+                    <TextBlock Text="{Binding Environment.Name}"
+                               FontSize="14" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text0Brush}" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Command="{Binding AddVariableCommand}"
+                        Content="+ Add variable"
+                        Background="{DynamicResource Bg3Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="10,4" Margin="0,0,8,0" />
+                <Button Grid.Column="2"
+                        Command="{Binding SaveCommand}"
+                        Content="Save"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="White"
+                        Padding="14,4" />
+            </Grid>
+        </Border>
+
+        <!-- Status footer -->
+        <Border DockPanel.Dock="Bottom"
+                Padding="14,6"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,1,0,0"
+                IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding StatusMessage}"
+                       FontSize="11"
+                       Foreground="{DynamicResource Text2Brush}" />
+        </Border>
+
+        <!-- Variable grid -->
+        <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Variables}" Margin="14,8">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:EnvVarRow">
+                        <Grid ColumnDefinitions="Auto,260,*,Auto,Auto" Margin="0,3">
+                            <CheckBox Grid.Column="0"
+                                      IsChecked="{Binding IsEnabled}"
+                                      ToolTip.Tip="Enabled" />
+                            <TextBox Grid.Column="1"
+                                     Text="{Binding Name}"
+                                     Watermark="name"
+                                     FontFamily="{StaticResource MonoFont}"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="6,4" Margin="6,0" />
+                            <TextBox Grid.Column="2"
+                                     Text="{Binding Value}"
+                                     Watermark="value"
+                                     PasswordChar="{Binding IsValueVisible, Converter={StaticResource BoolToPasswordCharConverter}}"
+                                     FontFamily="{StaticResource MonoFont}"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="6,4">
+                                <TextBox.InnerRightContent>
+                                    <ToggleButton IsChecked="{Binding IsRevealed, Mode=TwoWay}"
+                                                  IsVisible="{Binding CanRevealToggle}"
+                                                  Background="Transparent" BorderThickness="0"
+                                                  Padding="4" MinWidth="0" MinHeight="0"
+                                                  Margin="0,0,4,0" Cursor="Hand"
+                                                  ToolTip.Tip="Show / hide secret">
+                                        <icons:Icon Kind="Eye" Size="13"
+                                                    Foreground="{DynamicResource Text2Brush}" />
+                                    </ToggleButton>
+                                </TextBox.InnerRightContent>
+                            </TextBox>
+                            <CheckBox Grid.Column="3"
+                                      IsChecked="{Binding IsSecret}"
+                                      Content="secret"
+                                      Margin="8,0"
+                                      ToolTip.Tip="Mark as secret (mask the value)" />
+                            <Button Grid.Column="4"
+                                    Tag="{Binding}"
+                                    Click="OnRemove_Click"
+                                    Content="✕"
+                                    Background="Transparent" BorderThickness="0"
+                                    Foreground="{DynamicResource Text2Brush}"
+                                    Width="28" Height="28" Padding="0"
+                                    ToolTip.Tip="Remove" />
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

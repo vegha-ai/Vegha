@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:edit="using:AvaloniaEdit"
+             x:Name="Root"
+             x:Class="Vegha.App.Controls.Workspace.ReadOnlyCodeView">
+    <Border Name="HostBorder" Background="{DynamicResource CodeBgBrush}">
+        <edit:TextEditor x:Name="Editor"
+                         IsReadOnly="True"
+                         ShowLineNumbers="True"
+                         FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                         FontSize="{DynamicResource EditorFontSize}"
+                         HorizontalScrollBarVisibility="Auto"
+                         VerticalScrollBarVisibility="Auto"
+                         Padding="6,4"
+                         Background="Transparent"
+                         Foreground="{DynamicResource Text0Brush}" />
+    </Border>
+</UserControl>

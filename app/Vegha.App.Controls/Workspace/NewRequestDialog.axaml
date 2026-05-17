@@ -1,0 +1,123 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="380"
+        x:Class="Vegha.App.Controls.Workspace.NewRequestDialog"
+        Title="New Request"
+        Width="640" Height="380"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+    <DockPanel Margin="20">
+        <!-- Footer: Cancel / Create -->
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,0">
+            <ToggleButton Grid.Column="0" Name="OptionsToggle"
+                          Content="Options"
+                          Background="Transparent" BorderThickness="0"
+                          Foreground="{DynamicResource AccentBrush}"
+                          FontSize="11" />
+            <Button Grid.Column="1"
+                    Content="Cancel" Click="OnCancel_Click"
+                    Background="Transparent"
+                    Foreground="{DynamicResource Text1Brush}"
+                    BorderThickness="0"
+                    Padding="14,6" Margin="0,0,8,0" />
+            <Button Grid.Column="2"
+                    Content="Create" Click="OnCreate_Click"
+                    IsDefault="True"
+                    Background="{DynamicResource AccentBrush}"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Padding="18,6" CornerRadius="3"
+                    FontWeight="SemiBold" />
+        </Grid>
+
+        <StackPanel Spacing="14">
+            <!-- Type group -->
+            <StackPanel Spacing="6">
+                <TextBlock Text="Type" FontWeight="SemiBold" FontSize="12"
+                           Foreground="{DynamicResource Text0Brush}" />
+                <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" >
+                    <Grid.Styles>
+                        <Style Selector="RadioButton">
+                            <Setter Property="Margin" Value="0,4,16,4" />
+                            <Setter Property="FontSize" Value="12" />
+                        </Style>
+                    </Grid.Styles>
+                    <RadioButton Grid.Row="0" Grid.Column="0" Name="TypeHttp"
+                                 GroupName="reqType" Content="HTTP" IsChecked="True" />
+                    <RadioButton Grid.Row="0" Grid.Column="1" Name="TypeGrpc"
+                                 GroupName="reqType" Content="gRPC" />
+                    <RadioButton Grid.Row="0" Grid.Column="2" Name="TypeFromCurl"
+                                 GroupName="reqType" Content="From cURL" />
+                    <RadioButton Grid.Row="1" Grid.Column="0" Name="TypeGraphQL"
+                                 GroupName="reqType" Content="GraphQL" />
+                    <RadioButton Grid.Row="1" Grid.Column="1" Name="TypeWebSocket"
+                                 GroupName="reqType" Content="WebSocket" />
+                    <RadioButton Grid.Row="1" Grid.Column="2" Name="TypeSoap"
+                                 GroupName="reqType" Content="SOAP" />
+                </Grid>
+            </StackPanel>
+
+            <!-- Name -->
+            <StackPanel Spacing="4" Name="NameSection">
+                <TextBlock Text="Request Name" FontWeight="SemiBold" FontSize="12"
+                           Foreground="{DynamicResource Text0Brush}" />
+                <TextBox Name="NameBox" Watermark="Request Name"
+                         FontSize="12"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         Padding="10,8" CornerRadius="3" />
+            </StackPanel>
+
+            <!-- URL + Method (HTTP / GraphQL / WebSocket only) -->
+            <StackPanel Spacing="4" Name="UrlSection">
+                <TextBlock Text="URL" FontWeight="SemiBold" FontSize="12"
+                           Foreground="{DynamicResource Text0Brush}" />
+                <Grid ColumnDefinitions="100,*">
+                    <ComboBox Grid.Column="0" Name="MethodBox"
+                              SelectedIndex="0"
+                              Height="32"
+                              FontFamily="{StaticResource MonoFont}"
+                              FontWeight="SemiBold"
+                              Background="{DynamicResource Bg3Brush}"
+                              BorderBrush="{DynamicResource Border1Brush}"
+                              Margin="0,0,6,0">
+                        <ComboBoxItem>GET</ComboBoxItem>
+                        <ComboBoxItem>POST</ComboBoxItem>
+                        <ComboBoxItem>PUT</ComboBoxItem>
+                        <ComboBoxItem>PATCH</ComboBoxItem>
+                        <ComboBoxItem>DELETE</ComboBoxItem>
+                        <ComboBoxItem>HEAD</ComboBoxItem>
+                        <ComboBoxItem>OPTIONS</ComboBoxItem>
+                    </ComboBox>
+                    <TextBox Grid.Column="1" Name="UrlBox"
+                             Watermark="Request URL"
+                             FontFamily="{StaticResource MonoFont}" FontSize="12"
+                             Background="{DynamicResource BgInputBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="8,6" CornerRadius="3" />
+                </Grid>
+            </StackPanel>
+
+            <!-- cURL command (visible when "From cURL" is selected) -->
+            <StackPanel Spacing="4" Name="CurlSection" IsVisible="False">
+                <TextBlock Text="Paste cURL command" FontWeight="SemiBold" FontSize="12"
+                           Foreground="{DynamicResource Text0Brush}" />
+                <TextBox Name="CurlBox"
+                         Watermark="curl -X POST https://api.example.com/users -d '{...}'"
+                         AcceptsReturn="True"
+                         FontFamily="{StaticResource MonoFont}" FontSize="11"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         MinHeight="80"
+                         Padding="8,6" CornerRadius="3" />
+            </StackPanel>
+        </StackPanel>
+    </DockPanel>
+</Window>

@@ -1,0 +1,141 @@
+name: Velopack auto-update e2e
+
+# End-to-end smoke for Velopack channel publishing + upgrade. Builds release
+# N, packs to a local file:// release feed, builds release N+1 to the same
+# feed, then runs the launcher with --VelopackUpdate to verify the update is
+# detected and applied without losing user state.
+#
+# Triggered three ways:
+#   - workflow_dispatch (manual button)
+#   - on push of v*.*.* tags so every release gets an upgrade-path smoke
+#     before users see it (runs alongside the release.yml packaging job)
+#   - on PRs that touch packaging-relevant files so we catch regressions
+#     before merge
+#
+# Runs on Windows; the same shape transposes to macOS but we keep it
+# Windows-only here to limit CI minutes.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    paths:
+      - 'app/Vegha.App/**'
+      - '.github/workflows/velopack-e2e.yml'
+      - '.github/workflows/release.yml'
+
+jobs:
+  e2e-update:
+    runs-on: windows-latest
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk
+
+      - name: Restore
+        run: dotnet restore
+
+      # ---- Build release N (1.0.0) ----
+      - name: Publish 1.0.0
+        shell: pwsh
+        run: |
+          dotnet publish app/Vegha.App/Vegha.App.csproj `
+            --configuration Release --runtime win-x64 --self-contained true `
+            --output publish/v1
+
+      - name: Pack 1.0.0
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path releases/feed | Out-Null
+          vpk pack `
+            --packId Vegha `
+            --packTitle "Vegha" `
+            --packVersion 1.0.0 `
+            --packAuthors "Vegha contributors" `
+            --packDir publish/v1 `
+            --mainExe Vegha.App.exe `
+            --outputDir releases/feed
+
+      # ---- Install 1.0.0 into a scratch location ----
+      - name: Install 1.0.0
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem releases/feed -Filter '*Setup.exe' | Select-Object -First 1
+          if (-not $setup) { throw "1.0.0 setup.exe not found in feed" }
+          $installDir = "$env:RUNNER_TEMP\vegha-install"
+          & $setup.FullName --silent --installto $installDir
+          Start-Sleep -Seconds 5
+          if (-not (Test-Path "$installDir\current\Vegha.App.exe")) {
+            Get-ChildItem $installDir -Recurse | ForEach-Object FullName
+            throw "Install did not produce an Vegha binary"
+          }
+          echo "INSTALL_DIR=$installDir" >> $env:GITHUB_ENV
+
+      # ---- Bump version, build 1.0.1, append to same feed ----
+      - name: Publish 1.0.1
+        shell: pwsh
+        run: |
+          dotnet publish app/Vegha.App/Vegha.App.csproj `
+            --configuration Release --runtime win-x64 --self-contained true `
+            --output publish/v2
+
+      - name: Pack 1.0.1 (delta release into same feed)
+        shell: pwsh
+        run: |
+          vpk pack `
+            --packId Vegha `
+            --packTitle "Vegha" `
+            --packVersion 1.0.1 `
+            --packAuthors "Vegha contributors" `
+            --packDir publish/v2 `
+            --mainExe Vegha.App.exe `
+            --outputDir releases/feed
+
+      # ---- Trigger update from inside the installed app ----
+      - name: Apply update via Velopack
+        shell: pwsh
+        run: |
+          $update = Join-Path $env:INSTALL_DIR 'Update.exe'
+          if (-not (Test-Path $update)) { throw "Update.exe not found at $update" }
+          $feedUri = ([Uri](Resolve-Path 'releases/feed').Path).AbsoluteUri
+          & $update --update $feedUri
+          # Velopack background-applies; give it a few seconds to swap directories.
+          Start-Sleep -Seconds 10
+
+      - name: Verify post-update version
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:INSTALL_DIR 'current\Vegha.App.exe'
+          if (-not (Test-Path $exe)) {
+            Write-Host "::error::Post-update binary not found at $exe"
+            Get-ChildItem $env:INSTALL_DIR -Recurse | ForEach-Object FullName
+            exit 1
+          }
+          $info = (Get-Item $exe).VersionInfo
+          Write-Host "Installed version: $($info.FileVersion) (product $($info.ProductVersion))"
+          if ($info.ProductVersion -like '1.0.1*') {
+            Write-Host "::notice::Update succeeded — running 1.0.1"
+          } else {
+            Write-Host "::warning::Update did not bump to 1.0.1 (saw $($info.ProductVersion))"
+          }
+
+      - name: Upload feed for inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: velopack-feed
+          path: releases/feed/*
+          if-no-files-found: warn

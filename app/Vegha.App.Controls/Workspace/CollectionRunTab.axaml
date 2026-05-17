@@ -1,0 +1,334 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:tabs="using:Vegha.App.ViewModels.Tabs"
+             xmlns:flow="using:Vegha.Core.Flow"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             x:Class="Vegha.App.Controls.Workspace.CollectionRunTab"
+             x:DataType="tabs:CollectionRunTabViewModel"
+             Background="{DynamicResource Bg1Brush}">
+    <DockPanel Margin="0">
+
+        <!-- Header strip: run / cancel + summary chips -->
+        <Border DockPanel.Dock="Top" Padding="14,10"
+                Background="{DynamicResource Bg2Brush}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto">
+                <Button Grid.Column="0"
+                        Content="Run"
+                        Command="{Binding RunCommand}"
+                        IsVisible="{Binding !IsRunning}"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="White"
+                        BorderThickness="0"
+                        CornerRadius="3"
+                        Padding="14,5"
+                        Margin="0,0,8,0"
+                        FontWeight="SemiBold" />
+                <Button Grid.Column="1"
+                        Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        IsVisible="{Binding IsRunning}"
+                        Background="Transparent"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        BorderThickness="1"
+                        Foreground="{DynamicResource Text0Brush}"
+                        CornerRadius="3"
+                        Padding="14,5"
+                        Margin="0,0,8,0" />
+                <Button Grid.Column="2"
+                        Content="Reset"
+                        Command="{Binding ResetResultsCommand}"
+                        IsVisible="{Binding HasResults}"
+                        Background="Transparent"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        BorderThickness="1"
+                        Foreground="{DynamicResource Text2Brush}"
+                        CornerRadius="3"
+                        Padding="10,4"
+                        Margin="0,0,8,0"
+                        FontSize="11" />
+
+                <!-- Spacer: column 3 = * -->
+
+                <Border Grid.Column="4" Padding="8,3" Margin="0,0,6,0"
+                        Background="{DynamicResource Bg3Brush}"
+                        CornerRadius="3"
+                        IsVisible="{Binding HasResults}">
+                    <TextBlock FontSize="11" Foreground="{DynamicResource Text1Brush}">
+                        <Run Text="✓" Foreground="LimeGreen" />
+                        <Run Text=" " />
+                        <Run Text="{Binding PassedCount}" />
+                    </TextBlock>
+                </Border>
+                <Border Grid.Column="5" Padding="8,3" Margin="0,0,6,0"
+                        Background="{DynamicResource Bg3Brush}"
+                        CornerRadius="3"
+                        IsVisible="{Binding HasResults}">
+                    <TextBlock FontSize="11" Foreground="{DynamicResource Text1Brush}">
+                        <Run Text="✗" Foreground="Tomato" />
+                        <Run Text=" " />
+                        <Run Text="{Binding FailedCount}" />
+                    </TextBlock>
+                </Border>
+                <Border Grid.Column="6" Padding="8,3" Margin="0,0,6,0"
+                        Background="{DynamicResource Bg3Brush}"
+                        CornerRadius="3"
+                        IsVisible="{Binding HasResults}">
+                    <TextBlock FontSize="11" Foreground="{DynamicResource Text1Brush}">
+                        <Run Text="⚠" Foreground="Orange" />
+                        <Run Text=" " />
+                        <Run Text="{Binding ErroredCount}" />
+                    </TextBlock>
+                </Border>
+                <Border Grid.Column="7" Padding="8,3" Margin="0,0,6,0"
+                        Background="{DynamicResource Bg3Brush}"
+                        CornerRadius="3"
+                        IsVisible="{Binding HasResults}">
+                    <TextBlock FontSize="11" Foreground="{DynamicResource Text1Brush}">
+                        <Run Text="⊘ " />
+                        <Run Text="{Binding SkippedCount}" />
+                    </TextBlock>
+                </Border>
+                <Border Grid.Column="8" Padding="8,3"
+                        Background="{DynamicResource Bg3Brush}"
+                        CornerRadius="3"
+                        IsVisible="{Binding HasResults}">
+                    <TextBlock FontSize="11" Foreground="{DynamicResource Text2Brush}">
+                        <Run Text="{Binding TotalDurationMs}" />
+                        <Run Text=" ms" />
+                    </TextBlock>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Progress bar -->
+        <ProgressBar DockPanel.Dock="Top"
+                     IsVisible="{Binding IsRunning}"
+                     Value="{Binding ProgressFraction}"
+                     Maximum="1.0"
+                     Height="3"
+                     Foreground="{DynamicResource AccentBrush}" />
+
+        <!-- Status line -->
+        <Border DockPanel.Dock="Top" Padding="14,4"
+                Background="{DynamicResource Bg2Brush}"
+                IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding StatusMessage}"
+                       FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+        </Border>
+
+        <!-- Two-column body: config (left) + results (right). When results are present
+             the layout favors the results pane; before a run, config takes most of the space. -->
+        <Grid ColumnDefinitions="320,*" Margin="0">
+            <!-- ===== Configuration column ===== -->
+            <ScrollViewer Grid.Column="0"
+                          Background="{DynamicResource Bg2Brush}"
+                          BorderBrush="{DynamicResource Border0Brush}"
+                          BorderThickness="0,0,1,0">
+                <StackPanel Margin="14" Spacing="10">
+                    <TextBlock Text="CONFIGURATION"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text2Brush}" />
+
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Iterations"
+                                   VerticalAlignment="Center"
+                                   FontSize="11" Foreground="{DynamicResource Text1Brush}" />
+                        <NumericUpDown Grid.Row="0" Grid.Column="1"
+                                       Value="{Binding Iterations}"
+                                       Minimum="1" Maximum="10000"
+                                       Width="100" FontSize="11" />
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Workers"
+                                   VerticalAlignment="Center" Margin="0,6,0,0"
+                                   FontSize="11" Foreground="{DynamicResource Text1Brush}" />
+                        <NumericUpDown Grid.Row="1" Grid.Column="1"
+                                       Value="{Binding Workers}"
+                                       Minimum="1" Maximum="32"
+                                       Width="100" Margin="0,6,0,0" FontSize="11" />
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Delay (ms)"
+                                   VerticalAlignment="Center" Margin="0,6,0,0"
+                                   FontSize="11" Foreground="{DynamicResource Text1Brush}" />
+                        <NumericUpDown Grid.Row="2" Grid.Column="1"
+                                       Value="{Binding DelayBetweenRequestsMs}"
+                                       Minimum="0" Maximum="60000"
+                                       Width="100" Margin="0,6,0,0" FontSize="11" />
+                    </Grid>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Data file (CSV / JSON)"
+                                   FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   Margin="0,4,0,0" />
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding DataFilePath}"
+                                     IsReadOnly="True"
+                                     FontSize="11"
+                                     Watermark="(none)" />
+                            <Button Grid.Column="1" Content="…"
+                                    Click="OnPickDataFile_Click"
+                                    Margin="4,0,0,0" Padding="8,2"
+                                    Background="Transparent"
+                                    BorderBrush="{DynamicResource Border1Brush}"
+                                    BorderThickness="1"
+                                    Foreground="{DynamicResource Text0Brush}" />
+                            <Button Grid.Column="2" Content="✕"
+                                    Command="{Binding ClearDataFileCommand}"
+                                    IsVisible="{Binding DataFilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                    Margin="4,0,0,0" Padding="6,2"
+                                    Background="Transparent"
+                                    BorderBrush="{DynamicResource Border1Brush}"
+                                    BorderThickness="1"
+                                    Foreground="{DynamicResource Text2Brush}" />
+                        </Grid>
+                        <TextBlock Text="{Binding DataFileStatus}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   IsVisible="{Binding DataFileStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+
+                    <CheckBox Content="Record iterations to history"
+                              IsChecked="{Binding RecordToHistory}"
+                              FontSize="11"
+                              Foreground="{DynamicResource Text1Brush}" />
+                    <CheckBox Content="Isolated cookie jar per run"
+                              IsChecked="{Binding IsolatedCookieJarPerRun}"
+                              FontSize="11"
+                              Foreground="{DynamicResource Text1Brush}" />
+
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                        <TextBlock Grid.Column="0" Text="REQUESTS"
+                                   FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="Toggle All"
+                                Command="{Binding ToggleSelectAllCommand}"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Foreground="{DynamicResource Text2Brush}"
+                                FontSize="10"
+                                Padding="4,1" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding RequestRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="tabs:RunRequestRow">
+                                <Grid ColumnDefinitions="Auto,Auto,*" Margin="0,1,0,1">
+                                    <CheckBox Grid.Column="0"
+                                              IsChecked="{Binding IsSelected}"
+                                              IsVisible="{Binding !IsFolderHeader}"
+                                              MinWidth="0" Margin="0,0,4,0" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding Method}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="9"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               Margin="0,0,6,0"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding Name}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text0Brush}"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===== Results column ===== -->
+            <ScrollViewer Grid.Column="1">
+                <StackPanel Margin="14">
+                    <TextBlock Text="No results yet. Click Run."
+                               IsVisible="{Binding !HasResults}"
+                               Foreground="{DynamicResource Text3Brush}"
+                               FontSize="12" FontStyle="Italic"
+                               Padding="0,40,0,0"
+                               HorizontalAlignment="Center" />
+                    <ItemsControl ItemsSource="{Binding Iterations_Results}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="tabs:IterationResultGroup">
+                                <StackPanel Spacing="2" Margin="0,0,0,10">
+                                    <TextBlock Text="{Binding Label}"
+                                               FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               Margin="0,4,0,4" />
+                                    <ItemsControl ItemsSource="{Binding Results}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="flow:RequestRunResult">
+                                                <Border Padding="8,4" Margin="0,1,0,1"
+                                                        Background="{DynamicResource Bg2Brush}"
+                                                        BorderBrush="{DynamicResource Border0Brush}"
+                                                        BorderThickness="0,0,0,1"
+                                                        CornerRadius="2">
+                                                    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+                                                        <TextBlock Grid.Column="0"
+                                                                   Text="{Binding Status}"
+                                                                   FontFamily="{StaticResource MonoFont}"
+                                                                   FontSize="10"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource Text2Brush}"
+                                                                   Margin="0,0,8,0"
+                                                                   VerticalAlignment="Center"
+                                                                   MinWidth="56" />
+                                                        <TextBlock Grid.Column="1"
+                                                                   Text="{Binding Method}"
+                                                                   FontFamily="{StaticResource MonoFont}"
+                                                                   FontSize="10"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource Text1Brush}"
+                                                                   Margin="0,0,6,0"
+                                                                   VerticalAlignment="Center"
+                                                                   MinWidth="48" />
+                                                        <TextBlock Grid.Column="2"
+                                                                   Text="{Binding Name}"
+                                                                   FontSize="12"
+                                                                   Foreground="{DynamicResource Text0Brush}"
+                                                                   VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Grid.Column="3"
+                                                                   Text="{Binding StatusCode}"
+                                                                   FontFamily="{StaticResource MonoFont}"
+                                                                   FontSize="10"
+                                                                   Foreground="{DynamicResource Text2Brush}"
+                                                                   Margin="6,0"
+                                                                   VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="4"
+                                                                   FontFamily="{StaticResource MonoFont}"
+                                                                   FontSize="10"
+                                                                   Foreground="{DynamicResource Text2Brush}"
+                                                                   VerticalAlignment="Center"
+                                                                   Margin="6,0">
+                                                            <Run Text="{Binding ElapsedMs}" />
+                                                            <Run Text=" ms" />
+                                                        </TextBlock>
+                                                        <TextBlock Grid.Column="5"
+                                                                   FontSize="10"
+                                                                   Foreground="{DynamicResource Text2Brush}"
+                                                                   VerticalAlignment="Center"
+                                                                   Margin="6,0">
+                                                            <Run Text="✓" Foreground="LimeGreen" />
+                                                            <Run Text="{Binding PassedTests}" />
+                                                            <Run Text=" / ✗" Foreground="Tomato" />
+                                                            <Run Text="{Binding FailedTests}" />
+                                                        </TextBlock>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</UserControl>

@@ -1,0 +1,71 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             mc:Ignorable="d" d:DesignWidth="44" d:DesignHeight="700"
+             x:Class="Vegha.App.Controls.Shell.ActivityRail"
+             x:DataType="vm:MainWindowViewModel"
+             Width="44">
+    <Border Background="{DynamicResource Bg2Brush}"
+            BorderBrush="{DynamicResource Border0Brush}"
+            BorderThickness="0,0,1,0">
+        <DockPanel>
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,0,0,6">
+                <Button Classes="rail" ToolTip.Tip="Settings" Click="OnSettings_Click">
+                    <icons:Icon Kind="Settings" Size="18" />
+                </Button>
+                <Button Classes="rail" ToolTip.Tip="Help" Click="OnHelp_Click">
+                    <icons:Icon Kind="Help" Size="18" />
+                </Button>
+            </StackPanel>
+            <StackPanel Margin="0,6,0,0">
+                <Button Classes="rail" ToolTip.Tip="Collections" Click="OnCollections_Click"
+                        Classes.active="{Binding ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=collections}">
+                    <icons:Icon Kind="Collection" Size="18" />
+                </Button>
+                <Button Classes="rail" ToolTip.Tip="Environments" Click="OnEnvironments_Click"
+                        Classes.active="{Binding ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=environments}">
+                    <icons:Icon Kind="Env" Size="18" />
+                </Button>
+                <Button Classes="rail" ToolTip.Tip="History" Click="OnHistory_Click"
+                        Classes.active="{Binding ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=history}">
+                    <icons:Icon Kind="History" Size="18" />
+                </Button>
+                <Button Classes="rail" ToolTip.Tip="Source Control" Click="OnGit_Click"
+                        Classes.active="{Binding ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=git}">
+                    <Panel>
+                        <icons:Icon Kind="Git" Size="18" />
+                        <!-- Change-count pill, anchored to the icon's bottom-right. Borrowed
+                             from SourceGit's badge pattern (CornerRadius=9, mono font, only
+                             visible when > 0). -->
+                        <Border IsVisible="{Binding Git.HasWorkingChanges}"
+                                Background="{DynamicResource AccentBrush}"
+                                CornerRadius="8"
+                                MinWidth="16" Height="14"
+                                Padding="4,0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom"
+                                Margin="0,0,-6,-4">
+                            <TextBlock Text="{Binding Git.TotalChangesCount}"
+                                       FontSize="9" FontFamily="{StaticResource MonoFont}"
+                                       FontWeight="SemiBold"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                    </Panel>
+                </Button>
+                <Button Classes="rail" ToolTip.Tip="OpenAPI" Click="OnOpenApi_Click"
+                        Classes.active="{Binding ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=openapi}">
+                    <icons:Icon Kind="OpenApi" Size="18" />
+                </Button>
+                <Button Classes="rail" ToolTip.Tip="Runner" Click="OnRunner_Click"
+                        Classes.active="{Binding ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=runner}">
+                    <icons:Icon Kind="FlowRunner" Size="18" />
+                </Button>
+            </StackPanel>
+        </DockPanel>
+    </Border>
+</UserControl>

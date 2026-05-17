@@ -1,0 +1,153 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="700"
+             x:Class="Vegha.App.Controls.Shell.HistoryPanel"
+             x:DataType="vm:HistoryViewModel">
+    <DockPanel Background="{DynamicResource Bg2Brush}">
+        <Border DockPanel.Dock="Top" Padding="10,8" Height="34"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                <TextBlock Grid.Column="0" Text="HISTORY"
+                           FontSize="10" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text2Brush}"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1"
+                        Command="{Binding RequestHarExportCommand}"
+                        ToolTip.Tip="Export recent entries to .har"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource Text2Brush}"
+                        Width="32" Height="22" Padding="0" CornerRadius="3"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center">
+                    <TextBlock Text="HAR" FontSize="9" FontWeight="SemiBold" />
+                </Button>
+                <Button Grid.Column="2"
+                        Command="{Binding RefreshCommand}"
+                        ToolTip.Tip="Refresh"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource Text2Brush}"
+                        Width="22" Height="22" Padding="0" CornerRadius="3"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center">
+                    <TextBlock Text="↻" FontSize="13" />
+                </Button>
+                <Button Grid.Column="3"
+                        Command="{Binding ClearCommand}"
+                        ToolTip.Tip="Clear all"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource Text2Brush}"
+                        Width="22" Height="22" Padding="0" CornerRadius="3"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center">
+                    <TextBlock Text="🗑" FontSize="12" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Footer: load-more affordance + paging spinner. Docked Bottom so the ListBox keeps
+             the rest of the height; collapses when no more rows exist and nothing is loading. -->
+        <Border DockPanel.Dock="Bottom"
+                IsVisible="{Binding HasMore}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           IsVisible="{Binding IsLoadingMore}"
+                           Text="Loading…"
+                           FontSize="10" FontStyle="Italic"
+                           Foreground="{DynamicResource Text3Brush}"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1"
+                        Command="{Binding LoadMoreCommand}"
+                        IsVisible="{Binding !IsLoadingMore}"
+                        ToolTip.Tip="Load older entries"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource AccentBrush}"
+                        Padding="4,2" CornerRadius="3"
+                        FontSize="11">
+                    <TextBlock Text="Load more" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <TextBlock IsVisible="{Binding !Items.Count}"
+                   Text="No requests yet.&#10;&#10;Send a request and it'll show up here."
+                   Foreground="{DynamicResource Text3Brush}"
+                   FontSize="11" FontStyle="Italic"
+                   TextWrapping="Wrap"
+                   Padding="14,40,14,0"
+                   TextAlignment="Center" />
+
+        <ListBox x:Name="HistoryList"
+                 ItemsSource="{Binding Items}"
+                 SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                 Background="Transparent"
+                 BorderThickness="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0" />
+                </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:HistoryRow">
+                        <Border BorderBrush="{DynamicResource Border0Brush}"
+                                BorderThickness="0,0,0,1"
+                                Padding="10,6"
+                                Background="Transparent"
+                                Tag="{Binding}"
+                                DoubleTapped="OnRow_DoubleTapped">
+                            <Border.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Delete" Tag="{Binding}" Click="OnDelete_Click" />
+                                </ContextMenu>
+                            </Border.ContextMenu>
+                            <Grid ColumnDefinitions="46,*,Auto" RowDefinitions="Auto,Auto">
+                                <TextBlock Grid.Column="0" Grid.Row="0"
+                                           Text="{Binding Method}"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{Binding Method, Converter={StaticResource MethodToBrushConverter}}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Grid.Row="0"
+                                           Text="{Binding Url}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource Text0Brush}"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="2" Grid.Row="0"
+                                           Text="{Binding StatusCode}"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           FontSize="10"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource StatusOkBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="6,0,0,0" />
+
+                                <Grid Grid.Column="0" Grid.ColumnSpan="3" Grid.Row="1"
+                                      ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0">
+                                    <TextBlock Grid.Column="0"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource Text3Brush}">
+                                        <Run Text="{Binding DurationMs}" />
+                                        <Run Text=" ms" />
+                                    </TextBlock>
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding TimeAgo}"
+                                               FontSize="10"
+                                               Foreground="{DynamicResource Text3Brush}" />
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</UserControl>

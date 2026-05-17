@@ -1,0 +1,206 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="700"
+             x:Class="Vegha.App.Controls.Shell.OpenApiPanel"
+             x:DataType="vm:OpenApiViewModel">
+    <DockPanel Background="{DynamicResource Bg2Brush}">
+        <Border DockPanel.Dock="Top" Padding="10,8" Height="34"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <TextBlock Text="OPENAPI"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text2Brush}"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <Border DockPanel.Dock="Bottom" Padding="10,6"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,1,0,0"
+                IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding StatusMessage}"
+                       FontSize="10"
+                       Foreground="{DynamicResource Text2Brush}"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <ScrollViewer>
+            <StackPanel Margin="14,12" Spacing="14">
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Spec source"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <TextBox Text="{Binding SpecSource}"
+                             Watermark="https://api.test/openapi.json or path/to/spec.yaml"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource BgInputBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="6,4" CornerRadius="3" />
+                    <Button Content="Sync"
+                            Command="{Binding SyncCommand}"
+                            Background="{DynamicResource AccentBrush}"
+                            Foreground="White"
+                            Padding="14,6"
+                            HorizontalAlignment="Left" />
+                    <TextBlock IsVisible="{Binding LastSyncedAt, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}">
+                        <Run Text="Last sync:" />
+                        <Run Text="{Binding LastSyncedAt}" />
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- Apply-drift actions. Visible only when a workspace collection is loaded. -->
+                <StackPanel Spacing="6"
+                            IsVisible="{Binding HasActiveCollection}">
+                    <TextBlock Text="Actions"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <Button Command="{Binding ImportAddedOpsCommand}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="10,5"
+                            IsEnabled="{Binding AddedInSpec.Count}"
+                            ToolTip.Tip="Write operations the spec introduced into a new sub-folder of the active collection. Existing files are untouched.">
+                        <TextBlock FontSize="11">
+                            <Run Text="Import" />
+                            <Run Text="{Binding AddedInSpec.Count}" />
+                            <Run Text="added op(s) →" />
+                        </TextBlock>
+                    </Button>
+                    <Button Command="{Binding DeleteRemovedOpsCommand}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="10,5"
+                            IsEnabled="{Binding RemovedFromSpec.Count}"
+                            ToolTip.Tip="Delete the .bru files for requests whose operation no longer exists in the spec.">
+                        <TextBlock FontSize="11">
+                            <Run Text="Delete" />
+                            <Run Text="{Binding RemovedFromSpec.Count}" />
+                            <Run Text="removed op(s)" />
+                        </TextBlock>
+                    </Button>
+                    <Button Command="{Binding ReplaceCollectionCommand}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="10,5"
+                            ToolTip.Tip="DESTRUCTIVE: wipe every .bru file in the collection and rewrite from the spec. environments/, .git/ and other auxiliary files are preserved.">
+                        <TextBlock Text="Replace collection from spec (destructive)"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource StatusErrBrush}" />
+                    </Button>
+                </StackPanel>
+
+                <!-- Quick-import path when no collection is loaded. -->
+                <StackPanel Spacing="6"
+                            IsVisible="{Binding !HasActiveCollection}">
+                    <TextBlock Text="No collection loaded"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <Button Command="{Binding CreateCollectionFromSpecCommand}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="10,5"
+                            IsEnabled="{Binding AddedInSpec.Count}"
+                            ToolTip.Tip="Write a fresh Bruno collection from the synced spec into the active workspace's collections/ folder.">
+                        <TextBlock Text="Create collection from this spec"
+                                   FontSize="11" />
+                    </Button>
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding AddedInSpec.Count}">
+                    <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource StatusOkBrush}">
+                        <Run Text="Added in spec (" /><Run Text="{Binding AddedInSpec.Count}" /><Run Text=")" />
+                    </TextBlock>
+                    <ItemsControl ItemsSource="{Binding AddedInSpec}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DriftRow">
+                                <Grid ColumnDefinitions="40,*" Margin="0,2">
+                                    <TextBlock Grid.Column="0" Text="{Binding Method}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{Binding Method, Converter={StaticResource MethodToBrushConverter}}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Path}"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text0Brush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding RemovedFromSpec.Count}">
+                    <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource StatusErrBrush}">
+                        <Run Text="Removed from spec (" /><Run Text="{Binding RemovedFromSpec.Count}" /><Run Text=")" />
+                    </TextBlock>
+                    <ItemsControl ItemsSource="{Binding RemovedFromSpec}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DriftRow">
+                                <Button Classes="dim"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        Padding="0,2"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        ToolTip.Tip="Open this request in the editor"
+                                        Command="{Binding $parent[ItemsControl].((vm:OpenApiViewModel)DataContext).OpenRowCommand}"
+                                        CommandParameter="{Binding}">
+                                    <Grid ColumnDefinitions="40,*">
+                                        <TextBlock Grid.Column="0" Text="{Binding Method}"
+                                                   FontFamily="{StaticResource MonoFont}"
+                                                   FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="{Binding Method, Converter={StaticResource MethodToBrushConverter}}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Path}"
+                                                   FontFamily="{StaticResource MonoFont}"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource Text2Brush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding Unchanged.Count}">
+                    <TextBlock FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource Text3Brush}">
+                        <Run Text="Unchanged (" /><Run Text="{Binding Unchanged.Count}" /><Run Text=")" />
+                    </TextBlock>
+                    <ItemsControl ItemsSource="{Binding Unchanged}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DriftRow">
+                                <Button Classes="dim"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        Padding="0,2"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        ToolTip.Tip="Open this request in the editor"
+                                        Command="{Binding $parent[ItemsControl].((vm:OpenApiViewModel)DataContext).OpenRowCommand}"
+                                        CommandParameter="{Binding}">
+                                    <Grid ColumnDefinitions="40,*">
+                                        <TextBlock Grid.Column="0" Text="{Binding Method}"
+                                                   FontFamily="{StaticResource MonoFont}"
+                                                   FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="{Binding Method, Converter={StaticResource MethodToBrushConverter}}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Path}"
+                                                   FontFamily="{StaticResource MonoFont}"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource Text1Brush}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

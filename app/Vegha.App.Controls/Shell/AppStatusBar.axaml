@@ -1,0 +1,218 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="22"
+             x:Class="Vegha.App.Controls.Shell.AppStatusBar"
+             x:DataType="vm:MainWindowViewModel"
+             Height="22">
+    <UserControl.Styles>
+        <!-- VSCode-style status bar item: full-height button, transparent until hover. -->
+        <Style Selector="Button.statusItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+        <Style Selector="Button.statusItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        </Style>
+        <Style Selector="Button.branchRow">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.branchRow:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Panel>
+    <Border Background="{DynamicResource Bg2Brush}"
+            BorderBrush="{DynamicResource Border0Brush}"
+            BorderThickness="0,1,0,0"
+            Padding="6,0">
+        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+            <!-- Branch indicator (left). VSCode-style: ⑂ <branch>[*]. Clicking opens a popup
+                 listing local branches. Hidden when the active collection isn't a git repo. -->
+            <Button x:Name="BranchButton" Grid.Column="0" Classes="statusItem"
+                    Click="OnBranchButton_Click"
+                    IsVisible="{Binding Git.IsRepoActive}"
+                    ToolTip.Tip="Checkout branch...">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                    <icons:Icon Kind="Git" Size="14"
+                                Foreground="{DynamicResource Text2Brush}"
+                                VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Git.CurrentBranch, FallbackValue='', TargetNullValue=''}"
+                               FontSize="11" VerticalAlignment="Center" />
+                    <TextBlock Text="*" FontSize="11" VerticalAlignment="Center"
+                               ToolTip.Tip="Uncommitted changes"
+                               IsVisible="{Binding Git.HasWorkingChanges}" />
+                </StackPanel>
+            </Button>
+
+            <!-- Sync chip: ↻ ↑n ↓m when an upstream exists. Click → SyncCommand. Spinner-ish
+                 style while IsBusy. Visible only when upstream is configured. -->
+            <Button x:Name="SyncButton" Grid.Column="1" Classes="statusItem"
+                    Command="{Binding Git.SyncCommand}"
+                    ToolTip.Tip="Synchronize Changes"
+                    IsVisible="{Binding Git.HasUpstream}">
+                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <icons:Icon Kind="Sync" Size="13"
+                                Foreground="{DynamicResource Text2Brush}"
+                                VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Git.BehindCount, StringFormat='↓{0}'}"
+                               FontSize="11" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Git.AheadCount, StringFormat='↑{0}'}"
+                               FontSize="11" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+
+            <!-- Publish-branch chip: shown only when the active branch has no upstream yet.
+                 Click → PushCommand (set-upstream is wired inside the command). -->
+            <Button Grid.Column="1" Classes="statusItem"
+                    Command="{Binding Git.PushCommand}"
+                    ToolTip.Tip="Publish Branch">
+                <Button.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="Git.IsRepoActive" />
+                        <Binding Path="Git.HasUpstream" Converter="{x:Static BoolConverters.Not}" />
+                    </MultiBinding>
+                </Button.IsVisible>
+                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <icons:Icon Kind="CloudUpload" Size="13"
+                                Foreground="{DynamicResource Text2Brush}"
+                                VerticalAlignment="Center" />
+                    <TextBlock Text="Publish Branch" FontSize="11" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+
+            <!-- Environment indicator. Kept lightweight: just shows the active env name. -->
+            <TextBlock Grid.Column="2"
+                       Text="{Binding Collections.ActiveEnvironment.Name, StringFormat='🌐 {0}', FallbackValue='', TargetNullValue=''}"
+                       FontSize="11" Foreground="{DynamicResource Text2Brush}"
+                       VerticalAlignment="Center" Margin="6,0,14,0"
+                       IsVisible="{Binding Collections.ActiveEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+            <!-- Cookies button (bottom-right). Opens a modal cookie manager dialog
+                 (Bruno-style: list + add/edit/delete). The activity-rail no longer
+                 hosts a Cookies entry — the status-bar corner is the single entry point. -->
+            <Button Grid.Column="4" Classes="statusItem"
+                    Click="OnCookiesButton_Click"
+                    ToolTip.Tip="Cookies">
+                <icons:Icon Kind="Cookie" Size="14"
+                            Foreground="{DynamicResource Text2Brush}"
+                            VerticalAlignment="Center" />
+            </Button>
+        </Grid>
+    </Border>
+
+    <!-- Branch picker popup. Sits above the BranchButton (status bar lives at the bottom),
+         left-edge-aligned with the button so it grows up-and-to-the-right. The previous
+         anchor pair (TopLeft / TopRight) made the popup grow *leftward* off the window when
+         the button sat near the left edge — TopEdgeAlignedLeft is the preset that aligns the
+         popup's bottom-left to the button's top-left, keeping it inside the window. -->
+    <Popup x:Name="BranchPopup"
+           PlacementTarget="{Binding #BranchButton}"
+           Placement="TopEdgeAlignedLeft"
+           IsLightDismissEnabled="True">
+        <Border Background="{DynamicResource Bg1Brush}"
+                BorderBrush="{DynamicResource Border1Brush}"
+                BorderThickness="1"
+                CornerRadius="4"
+                MinWidth="280"
+                MaxHeight="380"
+                BoxShadow="0 4 12 0 #20000000">
+            <DockPanel>
+                <Border DockPanel.Dock="Top"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="12,8">
+                    <TextBlock Text="Select a branch or tag to checkout"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text2Brush}" />
+                </Border>
+
+                <!-- Sticky "Create new branch" row at the top of the popup. -->
+                <Button DockPanel.Dock="Top" Classes="branchRow"
+                        Click="OnCreateBranch_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <icons:Icon Kind="Plus" Size="13"
+                                    Foreground="{DynamicResource AccentBrush}"
+                                    VerticalAlignment="Center" />
+                        <TextBlock Text="Create new branch..." FontSize="12"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Border DockPanel.Dock="Top" Height="1"
+                        Background="{DynamicResource Border0Brush}" />
+
+                <ScrollViewer MaxHeight="280">
+                    <StackPanel>
+                        <ItemsControl x:Name="BranchList" ItemsSource="{Binding Git.Branches}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Classes="branchRow"
+                                            Tag="{Binding}"
+                                            Click="OnBranchItem_Click">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <icons:Icon Kind="Git" Size="13"
+                                                        Foreground="{DynamicResource Text2Brush}"
+                                                        VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding}" FontSize="12"
+                                                       Foreground="{DynamicResource Text0Brush}"
+                                                       VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Remote branches section (hidden when empty). Click → create local
+                             tracking branch and check it out. -->
+                        <StackPanel IsVisible="{Binding Git.RemoteBranches.Count}">
+                            <Border BorderBrush="{DynamicResource Border0Brush}"
+                                    BorderThickness="0,1,0,0"
+                                    Padding="12,8,12,4">
+                                <TextBlock Text="REMOTE BRANCHES"
+                                           FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text2Brush}" />
+                            </Border>
+                            <ItemsControl ItemsSource="{Binding Git.RemoteBranches}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Classes="branchRow"
+                                                Tag="{Binding}"
+                                                Click="OnRemoteBranchItem_Click">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <icons:Icon Kind="CloudDownload" Size="13"
+                                                            Foreground="{DynamicResource Text2Brush}"
+                                                            VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding}" FontSize="12"
+                                                           Foreground="{DynamicResource Text1Brush}"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </Popup>
+    </Panel>
+</UserControl>

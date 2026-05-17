@@ -1,0 +1,96 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:runner="using:Vegha.App.ViewModels.Runner"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="700"
+             x:Class="Vegha.App.Controls.Shell.RunnerPanel"
+             x:DataType="runner:RunnerSidebarViewModel">
+    <DockPanel Background="{DynamicResource Bg2Brush}">
+        <Border DockPanel.Dock="Top" Padding="10,8" Height="34"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <TextBlock Text="RUNNER"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text2Brush}"
+                       VerticalAlignment="Center" />
+        </Border>
+
+        <Border DockPanel.Dock="Bottom" Padding="10,6"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,1,0,0"
+                IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding StatusMessage}"
+                       FontSize="10"
+                       Foreground="{DynamicResource Text2Brush}"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <ScrollViewer>
+            <StackPanel Margin="0,4,0,0">
+                <TextBlock IsVisible="{Binding !AvailableCollections.Count}"
+                           Text="Open a collection to start a run."
+                           Foreground="{DynamicResource Text3Brush}"
+                           FontSize="11" FontStyle="Italic"
+                           TextWrapping="Wrap"
+                           Padding="14,40,14,0"
+                           HorizontalAlignment="Stretch"
+                           TextAlignment="Center" />
+
+                <Border IsVisible="{Binding ActiveCollection, Converter={x:Static ObjectConverters.IsNotNull}}"
+                        Margin="10,8" Padding="10"
+                        Background="{DynamicResource Bg3Brush}"
+                        CornerRadius="3">
+                    <StackPanel Spacing="6">
+                        <TextBlock FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   Text="ACTIVE COLLECTION" />
+                        <TextBlock Text="{Binding ActiveCollection.Name}"
+                                   FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text0Brush}" />
+                        <Button Content="New Run"
+                                Command="{Binding NewRunForActiveCommand}"
+                                HorizontalAlignment="Stretch"
+                                Background="{DynamicResource AccentBrush}"
+                                Foreground="White"
+                                BorderThickness="0"
+                                CornerRadius="3"
+                                Padding="10,5" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Text="ALL COLLECTIONS"
+                           FontSize="10" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text2Brush}"
+                           Padding="14,8,14,4"
+                           IsVisible="{Binding AvailableCollections.Count}" />
+                <ItemsControl ItemsSource="{Binding AvailableCollections}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CollectionRootViewModel">
+                            <Border Padding="10,6"
+                                    BorderBrush="{DynamicResource Border0Brush}"
+                                    BorderThickness="0,0,0,1">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource Text0Brush}"
+                                               VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="Run"
+                                            Tag="{Binding}"
+                                            Click="OnRun_Click"
+                                            ToolTip.Tip="New run"
+                                            Background="Transparent" BorderThickness="1"
+                                            BorderBrush="{DynamicResource Border1Brush}"
+                                            Foreground="{DynamicResource Text0Brush}"
+                                            CornerRadius="3"
+                                            Padding="8,2" FontSize="11" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

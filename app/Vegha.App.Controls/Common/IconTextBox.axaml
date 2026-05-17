@@ -1,0 +1,51 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             xmlns:conv="using:Vegha.App.Controls.Converters"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="32"
+             x:Class="Vegha.App.Controls.Common.IconTextBox"
+             x:Name="Root">
+    <UserControl.Resources>
+        <conv:BoolToPasswordCharConverter x:Key="BoolToPasswordCharConverter" />
+    </UserControl.Resources>
+    <!-- TextBox with right-side icon adorners docked INSIDE its border via
+         Avalonia's InnerRightContent slot. Eye toggle masks/unmasks the value
+         when ShowReveal=true; a warning indicator can be lit independently for
+         "stored as plaintext" / similar advisories. -->
+    <TextBox Text="{Binding #Root.Text, Mode=TwoWay}"
+             Watermark="{Binding #Root.Watermark}"
+             PasswordChar="{Binding #Root.IsRevealed, Converter={StaticResource BoolToPasswordCharConverter}}"
+             FontFamily="{Binding #Root.FontFamily}"
+             FontSize="{Binding #Root.FontSize}"
+             Background="{DynamicResource BgInputBrush}"
+             BorderBrush="{DynamicResource Border1Brush}"
+             Foreground="{DynamicResource Text0Brush}"
+             Padding="8,6" CornerRadius="3">
+        <TextBox.InnerRightContent>
+            <StackPanel Orientation="Horizontal" Spacing="2"
+                        VerticalAlignment="Center" Margin="0,0,4,0">
+                <!-- Eye toggle: ToggleButton.IsChecked drives IsRevealed two-way
+                     so the bound flag stays in sync with the user's click. -->
+                <ToggleButton IsChecked="{Binding #Root.IsRevealed, Mode=TwoWay}"
+                              IsVisible="{Binding #Root.ShowReveal}"
+                              Background="Transparent" BorderThickness="0"
+                              Padding="4" MinWidth="0" MinHeight="0"
+                              Cursor="Hand"
+                              ToolTip.Tip="Show / hide">
+                    <icons:Icon Kind="Eye" Size="14"
+                                Foreground="{DynamicResource Text2Brush}" />
+                </ToggleButton>
+                <!-- Warning indicator: passive icon, surfaces an advisory via tooltip.
+                     Uses the standard warning brush so it stands out without alarming. -->
+                <Border Padding="4"
+                        IsVisible="{Binding #Root.ShowWarning}"
+                        ToolTip.Tip="{Binding #Root.WarningTip}">
+                    <icons:Icon Kind="Warning" Size="14"
+                                Foreground="{DynamicResource StatusWarnBrush}" />
+                </Border>
+            </StackPanel>
+        </TextBox.InnerRightContent>
+    </TextBox>
+</UserControl>

@@ -1,0 +1,45 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="500"
+             x:Class="Vegha.App.Controls.Shell.NoTabsPanel">
+    <Border Background="{DynamicResource Bg1Brush}">
+        <StackPanel HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="14"
+                    MaxWidth="420">
+            <TextBlock Text="No request open"
+                       FontSize="18" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text0Brush}"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="Pick a request from the Collections panel, create a new one, or import an existing collection."
+                       FontSize="12"
+                       TextWrapping="Wrap"
+                       TextAlignment="Center"
+                       Foreground="{DynamicResource Text2Brush}" />
+            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center" Margin="0,8,0,0">
+                <Button Content="New request"
+                        Click="OnNewRequest_Click"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="White"
+                        Padding="14,8" />
+                <Button Content="Open collection folder"
+                        Click="OnOpenCollection_Click"
+                        Background="{DynamicResource Bg3Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="14,8" />
+                <Button Content="Import…"
+                        Click="OnImport_Click"
+                        Background="{DynamicResource Bg3Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="14,8" />
+            </StackPanel>
+            <TextBlock Text="Ctrl+T new tab · Ctrl+O open · Ctrl+I import"
+                       FontSize="10"
+                       Foreground="{DynamicResource Text3Brush}"
+                       HorizontalAlignment="Center"
+                       Margin="0,12,0,0" />
+        </StackPanel>
+    </Border>
+</UserControl>

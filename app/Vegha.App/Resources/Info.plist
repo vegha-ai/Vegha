@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Vegha</string>
+    <key>CFBundleExecutable</key>
+    <string>Vegha.App</string>
+    <key>CFBundleIdentifier</key>
+    <string>io.vegha.app</string>
+    <key>CFBundleName</key>
+    <string>Vegha</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- Custom URL scheme registration: vegha://oauth-callback for the Mac App
+         Store flavor. The Direct flavor uses a loopback HttpListener instead so this
+         scheme is only declared here for the MAS path. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Vegha OAuth callback</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>vegha</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

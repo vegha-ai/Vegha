@@ -1,0 +1,251 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Vegha.App.ViewModels"
+        xmlns:tabs="using:Vegha.App.ViewModels.Tabs"
+        xmlns:shell="using:Vegha.App.Controls.Shell"
+        xmlns:ws="using:Vegha.App.Controls.Workspace"
+        mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="900"
+        x:Class="Vegha.App.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding Title}"
+        Icon="avares://Vegha.App/Assets/logo.png"
+        Width="1400" Height="900"
+        MinWidth="900" MinHeight="600"
+        Background="{DynamicResource Bg1Brush}"
+        Foreground="{DynamicResource Text0Brush}"
+        FontFamily="{StaticResource UiFont}"
+        FontSize="12"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="32"
+        ExtendClientAreaChromeHints="PreferSystemChrome">
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding RequestEditor.SaveCommand}" />
+        <KeyBinding Gesture="Cmd+S" Command="{Binding RequestEditor.SaveCommand}" />
+        <KeyBinding Gesture="Ctrl+OemPlus" Command="{Binding IncreaseZoomCommand}" />
+        <KeyBinding Gesture="Ctrl+Add" Command="{Binding IncreaseZoomCommand}" />
+        <KeyBinding Gesture="Ctrl+OemMinus" Command="{Binding DecreaseZoomCommand}" />
+        <KeyBinding Gesture="Ctrl+Subtract" Command="{Binding DecreaseZoomCommand}" />
+        <KeyBinding Gesture="Ctrl+D0" Command="{Binding ResetZoomCommand}" />
+        <KeyBinding Gesture="Ctrl+NumPad0" Command="{Binding ResetZoomCommand}" />
+    </Window.KeyBindings>
+
+    <!-- Row 0: title bar (32). Row 1: main content (the workspace area now hosts the env
+         picker bar at its top — used to sit in its own 40px row). Row 2: status bar (22).
+         Interface zoom is applied imperatively in code-behind via ZoomHost.Attach — the
+         transform target can't be bound from XAML because ScaleTransform isn't a Control
+         and doesn't inherit DataContext. -->
+    <Grid RowDefinitions="32,*,22">
+
+        <!-- Title bar with embedded hamburger menu (File / Edit / View / Help).
+             The MenuFlyout is defined inline so the Click handlers resolve to
+             MainWindow.axaml.cs as before. -->
+        <shell:AppTitleBar Grid.Row="0" Title="{Binding Title}" Workspaces="{Binding Workspaces}">
+            <shell:AppTitleBar.HamburgerMenu>
+                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                    <MenuItem Header="_File">
+                        <MenuItem x:Name="MenuNewRequest" Header="New Request"
+                                  InputGesture="Ctrl+T"
+                                  Click="OnMenuNewRequest_Click" />
+                        <MenuItem Header="New Folder"
+                                  Click="OnMenuNewFolder_Click" />
+                        <Separator />
+                        <MenuItem x:Name="MenuOpenCollection" Header="Open Collection..."
+                                  InputGesture="Ctrl+O"
+                                  Click="OnMenuOpenCollection_Click" />
+                        <MenuItem Header="Recent" Name="RecentMenu" />
+                        <Separator />
+                        <MenuItem x:Name="MenuImport" Header="Import..."
+                                  InputGesture="Ctrl+I"
+                                  Click="OnMenuImport_Click" />
+                        <Separator />
+                        <MenuItem x:Name="MenuSettings" Header="Settings..."
+                                  InputGesture="Ctrl+,"
+                                  Click="OnMenuSettings_Click" />
+                        <Separator />
+                        <MenuItem Header="Exit"
+                                  Click="OnMenuExit_Click" />
+                    </MenuItem>
+                    <MenuItem Header="_Edit">
+                        <MenuItem x:Name="MenuFindRequest" Header="Find request..." InputGesture="Ctrl+K"
+                                  Click="OnMenuSearchPalette_Click" />
+                    </MenuItem>
+                    <MenuItem Header="_View">
+                        <MenuItem x:Name="ShowCodePanelMenu" Header="Show code panel" Click="OnMenuToggleCodePanel_Click" />
+                    </MenuItem>
+                    <MenuItem Header="_Help">
+                        <MenuItem Header="Documentation" Click="OnMenuDocs_Click" />
+                        <MenuItem Header="Keyboard shortcuts" Click="OnMenuShortcuts_Click" />
+                        <Separator />
+                        <MenuItem Header="About Vegha" Click="OnMenuAbout_Click" />
+                    </MenuItem>
+                </MenuFlyout>
+            </shell:AppTitleBar.HamburgerMenu>
+        </shell:AppTitleBar>
+
+        <!-- Row 1: Main content
+             cols: ActivityRail | Sidebar | ColSplitter | MainWorkspace | ColSplitter | RightPanel
+             rows: 0 = WorkspaceHeader (collection + env pickers, always visible to the right of
+             the activity rail), 1 = sidebar panels + workspace content.
+             Min/max constraints on Grid.Column enforce splitter bounds. -->
+        <Grid Grid.Row="1" x:Name="MainContentGrid">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="44" />
+                <ColumnDefinition Width="280" MinWidth="200" MaxWidth="480" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="*" MinWidth="320" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="320" MinWidth="220" MaxWidth="520" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- Activity rail spans both rows — its 44px width abuts the WorkspaceHeader on
+                 the right and the sidebar/workspace content below. -->
+            <shell:ActivityRail x:Name="Rail" Grid.Column="0" Grid.Row="0" Grid.RowSpan="2"
+                                DataContext="{Binding}" />
+
+            <!-- WorkspaceHeader: collection + env pickers. Visible regardless of which
+                 sidebar panel is selected. -->
+            <shell:AppTopBar x:Name="TopBar"
+                             Grid.Column="1" Grid.ColumnSpan="5" Grid.Row="0"
+                             DataContext="{Binding}" />
+
+            <!-- Sidebar — switches based on activity rail selection -->
+            <Border Grid.Column="1" Grid.Row="1"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="0,0,1,0">
+                <Panel>
+                    <shell:CollectionsPanel
+                        x:Name="CollectionsPanelControl"
+                        DataContext="{Binding Collections}"
+                        IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=collections}" />
+                    <shell:HistoryPanel
+                        DataContext="{Binding History}"
+                        IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=history}" />
+                    <!-- Cookies moved out of the sidebar/activity-rail and into a modal dialog
+                         launched from the status-bar cookie icon. See CookiesDialog. -->
+                    <!-- EnvironmentsPanel deliberately omitted from the sidebar Panel — it
+                         now overlays the sidebar+splitter+workspace columns as a master/detail
+                         control (see below). Selecting Environments in the activity rail
+                         shows that overlay; this Panel branch would just leave a 280px gap. -->
+
+                    <shell:GitPanel x:Name="GitPanelControl"
+                        DataContext="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).Git}"
+                        IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=git}" />
+                    <shell:OpenApiPanel
+                        DataContext="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).OpenApi}"
+                        IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=openapi}" />
+                    <shell:RunnerPanel
+                        DataContext="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).Runner}"
+                        IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=runner}" />
+                </Panel>
+            </Border>
+
+            <GridSplitter x:Name="SidebarSplitter" Grid.Column="2" Grid.Row="1" Classes="col"
+                          DragCompleted="OnSidebarSplitterDragCompleted"
+                          DoubleTapped="OnSidebarSplitterDoubleTapped"
+                          ToolTip.Tip="Drag to resize sidebar — double-click to reset" />
+
+            <!-- Main workspace: editor above response, vertically resizable -->
+            <Grid Grid.Column="3" Grid.Row="1" x:Name="WorkspaceGrid">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" MinHeight="200" />
+                    <RowDefinition Height="4" />
+                    <RowDefinition Height="360" MinHeight="160" MaxHeight="640" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Background="{DynamicResource Bg1Brush}">
+                    <DockPanel>
+                        <!-- (AppTopBar moved out of this DockPanel and into the shared
+                             workspace-header row above — it now sits beside the activity
+                             rail so the collection + env pickers stay visible regardless of
+                             which sidebar panel is open.) -->
+                        <!-- Tab strip: one tab per opened request, kind-routed below. -->
+                        <shell:RequestTabStrip DockPanel.Dock="Top"
+                                               DataContext="{Binding OpenTabs}" />
+                        <Panel>
+                            <!-- Welcome card when no tabs are open -->
+                            <shell:NoTabsPanel x:Name="WelcomeCard"
+                                IsVisible="{Binding OpenTabs.VisibleTabs.Count, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=0}" />
+
+                            <!-- Active tab's workspace. Kind picks the right control via implicit
+                                 templates on RequestTabViewModel subclasses. The HTTP / GraphQL
+                                 path uses RequestWorkspace; the others get their own. -->
+                            <ContentControl Content="{Binding OpenTabs.ActiveTab}"
+                                IsVisible="{Binding !!OpenTabs.VisibleTabs.Count}">
+                                <ContentControl.DataTemplates>
+                                    <!-- HistoryTabViewModel listed BEFORE its base HttpRequestTabViewModel so
+                                         Avalonia matches the more specific type first. Both render the same
+                                         RequestWorkspace bound to the inner editor — history tabs differ only
+                                         in their scope (activity-rail mode filter), not their content. -->
+                                    <DataTemplate DataType="tabs:HistoryTabViewModel">
+                                        <ws:RequestWorkspace DataContext="{Binding Editor}" />
+                                    </DataTemplate>
+                                    <DataTemplate DataType="tabs:HttpRequestTabViewModel">
+                                        <ws:RequestWorkspace DataContext="{Binding Editor}" />
+                                    </DataTemplate>
+                                    <DataTemplate DataType="tabs:SoapRequestTabViewModel">
+                                        <ws:SoapWorkspace DataContext="{Binding Workspace_}" />
+                                    </DataTemplate>
+                                    <DataTemplate DataType="tabs:EnvironmentTabViewModel">
+                                        <ws:EnvironmentEditor />
+                                    </DataTemplate>
+                                    <DataTemplate DataType="tabs:GitDiffTabViewModel">
+                                        <ws:GitDiffWorkspace />
+                                    </DataTemplate>
+                                    <DataTemplate DataType="tabs:CollectionRunTabViewModel">
+                                        <ws:CollectionRunTab />
+                                    </DataTemplate>
+                                    <!-- Workspace editor used to live here as a tab template;
+                                         it's now a modal dialog (WorkspaceEditorDialog). -->
+                                </ContentControl.DataTemplates>
+                            </ContentControl>
+                        </Panel>
+                    </DockPanel>
+                </Border>
+
+                <!-- Splitter + response pane only make sense for HTTP/GraphQL tabs.
+                     OpenTabs.IsResponsePaneApplicable flips false for workspace + env tabs
+                     so those get the full vertical area for their own editors. -->
+                <GridSplitter x:Name="ResponseSplitter" Grid.Row="1" Classes="row"
+                              DragCompleted="OnResponseSplitterDragCompleted"
+                              DoubleTapped="OnResponseSplitterDoubleTapped"
+                              ToolTip.Tip="Drag to resize response pane — double-click to reset"
+                              IsVisible="{Binding OpenTabs.IsResponsePaneApplicable}" />
+
+                <ws:ResponseDisplay Grid.Row="2"
+                                    DataContext="{Binding RequestEditor}"
+                                    IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).OpenTabs.IsResponsePaneApplicable}" />
+            </Grid>
+
+            <GridSplitter x:Name="RightPanelSplitter" Grid.Column="4" Grid.Row="1" Classes="col"
+                          DragCompleted="OnRightPanelSplitterDragCompleted"
+                          DoubleTapped="OnRightPanelSplitterDoubleTapped"
+                          ToolTip.Tip="Drag to resize code panel — double-click to reset" />
+
+            <!-- Right panel — codegen. Hidden + 0-width when collapsed via the X button;
+                 toggled back from the View menu. -->
+            <Border Grid.Column="5" Grid.Row="1" x:Name="CodegenContainer"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="1,0,0,0">
+                <ws:CodegenPanel x:Name="CodegenPaneRef" DataContext="{Binding Codegen}" />
+            </Border>
+
+            <!-- Environments master/detail overlay. Spans sidebar + splitter + workspace
+                 columns when ActiveSidebarSection == "environments". Its solid background
+                 fully covers the regular sidebar panel, splitter, and tab area underneath —
+                 user sees one unified env management view that matches the workspace dialog. -->
+            <shell:EnvironmentsPanel
+                Grid.Column="1" Grid.ColumnSpan="3" Grid.Row="1"
+                DataContext="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).EnvironmentsEditor}"
+                IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=environments}" />
+        </Grid>
+
+        <shell:AppStatusBar Grid.Row="2" />
+    </Grid>
+</Window>

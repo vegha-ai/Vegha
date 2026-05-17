@@ -1,0 +1,179 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels.Tabs"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             xmlns:ae="https://github.com/avaloniaui/avaloniaedit"
+             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
+             x:Class="Vegha.App.Controls.Workspace.GitDiffWorkspace"
+             x:DataType="vm:GitDiffTabViewModel">
+    <UserControl.Styles>
+        <Style Selector="Button.acceptCurrent">
+            <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.acceptCurrent:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel Background="{DynamicResource Bg1Brush}">
+        <!-- ===== Header (always visible) ===== -->
+        <Border DockPanel.Dock="Top" Padding="12,6"
+                Background="{DynamicResource Bg2Brush}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto,*,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
+                            VerticalAlignment="Center">
+                    <icons:Icon Kind="FileText" Size="13"
+                                Foreground="{DynamicResource Text2Brush}" />
+                    <TextBlock Text="{Binding LeftTitle}" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text1Brush}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
+                            VerticalAlignment="Center" Margin="20,0"
+                            IsVisible="{Binding !IsMergeMode}">
+                    <TextBlock Text="{Binding DeletionCount, StringFormat='-{0}'}"
+                               FontSize="11" FontFamily="{StaticResource MonoFont}"
+                               Foreground="{DynamicResource StatusErrBrush}" />
+                    <TextBlock Text="{Binding AdditionCount, StringFormat='+{0}'}"
+                               FontSize="11" FontFamily="{StaticResource MonoFont}"
+                               Foreground="{DynamicResource StatusOkBrush}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
+                            VerticalAlignment="Center" Margin="20,0,0,0">
+                    <icons:Icon Kind="FileText" Size="13"
+                                Foreground="{DynamicResource Text2Brush}" />
+                    <TextBlock Text="{Binding RightTitle}" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text1Brush}" />
+                </StackPanel>
+                <TextBlock Grid.Column="3" Text="{Binding Name}"
+                           FontSize="11" Foreground="{DynamicResource Text2Brush}"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <!-- ===== Merge banner (above the editor) ===== -->
+        <Border DockPanel.Dock="Top" Padding="10,8"
+                Background="#22D97706"
+                BorderBrush="{DynamicResource StatusWarnBrush}"
+                BorderThickness="0,0,0,1"
+                IsVisible="{Binding IsMergeMode}">
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0"
+                           Text="Resolve each conflict below. Save &amp; Stage to mark the file as merged."
+                           FontSize="11" Foreground="{DynamicResource Text0Brush}"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="Save &amp; Stage"
+                        Command="{Binding SaveAndStageCommand}"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="White" BorderThickness="0"
+                        CornerRadius="3" Padding="10,4" Cursor="Hand"
+                        FontSize="11" />
+            </Grid>
+        </Border>
+
+        <!-- ===== Error banner ===== -->
+        <Border DockPanel.Dock="Top" Padding="12,6"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                Background="{DynamicResource StatusErrBrush}">
+            <TextBlock Text="{Binding ErrorMessage}" FontSize="11" Foreground="White" />
+        </Border>
+
+        <!-- ===== Binary placeholder ===== -->
+        <TextBlock DockPanel.Dock="Top"
+                   IsVisible="{Binding IsBinary}"
+                   Text="Binary file diff is not displayed."
+                   FontSize="12" FontStyle="Italic"
+                   Foreground="{DynamicResource Text2Brush}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Margin="0,40" />
+
+        <!-- ===== Body — side-by-side when normal, single-pane when merge ===== -->
+        <Grid IsVisible="{Binding !IsBinary}">
+            <!-- Side-by-side -->
+            <Grid IsVisible="{Binding !IsMergeMode}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="6" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <ae:TextEditor x:Name="LeftEditor" Grid.Column="0"
+                               Document="{Binding LeftDocument}"
+                               IsReadOnly="True"
+                               ShowLineNumbers="True"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="12"
+                               Background="{DynamicResource Bg1Brush}"
+                               Foreground="{DynamicResource Text0Brush}" />
+
+                <GridSplitter Grid.Column="1" Background="{DynamicResource Border0Brush}"
+                              ResizeDirection="Columns" />
+
+                <ae:TextEditor x:Name="RightEditor" Grid.Column="2"
+                               Document="{Binding RightDocument}"
+                               IsReadOnly="True"
+                               ShowLineNumbers="True"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="12"
+                               Background="{DynamicResource Bg1Brush}"
+                               Foreground="{DynamicResource Text0Brush}" />
+            </Grid>
+
+            <!-- Merge mode: single editor + chip overlay scroll-synced to the editor -->
+            <Grid IsVisible="{Binding IsMergeMode}" RowDefinitions="Auto,*">
+                <ItemsControl x:Name="ConflictList" Grid.Row="0"
+                              Background="{DynamicResource Bg2Brush}"
+                              Padding="10,6">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="ws:ConflictBlock">
+                            <Border Background="{DynamicResource Bg3Brush}"
+                                    BorderBrush="{DynamicResource Border1Brush}"
+                                    BorderThickness="1" CornerRadius="3"
+                                    Padding="8,6" Margin="0,2">
+                                <StackPanel Spacing="6">
+                                    <TextBlock FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               Text="{Binding StartLine, StringFormat='Conflict at line {0}'}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Button Classes="acceptCurrent"
+                                                Tag="{Binding}"
+                                                Click="OnAcceptCurrent_Click"
+                                                Content="Accept Current" />
+                                        <Button Classes="acceptCurrent"
+                                                Tag="{Binding}"
+                                                Click="OnAcceptIncoming_Click"
+                                                Content="Accept Incoming" />
+                                        <Button Classes="acceptCurrent"
+                                                Tag="{Binding}"
+                                                Click="OnAcceptBoth_Click"
+                                                Content="Accept Both" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <ae:TextEditor x:Name="MergeEditor" Grid.Row="1"
+                               Document="{Binding RightDocument}"
+                               IsReadOnly="False"
+                               ShowLineNumbers="True"
+                               FontFamily="{StaticResource MonoFont}"
+                               FontSize="12"
+                               Background="{DynamicResource Bg1Brush}"
+                               Foreground="{DynamicResource Text0Brush}" />
+            </Grid>
+        </Grid>
+    </DockPanel>
+</UserControl>

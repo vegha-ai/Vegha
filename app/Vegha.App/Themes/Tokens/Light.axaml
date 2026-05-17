@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Default Light variant — original palette. -->
+
+    <SolidColorBrush x:Key="Bg0Brush" Color="#e8eaee" />
+    <SolidColorBrush x:Key="Bg1Brush" Color="#f4f5f7" />
+    <SolidColorBrush x:Key="Bg2Brush" Color="#ffffff" />
+    <SolidColorBrush x:Key="Bg3Brush" Color="#fafbfc" />
+    <SolidColorBrush x:Key="Bg4Brush" Color="#eef0f3" />
+    <SolidColorBrush x:Key="BgInputBrush" Color="#ffffff" />
+    <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
+    <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#eef0f3" />
+
+    <SolidColorBrush x:Key="Border0Brush" Color="#e6e8ec" />
+    <SolidColorBrush x:Key="Border1Brush" Color="#d6d9df" />
+    <SolidColorBrush x:Key="Border2Brush" Color="#b8bdc6" />
+
+    <SolidColorBrush x:Key="Text0Brush" Color="#15181d" />
+    <SolidColorBrush x:Key="Text1Brush" Color="#41464f" />
+    <SolidColorBrush x:Key="Text2Brush" Color="#6b7280" />
+    <SolidColorBrush x:Key="Text3Brush" Color="#9aa1ac" />
+    <SolidColorBrush x:Key="TextInverseBrush" Color="#ffffff" />
+
+    <SolidColorBrush x:Key="AccentBrush" Color="#3b82f6" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#2563eb" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#1F3b82f6" />
+    <SolidColorBrush x:Key="AccentSoftStrongBrush" Color="#383b82f6" />
+
+    <SolidColorBrush x:Key="MethodGetBrush" Color="#16a34a" />
+    <SolidColorBrush x:Key="MethodPostBrush" Color="#ca8a04" />
+    <SolidColorBrush x:Key="MethodPutBrush" Color="#2563eb" />
+    <SolidColorBrush x:Key="MethodPatchBrush" Color="#7c3aed" />
+    <SolidColorBrush x:Key="MethodDeleteBrush" Color="#dc2626" />
+    <SolidColorBrush x:Key="MethodHeadBrush" Color="#0891b2" />
+    <SolidColorBrush x:Key="MethodOptionsBrush" Color="#475569" />
+
+    <SolidColorBrush x:Key="StatusOkBrush" Color="#16a34a" />
+    <SolidColorBrush x:Key="StatusWarnBrush" Color="#d97706" />
+    <SolidColorBrush x:Key="StatusErrBrush" Color="#dc2626" />
+
+    <SolidColorBrush x:Key="CodeBgBrush" Color="#f8f9fb" />
+
+    <SolidColorBrush x:Key="SelectionBrush" Color="#333b82f6" />
+
+    <SolidColorBrush x:Key="MacRedBrush" Color="#ff5f57" />
+    <SolidColorBrush x:Key="MacAmberBrush" Color="#ffbd2e" />
+    <SolidColorBrush x:Key="MacGreenBrush" Color="#28c840" />
+</ResourceDictionary>

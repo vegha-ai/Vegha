@@ -1,0 +1,338 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="700"
+             x:Class="Vegha.App.Controls.Shell.CollectionsPanel"
+             x:DataType="vm:CollectionsViewModel">
+    <UserControl.Styles>
+        <!-- Kill the inner TextBox chrome so the search field reads as one rounded pill
+             instead of "icon + bordered box". The wrapper Border owns the visual border;
+             the TextBox is just text. -->
+        <Style Selector="Border.filterPill TextBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+        <Style Selector="Border.filterPill TextBox:focus /template/ Border">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.filterPill TextBox:pointerover /template/ Border">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.filterPill">
+            <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="Border.filterPill:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        </Style>
+    </UserControl.Styles>
+    <DockPanel Background="{DynamicResource Bg2Brush}">
+        <!-- Header — search/filter input + active-collection menu. The "+ create / open /
+             import" cluster moved into the workspace header (AppTopBar) so it stays reachable
+             from every sidebar mode. -->
+        <Border DockPanel.Dock="Top" Padding="8,5" Height="40"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <!-- Filter input — single rounded pill containing the search glyph + text
+                     entry + clear button. The wrapper Border carries the visual chrome;
+                     the inner TextBox is reduced to pure text via the `filterPill TextBox`
+                     style above so it can't draw its own border / focus ring. -->
+                <Border Grid.Column="0" Classes="filterPill" Height="28"
+                        Padding="8,0,4,0">
+                    <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                        <icons:Icon Grid.Column="0" Kind="Search" Size="14"
+                                    Foreground="{DynamicResource Text2Brush}"
+                                    VerticalAlignment="Center" />
+                        <TextBox Grid.Column="1"
+                                 x:Name="FilterBox"
+                                 Text="{Binding Filter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 Watermark="Search requests…"
+                                 FontSize="12"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 VerticalAlignment="Center"
+                                 VerticalContentAlignment="Center"
+                                 Margin="8,0,0,0" />
+                        <Button Grid.Column="2"
+                                Background="Transparent" BorderThickness="0"
+                                Padding="0" Width="20" Height="20"
+                                Margin="4,0,2,0"
+                                CornerRadius="3"
+                                Cursor="Hand"
+                                Click="OnClearFilter_Click"
+                                ToolTip.Tip="Clear filter"
+                                IsVisible="{Binding Filter, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <icons:Icon Kind="Close" Size="10"
+                                        Foreground="{DynamicResource Text2Brush}" />
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <!-- Active-collection "..." menu — unchanged. -->
+                <Button Grid.Column="1" x:Name="CollectionMoreButton"
+                        ToolTip.Tip="Collection actions"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource Text2Brush}"
+                        Width="24" Height="24" Padding="0" CornerRadius="3"
+                        Margin="4,0,0,0"
+                        Cursor="Hand"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center">
+                    <icons:Icon Kind="More" Size="14" />
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <MenuItem Header="New Request" Click="OnHeaderNewRequest_Click" />
+                            <MenuItem Header="New Folder" Click="OnHeaderNewFolder_Click" />
+                            <Separator />
+                            <MenuItem Header="Run" Click="OnHeaderRun_Click" />
+                            <MenuItem Header="Clone" Click="OnHeaderClone_Click" />
+                            <MenuItem Header="Rename" Click="OnHeaderRename_Click" />
+                            <MenuItem Header="Reveal in File Explorer" Click="OnHeaderReveal_Click" />
+                            <Separator />
+                            <MenuItem Header="Settings" Click="OnHeaderSettings_Click" />
+                            <MenuItem Header="Remove" Click="OnHeaderRemove_Click" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- (Status banner removed — it lingered after collection loads and frequently
+             showed a stale message from a previous collection. Errors now surface via
+             toast / status footer instead.) -->
+
+        <!-- Loading skeleton — shown while the host defers the initial workspace-tree load
+             past first paint. Occupies the same slot as the empty-state below so the sidebar
+             isn't a blank rectangle during the warm-up. -->
+        <TextBlock IsVisible="{Binding IsLoading}"
+                   Text="Loading workspace…"
+                   Foreground="{DynamicResource Text3Brush}"
+                   FontSize="11" FontStyle="Italic"
+                   TextWrapping="Wrap"
+                   Padding="14,40,14,0"
+                   HorizontalAlignment="Stretch"
+                   TextAlignment="Center" />
+
+        <!-- Empty state — shown when no collection is active in the workspace
+             (and the deferred load isn't currently in flight). -->
+        <TextBlock IsVisible="{Binding ShowNoCollectionEmptyState}"
+                   Text="No collection selected.&#10;&#10;Pick a collection from the top bar — or click + to create one."
+                   Foreground="{DynamicResource Text3Brush}"
+                   FontSize="11" FontStyle="Italic"
+                   TextWrapping="Wrap"
+                   Padding="14,40,14,0"
+                   HorizontalAlignment="Stretch"
+                   TextAlignment="Center" />
+
+        <!-- Tree — bound to the active collection's children only. Right padding leaves
+             clearance for the vertical scrollbar so the row's "..." button isn't occluded
+             when scrolling kicks in. -->
+        <TreeView Classes="compact"
+                  ItemsSource="{Binding ActiveCollection.Children}"
+                  IsVisible="{Binding ActiveCollection, Converter={x:Static ObjectConverters.IsNotNull}}"
+                  Background="{DynamicResource Bg2Brush}"
+                  BorderThickness="0"
+                  Padding="0,4,18,4">
+
+            <TreeView.Styles>
+                <!-- Filter binding: each TreeViewItem hosts a CollectionNodeViewModel as its
+                     DataContext, so binding IsVisible to IsVisibleByFilter folds out the
+                     entire row (caret + content) when the filter rejects this node.
+                     ReflectionBinding skips compile-time DataType resolution — the property
+                     lives on the abstract base class so a regular {Binding} can't infer it
+                     from the Style selector. -->
+                <Style Selector="TreeViewItem">
+                    <Setter Property="IsVisible" Value="{ReflectionBinding IsVisibleByFilter, FallbackValue=True}" />
+                </Style>
+            </TreeView.Styles>
+
+            <TreeView.Resources>
+
+                <!-- Collection (root) menu -->
+                <MenuFlyout x:Key="CollectionMenu">
+                    <MenuItem Header="New Request"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CreateRequestCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="New Folder" Click="OnTreeNewFolder_Click" />
+                    <MenuItem Header="New JS File"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CreateJsFileCommand}"
+                              CommandParameter="{Binding}" />
+                    <Separator />
+                    <MenuItem Header="Run"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).RunCollectionCommand}"
+                              CommandParameter="{Binding}" />
+                    <Separator />
+                    <MenuItem Header="Clone"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CloneNodeCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Rename"
+                              Tag="{Binding}"
+                              Click="OnTreeRename_Click" />
+                    <MenuItem Header="Collapse"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CollapseAllCommand}"
+                              CommandParameter="{Binding}" />
+                    <Separator />
+                    <MenuItem Header="Paste"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).PasteNodeCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Properties..."
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenCollectionSettingsCommand}"
+                              CommandParameter="{Binding}" />
+                    <Separator />
+                    <MenuItem Header="Reveal in File Explorer"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).RevealInFileExplorerCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Open in Terminal"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenInTerminalCommand}"
+                              CommandParameter="{Binding}" />
+                    <Separator />
+                    <!-- Remove is gated on a confirmation dialog handled in code-behind so
+                         the user can verify the on-disk path before detaching. -->
+                    <MenuItem Header="Remove" Click="OnTreeRemoveCollection_Click" />
+                </MenuFlyout>
+
+                <!-- Folder menu -->
+                <MenuFlyout x:Key="FolderMenu">
+                    <MenuItem Header="New Request"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CreateRequestCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="New Folder" Click="OnTreeNewFolder_Click" />
+                    <MenuItem Header="New JS File"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CreateJsFileCommand}"
+                              CommandParameter="{Binding}" />
+                    <Separator />
+                    <MenuItem Header="Run"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).RunFolderCommand}"
+                              CommandParameter="{Binding}" />
+                    <Separator />
+                    <MenuItem Header="Clone"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CloneNodeCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Copy"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CopyNodeCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Paste"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).PasteNodeCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Rename"
+                              Tag="{Binding}"
+                              Click="OnTreeRename_Click" />
+                    <Separator />
+                    <MenuItem Header="Properties..."
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenFolderSettingsCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Reveal in File Explorer"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).RevealInFileExplorerCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Info"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).ShowNodeInfoCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Open in Terminal"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenInTerminalCommand}"
+                              CommandParameter="{Binding}" />
+                    <Separator />
+                    <MenuItem Header="Delete"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).DeleteNodeCommand}"
+                              CommandParameter="{Binding}" />
+                </MenuFlyout>
+
+                <!-- Request menu -->
+                <MenuFlyout x:Key="RequestMenu">
+                    <MenuItem Header="Open"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenRequestCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Clone"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CloneNodeCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Copy"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CopyNodeCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Rename"
+                              Tag="{Binding}"
+                              Click="OnTreeRename_Click" />
+                    <MenuItem Header="Create Example"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CreateExampleCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Generate Code"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).GenerateCodeCommand}"
+                              CommandParameter="{Binding}" />
+                    <Separator />
+                    <MenuItem Header="Reveal in File Explorer"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).RevealInFileExplorerCommand}"
+                              CommandParameter="{Binding}" />
+                    <MenuItem Header="Info"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).ShowNodeInfoCommand}"
+                              CommandParameter="{Binding}" />
+                    <Separator />
+                    <MenuItem Header="Delete"
+                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).DeleteNodeCommand}"
+                              CommandParameter="{Binding}" />
+                </MenuFlyout>
+
+            </TreeView.Resources>
+
+            <TreeView.DataTemplates>
+                <!-- Collection root -->
+                <TreeDataTemplate DataType="vm:CollectionRootViewModel" ItemsSource="{Binding Children}">
+                    <Grid ColumnDefinitions="*,Auto" ContextFlyout="{StaticResource CollectionMenu}">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding Name}" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text0Brush}"
+                                   FontSize="12" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="rowMenu"
+                                ToolTip.Tip="More"
+                                Click="OnRowMenu_Click">
+                            <TextBlock Text="…" FontSize="14" />
+                        </Button>
+                    </Grid>
+                </TreeDataTemplate>
+                <!-- Folder -->
+                <TreeDataTemplate DataType="vm:CollectionFolderViewModel" ItemsSource="{Binding Children}">
+                    <Grid ColumnDefinitions="*,Auto" ContextFlyout="{StaticResource FolderMenu}">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding Name}"
+                                   Foreground="{DynamicResource Text1Brush}"
+                                   FontSize="12" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="rowMenu"
+                                ToolTip.Tip="More"
+                                Click="OnRowMenu_Click">
+                            <TextBlock Text="…" FontSize="14" />
+                        </Button>
+                    </Grid>
+                </TreeDataTemplate>
+                <!-- Request leaf — method label colored by HTTP verb -->
+                <TreeDataTemplate DataType="vm:CollectionItemViewModel">
+                    <Grid ColumnDefinitions="34,*,Auto" ContextFlyout="{StaticResource RequestMenu}">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding MethodLabel}"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{Binding MethodLabel, Converter={StaticResource MethodToBrushConverter}}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding Name}"
+                                   FontSize="12" Margin="2,0,0,0"
+                                   Foreground="{DynamicResource Text0Brush}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                        <Button Grid.Column="2" Classes="rowMenu"
+                                ToolTip.Tip="More"
+                                Click="OnRowMenu_Click">
+                            <TextBlock Text="…" FontSize="14" />
+                        </Button>
+                    </Grid>
+                </TreeDataTemplate>
+            </TreeView.DataTemplates>
+        </TreeView>
+    </DockPanel>
+</UserControl>

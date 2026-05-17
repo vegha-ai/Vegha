@@ -1,0 +1,114 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Vegha.App.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="480"
+        x:Class="Vegha.App.Controls.Workspace.WelcomeDialog"
+        x:DataType="vm:WelcomeViewModel"
+        Title="Welcome to Vegha"
+        Width="560" Height="480"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterScreen"
+        CanResize="False">
+    <DockPanel Margin="28">
+        <!-- Footer -->
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,18,0,0">
+            <CheckBox Grid.Column="0"
+                      Content="Don't show this again"
+                      IsChecked="{Binding DontShowAgain}"
+                      Foreground="{DynamicResource Text2Brush}"
+                      VerticalAlignment="Center"
+                      FontSize="11" />
+            <Button Grid.Column="1"
+                    Content="Skip" Click="OnSkip_Click"
+                    Command="{Binding DismissCommand}"
+                    Background="{DynamicResource Bg3Brush}"
+                    Foreground="{DynamicResource Text0Brush}"
+                    Padding="14,6" />
+        </Grid>
+
+        <StackPanel Spacing="18">
+            <!-- Hero -->
+            <StackPanel Spacing="6">
+                <TextBlock Text="Welcome to Vegha"
+                           FontSize="20" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text0Brush}" />
+                <TextBlock Text="{Binding Tagline}"
+                           FontSize="13"
+                           Foreground="{DynamicResource Text2Brush}"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+
+            <!-- Privacy banner -->
+            <Border Background="{DynamicResource Bg2Brush}"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="1"
+                    CornerRadius="3"
+                    Padding="14">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Privacy"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <TextBlock Text="{Binding PrivacyStatement}"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text2Brush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- CTAs -->
+            <StackPanel Spacing="8">
+                <TextBlock Text="Get started"
+                           FontSize="11" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text0Brush}" />
+                <Button Click="OnOpen_Click"
+                        Command="{Binding OpenCollectionCommand}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left"
+                        Background="{DynamicResource Bg2Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="14,10">
+                    <StackPanel>
+                        <TextBlock Text="Open a Bruno collection folder"
+                                   FontSize="12" FontWeight="SemiBold" />
+                        <TextBlock Text="Browse to a folder containing .bru files."
+                                   FontSize="10"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                    </StackPanel>
+                </Button>
+                <Button Click="OnImport_Click"
+                        Command="{Binding ImportCommand}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left"
+                        Background="{DynamicResource Bg2Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="14,10">
+                    <StackPanel>
+                        <TextBlock Text="Import from Postman or Insomnia"
+                                   FontSize="12" FontWeight="SemiBold" />
+                        <TextBlock Text="Postman v2.1, Postman environments, Insomnia v4 / v5."
+                                   FontSize="10"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                    </StackPanel>
+                </Button>
+                <Button Click="OnTrySample_Click"
+                        Command="{Binding TrySampleCommand}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left"
+                        Background="{DynamicResource Bg2Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="14,10">
+                    <StackPanel>
+                        <TextBlock Text="Try a sample collection"
+                                   FontSize="12" FontWeight="SemiBold" />
+                        <TextBlock Text="Loads a tiny Petstore demo so you can poke at requests + tests in seconds."
+                                   FontSize="10"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </StackPanel>
+    </DockPanel>
+</Window>

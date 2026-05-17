@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Vegha.Core.Requests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Dapper" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Vegha.Core.Domain\Vegha.Core.Domain.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Interpolation\Vegha.Core.Interpolation.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Scripting\Vegha.Core.Scripting.csproj" />
+  </ItemGroup>
+</Project>

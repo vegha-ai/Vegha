@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Vegha.App.ViewModels</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="JsonPath.Net" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Vegha.Core.Bru.Parser\Vegha.Core.Bru.Parser.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Codegen\Vegha.Core.Codegen.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Domain\Vegha.Core.Domain.csproj" />
+    <ProjectReference Include="..\Vegha.Core.FileFormat\Vegha.Core.FileFormat.csproj" />
+    <ProjectReference Include="..\Vegha.Core.History\Vegha.Core.History.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Importers\Vegha.Core.Importers.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Interpolation\Vegha.Core.Interpolation.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Persistence\Vegha.Core.Persistence.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Requests\Vegha.Core.Requests.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Scripting\Vegha.Core.Scripting.csproj" />
+    <ProjectReference Include="..\Vegha.Integrations.Grpc\Vegha.Integrations.Grpc.csproj" />
+    <ProjectReference Include="..\Vegha.Integrations.Wsdl\Vegha.Integrations.Wsdl.csproj" />
+    <ProjectReference Include="..\Vegha.Integrations.Git\Vegha.Integrations.Git.csproj" />
+    <ProjectReference Include="..\Vegha.Integrations.Secrets.Abstractions\Vegha.Integrations.Secrets.Abstractions.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Flow\Vegha.Core.Flow.csproj" />
+  </ItemGroup>
+</Project>

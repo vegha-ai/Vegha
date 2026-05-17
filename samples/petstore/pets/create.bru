@@ -1,0 +1,32 @@
+meta {
+  name: create
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/pet
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "doggie",
+    "category": { "id": 1, "name": "Dogs" },
+    "photoUrls": ["https://example.com/d.jpg"],
+    "tags": [{ "id": 1, "name": "demo" }],
+    "status": "available"
+  }
+}
+
+tests {
+  test('201 or 200', () => {
+    expect([200, 201]).toContain(res.status);
+  });
+}
+
+docs {
+  Creates a new pet. The Petstore demo accepts POST without authentication
+  so this round-trips cleanly even on a fresh install.
+}

@@ -1,0 +1,134 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Vegha.App.ViewModels.Settings"
+        xmlns:icons="using:Vegha.App.Controls.Icons"
+        xmlns:pages="using:Vegha.App.Controls.Settings.Pages"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="680"
+        x:Class="Vegha.App.Controls.Settings.SettingsWindow"
+        x:DataType="vm:SettingsWindowViewModel"
+        Title="Settings"
+        Icon="avares://Vegha.App/Assets/logo.png"
+        Width="1100" Height="680"
+        MinWidth="900" MinHeight="540"
+        Background="{DynamicResource Bg1Brush}"
+        FontFamily="{StaticResource UiFont}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner">
+    <!-- Uses the OS title bar for drag + close; RemoveMinimizeMaximize (called from
+         Opened) strips the min/max buttons on Windows so only the close X remains. -->
+
+    <!-- Explicit Grid rows for body + footer so the body's ScrollViewer is sized
+         to exactly (window-height - footer-height). The previous DockPanel form
+         occasionally left a sliver of the content pane sitting under the command
+         bar — Grid rows make the allocation deterministic. -->
+    <Grid RowDefinitions="*,56">
+        <!-- Body: left nav rail + right content pane -->
+        <Grid Grid.Row="0" ColumnDefinitions="220,*">
+            <!-- Nav rail -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource Bg1Brush}"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="0,0,1,0">
+                <ListBox ItemsSource="{Binding Pages}"
+                         SelectedItem="{Binding SelectedPage, Mode=TwoWay}"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Padding="12,18"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="Padding" Value="14,9" />
+                            <Setter Property="Margin" Value="0,2" />
+                            <Setter Property="CornerRadius" Value="4" />
+                        </Style>
+                        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                            <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                        </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:SettingsPageBase">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <icons:Icon Size="16"
+                                            Kind="{Binding IconKey, Converter={x:Static icons:StringToIconKindConverter.Instance}}"
+                                            Foreground="{DynamicResource Text1Brush}"
+                                            VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Title}"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Text0Brush}"
+                                           FontSize="13" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <!-- Content pane. Page-edge spacing lives on the inner ContentControl
+                 as Margin (not on the ScrollViewer as Padding) so the scrollable
+                 extent includes the bottom inset and a max-scroll always reveals
+                 the last row of the page above the footer. -->
+            <ScrollViewer Grid.Column="1"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+                <ContentControl Content="{Binding SelectedPage}" Margin="36,28">
+                    <ContentControl.DataTemplates>
+                        <DataTemplate DataType="vm:AppearanceSettingsViewModel">
+                            <pages:AppearancePage />
+                        </DataTemplate>
+                        <DataTemplate DataType="vm:NetworkSettingsViewModel">
+                            <pages:NetworkPage />
+                        </DataTemplate>
+                        <DataTemplate DataType="vm:SecretManagerSettingsViewModel">
+                            <pages:SecretManagerPage />
+                        </DataTemplate>
+                        <DataTemplate DataType="vm:RequestDefaultsSettingsViewModel">
+                            <pages:RequestDefaultsPage />
+                        </DataTemplate>
+                        <DataTemplate DataType="vm:EditorSettingsViewModel">
+                            <pages:EditorPage />
+                        </DataTemplate>
+                        <DataTemplate DataType="vm:ShortcutsSettingsViewModel">
+                            <pages:ShortcutsPage />
+                        </DataTemplate>
+                    </ContentControl.DataTemplates>
+                </ContentControl>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Footer: Restore defaults | Cancel | Apply | Save -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource Bg2Brush}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" Margin="24,0">
+                <Button Grid.Column="0" Content="Restore defaults"
+                        Command="{Binding RestoreDefaultsCommand}"
+                        HorizontalAlignment="Left"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource Text2Brush}"
+                        Padding="0,8" />
+                <Button Grid.Column="2" Content="Cancel" Click="OnCancel_Click"
+                        Background="{DynamicResource Bg3Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="18,8" CornerRadius="3" Margin="0,0,8,0" />
+                <!-- Apply: persists without closing the window so the user can keep
+                     tweaking and see the changes applied to the surrounding UI. -->
+                <Button Grid.Column="3" Content="Apply"
+                        Command="{Binding SaveCommand}"
+                        Background="{DynamicResource Bg3Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="18,8" CornerRadius="3" Margin="0,0,8,0" />
+                <Button Grid.Column="4" Content="Save" Click="OnSave_Click"
+                        Command="{Binding SaveCommand}"
+                        IsDefault="True"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="White" FontWeight="SemiBold"
+                        BorderThickness="0"
+                        Padding="22,8" CornerRadius="3" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

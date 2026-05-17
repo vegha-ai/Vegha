@@ -1,0 +1,52 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Vegha.App.ViewModels"
+        x:Class="Vegha.App.Controls.Workspace.SearchPaletteWindow"
+        x:DataType="vm:SearchPaletteViewModel"
+        Title="Search"
+        Width="640" Height="420"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="BorderOnly"
+        CanResize="False">
+    <Border Padding="12">
+        <DockPanel>
+            <TextBox DockPanel.Dock="Top"
+                     Name="QueryBox"
+                     Text="{Binding Query}"
+                     Watermark="Type to search tabs, requests, env vars, recent collections, settings…"
+                     FontSize="14"
+                     Background="{DynamicResource BgInputBrush}"
+                     BorderBrush="{DynamicResource Border1Brush}"
+                     Foreground="{DynamicResource Text0Brush}"
+                     Padding="10,8" CornerRadius="3" />
+
+            <ListBox ItemsSource="{Binding Results}"
+                     SelectedItem="{Binding Selected}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Margin="0,8,0,0">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SearchResult">
+                        <Grid ColumnDefinitions="60,*,Auto" Margin="0,2">
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding Kind}"
+                                       FontFamily="{StaticResource MonoFont}"
+                                       FontSize="9" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentBrush}"
+                                       VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="{Binding Title}" FontSize="12"
+                                           Foreground="{DynamicResource Text0Brush}" />
+                                <TextBlock Text="{Binding Subtitle}" FontSize="10"
+                                           Foreground="{DynamicResource Text3Brush}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+    </Border>
+</Window>

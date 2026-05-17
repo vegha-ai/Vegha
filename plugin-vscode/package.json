@@ -1,0 +1,40 @@
+{
+  "name": "vegha-vscode",
+  "displayName": "Vegha",
+  "description": "Run API requests from .req.json collection files",
+  "version": "0.1.0",
+  "publisher": "vegha",
+  "license": "MIT",
+  "engines": { "vscode": "^1.82.0" },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onLanguage:json",
+    "onCommand:vegha.run"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "vegha.run", "title": "Vegha: Run request" },
+      { "command": "vegha.ping", "title": "Vegha: Ping CLI" }
+    ],
+    "configuration": {
+      "title": "Vegha",
+      "properties": {
+        "vegha.cliPath": {
+          "type": "string",
+          "default": "vegha",
+          "description": "Path to the Vegha CLI executable. Falls back to 'vegha' on PATH."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.82.0",
+    "typescript": "^5.4.0"
+  }
+}

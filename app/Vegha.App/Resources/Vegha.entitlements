@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Sandbox: required for Mac App Store. -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <!-- Open user-selected files via NSOpenPanel; security-scoped bookmarks to remember
+         collection roots across app restarts. -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+
+    <!-- Write into ~/Downloads when exporting collections. -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+
+    <!-- Network client: outgoing HTTP for the user's API requests. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Network server: loopback HttpListener for the OAuth2 auth-code redirect.
+         Sandbox allows this only if we declare it. -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+
+    <!-- Hardened Runtime requirements for productbuild + notarytool path; the
+         Store flavor uses sandbox above instead of these. Direct-distribution
+         builds use a separate entitlements file. -->
+</dict>
+</plist>

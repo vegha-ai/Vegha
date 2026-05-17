@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Vegha.Core.Bru.Parser</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    Pidgin was used for the parser spike but the grammar's lookahead requirements
+    (annotation disambiguation, multiline-text terminator) are cleaner with a hand-rolled
+    scanner. Pidgin remains pinned in Directory.Packages.props for future use.
+  -->
+</Project>

@@ -1,0 +1,64 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="280"
+        x:Class="Vegha.App.Controls.Workspace.CreateCollectionDialog"
+        Title="Create Collection"
+        Width="540" Height="280"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+    <DockPanel Margin="20">
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto" Margin="0,16,0,0">
+            <Button Grid.Column="1" Content="Cancel" Click="OnCancel_Click"
+                    Background="Transparent" Foreground="{DynamicResource Text1Brush}"
+                    BorderThickness="0" Padding="14,6" Margin="0,0,8,0" />
+            <Button Grid.Column="2" Content="Create" Click="OnCreate_Click"
+                    IsDefault="True"
+                    Background="{DynamicResource AccentBrush}" Foreground="White"
+                    BorderThickness="0" Padding="18,6" CornerRadius="3"
+                    FontWeight="SemiBold" />
+        </Grid>
+
+        <StackPanel Spacing="14">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Collection name" FontWeight="SemiBold" FontSize="12"
+                           Foreground="{DynamicResource Text0Brush}" />
+                <TextBox Name="NameBox" Watermark="My Collection"
+                         FontSize="12"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         Padding="10,8" CornerRadius="3" />
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="Location" FontWeight="SemiBold" FontSize="12"
+                           Foreground="{DynamicResource Text0Brush}" />
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBox Grid.Column="0" Name="LocationBox"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource BgInputBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="8,6" CornerRadius="3" Margin="0,0,6,0" />
+                    <Button Grid.Column="1" Content="Browse…" Click="OnBrowse_Click"
+                            Background="{DynamicResource Bg3Brush}"
+                            BorderBrush="{DynamicResource Border1Brush}"
+                            Foreground="{DynamicResource Text0Brush}"
+                            Padding="12,6" CornerRadius="3" />
+                </Grid>
+                <TextBlock Name="ResolvedPath"
+                           FontSize="10" FontFamily="{StaticResource MonoFont}"
+                           Foreground="{DynamicResource Text2Brush}"
+                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <TextBlock FontSize="11" Foreground="{DynamicResource Text3Brush}"
+                       TextWrapping="Wrap"
+                       Text="Defaults to the active workspace's collections folder. The collection appears in the sidebar immediately." />
+        </StackPanel>
+    </DockPanel>
+</Window>

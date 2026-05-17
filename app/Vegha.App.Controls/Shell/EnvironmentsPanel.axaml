@@ -1,0 +1,371 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:dom="using:Vegha.Core.Domain"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             xmlns:conv="using:Vegha.App.Controls.Converters"
+             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
+             x:Class="Vegha.App.Controls.Shell.EnvironmentsPanel"
+             x:DataType="vm:EnvironmentsViewModel">
+    <UserControl.Resources>
+        <!-- Resource so the variable rows can fall back to a non-bold mono font without
+             pulling in another DynamicResource lookup per row. -->
+        <conv:BoolToPasswordCharConverter x:Key="BoolToPasswordCharConverter" />
+    </UserControl.Resources>
+    <UserControl.Styles>
+        <Style Selector="Button.envHeaderBtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.swatch">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Margin" Value="3" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Master/detail layout matching the WorkspaceEditor's Environments sub-tab. Master is
+         the env list on the left with a draggable GridSplitter so the user can widen it for
+         longer env names — mirrors the sidebar splitter pattern used by collections / history /
+         git panels. MinWidth keeps the master from collapsing past the toolbar's button row. -->
+    <Grid Background="{DynamicResource Bg1Brush}">
+        <Grid.ColumnDefinitions>
+            <!-- Splitter column is a literal 4 (matches ResizerSize). Can't use
+                 a StaticResource here because ColumnDefinition.Width expects a
+                 GridLength and the resource is a double — the converter only
+                 runs on the property setter for literal strings. -->
+            <ColumnDefinition Width="280" MinWidth="180" MaxWidth="600" />
+            <ColumnDefinition Width="4" />
+            <ColumnDefinition Width="*" MinWidth="240" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ============ MASTER: env list ============ -->
+        <Border Grid.Column="0"
+                Background="{DynamicResource Bg2Brush}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,1,0">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" Padding="10,8" Height="36"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1">
+                    <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
+                        <TextBlock Grid.Column="0" Text="ENVIRONMENTS"
+                                   FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Classes="envHeaderBtn"
+                                Command="{Binding CreateEnvironmentCommand}"
+                                ToolTip.Tip="New environment">
+                            <icons:Icon Kind="Plus" Size="14" />
+                        </Button>
+                        <Button Grid.Column="2" Classes="envHeaderBtn"
+                                Click="OnImport_Click"
+                                ToolTip.Tip="Import environment...">
+                            <icons:Icon Kind="Download" Size="13" />
+                        </Button>
+                        <Button Grid.Column="3" Classes="envHeaderBtn"
+                                Click="OnExport_Click"
+                                ToolTip.Tip="Export selected environment...">
+                            <icons:Icon Kind="Upload" Size="13" />
+                        </Button>
+                        <Button Grid.Column="4" Classes="envHeaderBtn"
+                                Click="OnToggleSearch_Click"
+                                ToolTip.Tip="Search environments">
+                            <icons:Icon Kind="Search" Size="13" />
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <Border DockPanel.Dock="Top"
+                        x:Name="SearchRow"
+                        IsVisible="False"
+                        Padding="8,4"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1">
+                    <TextBox x:Name="SearchBox"
+                             Text="{Binding SearchText, Mode=TwoWay}"
+                             Watermark="Filter by name..."
+                             FontSize="11"
+                             Height="24" />
+                </Border>
+
+                <Border DockPanel.Dock="Bottom" Padding="10,6"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,1,0,0"
+                        IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <TextBlock Text="{Binding StatusMessage}"
+                               FontSize="10"
+                               Foreground="{DynamicResource Text2Brush}"
+                               TextWrapping="Wrap" />
+                </Border>
+
+                <ScrollViewer>
+                    <StackPanel Margin="0,4,0,0">
+                        <TextBlock IsVisible="{Binding !Filtered.Count}"
+                                   Text="No environments — click + to create one, or ⤓ to import."
+                                   FontSize="10" FontStyle="Italic"
+                                   Foreground="{DynamicResource Text3Brush}"
+                                   TextWrapping="Wrap"
+                                   Padding="14,16" />
+                        <!-- Master list: rows are just [color-dot] [name]. All per-env
+                             actions (rename / copy / delete / color / +var / Reset / Save)
+                             live in the detail-pane header for the selected env, matching
+                             the workspace dialog. -->
+                        <ListBox ItemsSource="{Binding Filtered}"
+                                 SelectedItem="{Binding SelectedEnvironment, Mode=TwoWay}"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Padding="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="dom:Environment">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,4">
+                                        <Ellipse Grid.Column="0" Width="10" Height="10"
+                                                 VerticalAlignment="Center"
+                                                 Fill="{Binding Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                                   Margin="8,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <!-- Check-mark shows for the env currently active in
+                                             the top-bar collection pill. Multi-binds the row
+                                             env and the panel VM's Active so the indicator
+                                             follows the user's activation across rows. -->
+                                        <TextBlock Grid.Column="2"
+                                                   Text="✓" FontWeight="Bold"
+                                                   FontSize="14"
+                                                   Foreground="#16A34A"
+                                                   Margin="8,0,4,0"
+                                                   VerticalAlignment="Center">
+                                            <TextBlock.IsVisible>
+                                                <MultiBinding Converter="{x:Static conv:ActiveEnvConverter.Instance}">
+                                                    <Binding />
+                                                    <Binding Path="$parent[UserControl].((vm:EnvironmentsViewModel)DataContext).Active" />
+                                                </MultiBinding>
+                                            </TextBlock.IsVisible>
+                                        </TextBlock>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- Splitter between master + detail. Uses the shared GridSplitter.col
+             style (transparent 4px hit area, accent on hover). -->
+        <GridSplitter Grid.Column="1" Classes="col"
+                      ToolTip.Tip="Drag to resize environments list" />
+
+        <!-- ============ DETAIL: variable editor ============ -->
+        <DockPanel Grid.Column="2" Margin="0">
+
+            <!-- Header — visible only when an env is selected. Mirrors workspace dialog. -->
+            <Border DockPanel.Dock="Top"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="14,10"
+                    IsVisible="{Binding SelectedEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto">
+                    <Button Grid.Column="0"
+                            Click="OnSetColor_Click"
+                            Background="Transparent" BorderThickness="0"
+                            Padding="0,0,8,0"
+                            Width="22" Height="22"
+                            Cursor="Hand"
+                            ToolTip.Tip="Set color">
+                        <Ellipse Width="12" Height="12"
+                                 Fill="{Binding SelectedEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}" />
+                    </Button>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding SelectedEnvironment.Name}"
+                               FontSize="14" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text0Brush}"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="2"
+                            Click="OnRename_Click"
+                            ToolTip.Tip="Rename"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{DynamicResource Text2Brush}"
+                            Width="28" Height="28" Padding="0">
+                        <TextBlock Text="✎" FontSize="14" />
+                    </Button>
+                    <Button Grid.Column="3"
+                            Click="OnCopy_Click"
+                            ToolTip.Tip="Duplicate"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{DynamicResource Text2Brush}"
+                            Width="28" Height="28" Padding="0">
+                        <icons:Icon Kind="Copy" Size="13" />
+                    </Button>
+                    <Button Grid.Column="4"
+                            Click="OnDelete_Click"
+                            ToolTip.Tip="Delete"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="#DC2626"
+                            Width="28" Height="28" Padding="0">
+                        <icons:Icon Kind="Trash" Size="13" />
+                    </Button>
+                    <Button Grid.Column="5"
+                            Command="{Binding AddVariableCommand}"
+                            Content="+ Add variable"
+                            Margin="6,0,0,0"
+                            Background="{DynamicResource Bg3Brush}"
+                            Foreground="{DynamicResource Text0Brush}"
+                            Padding="10,4" />
+                    <Button Grid.Column="6"
+                            Command="{Binding ResetCommand}"
+                            Content="Reset"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{DynamicResource AccentBrush}"
+                            Padding="10,4" />
+                    <Button Grid.Column="7"
+                            Command="{Binding SaveCommand}"
+                            Content="Save"
+                            Background="{DynamicResource AccentBrush}"
+                            Foreground="White"
+                            Padding="14,4" />
+                </Grid>
+            </Border>
+
+            <!-- Empty state when no env is selected. -->
+            <TextBlock IsVisible="{Binding SelectedEnvironment, Converter={x:Static ObjectConverters.IsNull}}"
+                       Text="Select or create an environment to edit its variables."
+                       Foreground="{DynamicResource Text3Brush}"
+                       FontSize="11" FontStyle="Italic"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+            <ScrollViewer
+                IsVisible="{Binding SelectedEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <ItemsControl ItemsSource="{Binding Variables}" Margin="14,8">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:EnvVarRow">
+                            <Grid ColumnDefinitions="Auto,260,*,Auto,Auto" Margin="0,3">
+                                <CheckBox Grid.Column="0"
+                                          IsChecked="{Binding IsEnabled}"
+                                          ToolTip.Tip="Enabled" />
+                                <TextBox Grid.Column="1"
+                                         Text="{Binding Name}"
+                                         Watermark="name"
+                                         FontFamily="{StaticResource MonoFont}"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="6,4" Margin="6,0" />
+                                <TextBox Grid.Column="2"
+                                         Text="{Binding Value}"
+                                         Watermark="value"
+                                         PasswordChar="{Binding IsValueVisible, Converter={StaticResource BoolToPasswordCharConverter}}"
+                                         FontFamily="{StaticResource MonoFont}"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="6,4">
+                                    <TextBox.InnerRightContent>
+                                        <StackPanel Orientation="Horizontal" Spacing="2"
+                                                    VerticalAlignment="Center" Margin="0,0,4,0">
+                                            <Button IsVisible="{Binding CanRevealToggle}"
+                                                    Background="Transparent" BorderThickness="0"
+                                                    Padding="4" MinWidth="0" MinHeight="0"
+                                                    Cursor="Hand"
+                                                    ToolTip.Tip="Bind to a secret manager">
+                                                <icons:Icon Kind="Vault" Size="13"
+                                                            Foreground="{DynamicResource Text2Brush}" />
+                                                <Button.Flyout>
+                                                    <Flyout>
+                                                        <StackPanel Width="240" Spacing="6">
+                                                            <TextBlock Text="Bind to secret manager"
+                                                                       FontSize="11" FontWeight="SemiBold"
+                                                                       Foreground="{DynamicResource Text1Brush}" />
+                                                            <ComboBox ItemsSource="{Binding ProviderNames}"
+                                                                      SelectedItem="{Binding ProviderName}"
+                                                                      PlaceholderText="provider"
+                                                                      HorizontalAlignment="Stretch" />
+                                                            <TextBox Text="{Binding ProviderPath}"
+                                                                     Watermark="path (e.g. acme/prod)"
+                                                                     FontFamily="{StaticResource MonoFont}" />
+                                                            <TextBox Text="{Binding ProviderField}"
+                                                                     Watermark="field (optional)"
+                                                                     FontFamily="{StaticResource MonoFont}" />
+                                                            <Button Content="Apply"
+                                                                    Command="{Binding ApplyProviderBindingCommand}"
+                                                                    HorizontalAlignment="Right"
+                                                                    Background="{DynamicResource AccentBrush}"
+                                                                    Foreground="White" Padding="12,4" />
+                                                        </StackPanel>
+                                                    </Flyout>
+                                                </Button.Flyout>
+                                            </Button>
+                                            <ToggleButton IsChecked="{Binding IsRevealed, Mode=TwoWay}"
+                                                          IsVisible="{Binding CanRevealToggle}"
+                                                          Background="Transparent" BorderThickness="0"
+                                                          Padding="4" MinWidth="0" MinHeight="0"
+                                                          Cursor="Hand"
+                                                          ToolTip.Tip="Show / hide secret">
+                                                <icons:Icon Kind="Eye" Size="13"
+                                                            Foreground="{DynamicResource Text2Brush}" />
+                                            </ToggleButton>
+                                        </StackPanel>
+                                    </TextBox.InnerRightContent>
+                                </TextBox>
+                                <CheckBox Grid.Column="3"
+                                          IsChecked="{Binding IsSecret}"
+                                          Content="secret"
+                                          Margin="10,0,4,0"
+                                          VerticalAlignment="Center" />
+                                <Button Grid.Column="4"
+                                        Tag="{Binding}"
+                                        Click="OnRemoveVariable_Click"
+                                        Background="Transparent" BorderThickness="0"
+                                        Foreground="{DynamicResource Text2Brush}"
+                                        Width="22" Height="22" Padding="0"
+                                        ToolTip.Tip="Remove">
+                                    <TextBlock Text="✕" FontSize="12" />
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </DockPanel>
+
+        <!-- Color picker popup. Anchor is set at runtime to whichever dot was clicked. -->
+        <Popup x:Name="ColorPickerPopup"
+               Placement="RightEdgeAlignedTop"
+               IsLightDismissEnabled="True">
+            <Border Background="{DynamicResource Bg1Brush}"
+                    BorderBrush="{DynamicResource Border1Brush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="6"
+                    BoxShadow="0 4 12 0 #20000000">
+                <StackPanel Spacing="4">
+                    <WrapPanel x:Name="SwatchPanel" Width="156" />
+                    <Button x:Name="ClearColorBtn"
+                            Click="OnClearColor_Click"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Foreground="{DynamicResource Text2Brush}"
+                            Padding="6,4"
+                            FontSize="11">
+                        <TextBlock Text="No color" FontStyle="Italic" />
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Popup>
+    </Grid>
+</UserControl>

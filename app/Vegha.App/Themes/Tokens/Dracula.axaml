@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Dracula — official Dracula palette. Deep navy surfaces, purple accent. -->
+
+    <SolidColorBrush x:Key="Bg0Brush" Color="#1b1c25" />
+    <SolidColorBrush x:Key="Bg1Brush" Color="#282a36" />
+    <SolidColorBrush x:Key="Bg2Brush" Color="#343746" />
+    <SolidColorBrush x:Key="Bg3Brush" Color="#3d404f" />
+    <SolidColorBrush x:Key="Bg4Brush" Color="#44475a" />
+    <SolidColorBrush x:Key="BgInputBrush" Color="#1b1c25" />
+    <SolidColorBrush x:Key="BgTabActiveBrush" Color="#343746" />
+    <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#1b1c25" />
+
+    <SolidColorBrush x:Key="Border0Brush" Color="#343746" />
+    <SolidColorBrush x:Key="Border1Brush" Color="#44475a" />
+    <SolidColorBrush x:Key="Border2Brush" Color="#5c5f72" />
+
+    <SolidColorBrush x:Key="Text0Brush" Color="#f8f8f2" />
+    <SolidColorBrush x:Key="Text1Brush" Color="#dadbe8" />
+    <SolidColorBrush x:Key="Text2Brush" Color="#a0a3b3" />
+    <SolidColorBrush x:Key="Text3Brush" Color="#6272a4" />
+    <SolidColorBrush x:Key="TextInverseBrush" Color="#282a36" />
+
+    <SolidColorBrush x:Key="AccentBrush" Color="#bd93f9" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#a87ff5" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#22bd93f9" />
+    <SolidColorBrush x:Key="AccentSoftStrongBrush" Color="#3abd93f9" />
+
+    <SolidColorBrush x:Key="MethodGetBrush" Color="#50fa7b" />
+    <SolidColorBrush x:Key="MethodPostBrush" Color="#f1fa8c" />
+    <SolidColorBrush x:Key="MethodPutBrush" Color="#8be9fd" />
+    <SolidColorBrush x:Key="MethodPatchBrush" Color="#bd93f9" />
+    <SolidColorBrush x:Key="MethodDeleteBrush" Color="#ff5555" />
+    <SolidColorBrush x:Key="MethodHeadBrush" Color="#8be9fd" />
+    <SolidColorBrush x:Key="MethodOptionsBrush" Color="#6272a4" />
+
+    <SolidColorBrush x:Key="StatusOkBrush" Color="#50fa7b" />
+    <SolidColorBrush x:Key="StatusWarnBrush" Color="#ffb86c" />
+    <SolidColorBrush x:Key="StatusErrBrush" Color="#ff5555" />
+
+    <SolidColorBrush x:Key="CodeBgBrush" Color="#1b1c25" />
+
+    <SolidColorBrush x:Key="SelectionBrush" Color="#52bd93f9" />
+
+    <SolidColorBrush x:Key="MacRedBrush" Color="#ff5f57" />
+    <SolidColorBrush x:Key="MacAmberBrush" Color="#ffbd2e" />
+    <SolidColorBrush x:Key="MacGreenBrush" Color="#28c840" />
+</ResourceDictionary>

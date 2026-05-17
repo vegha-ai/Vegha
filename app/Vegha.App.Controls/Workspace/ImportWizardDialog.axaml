@@ -1,0 +1,349 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Vegha.App.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="520"
+        x:Class="Vegha.App.Controls.Workspace.ImportWizardDialog"
+        x:DataType="vm:ImportWizardViewModel"
+        Title="Import Collection"
+        Width="720" Height="560"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+    <DockPanel Margin="0">
+        <!-- Title bar -->
+        <Border DockPanel.Dock="Top"
+                Background="{DynamicResource Bg2Brush}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="20,12">
+            <TextBlock Text="Import Collection" FontWeight="SemiBold" FontSize="14"
+                       Foreground="{DynamicResource Text0Brush}" />
+        </Border>
+
+        <!-- Footer buttons -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource Bg2Brush}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,1,0,0"
+                Padding="20,12">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Orientation="Vertical" Spacing="2"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="{Binding DetectedFormat}" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text1Brush}" />
+                    <TextBlock Text="{Binding PreviewSummary}" FontSize="11"
+                               Foreground="{DynamicResource Text2Brush}"
+                               TextTrimming="CharacterEllipsis"
+                               IsVisible="{Binding PreviewSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Cancel" Click="OnCancel_Click"
+                            Background="Transparent"
+                            Foreground="{DynamicResource Text1Brush}"
+                            BorderThickness="0" Padding="14,6" />
+                    <Button Content="Import" Click="OnImport_Click"
+                            Command="{Binding ImportCommand}"
+                            IsDefault="True"
+                            Background="{DynamicResource AccentBrush}"
+                            Foreground="White" BorderThickness="0"
+                            Padding="18,6" CornerRadius="3" FontWeight="SemiBold" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Error strip -->
+        <Border DockPanel.Dock="Top"
+                Background="#3F1A1A"
+                Padding="20,8"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding ErrorMessage}" FontSize="11"
+                       Foreground="{DynamicResource StatusErrBrush}"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <!-- Postman options strip — only visible when the staged batch contains a Postman collection.
+             Lets the user toggle script translation (pm.* → bru.*) before clicking Import.
+             Named so UI tests can find it via FindControl without coupling to tree position. -->
+        <Border x:Name="PostmanOptionsStrip"
+                DockPanel.Dock="Top"
+                Background="{DynamicResource Bg2Brush}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="20,8"
+                IsVisible="{Binding IsPostmanFormatDetected}">
+            <StackPanel Spacing="6">
+                <CheckBox IsChecked="{Binding TranslatePostmanScripts, Mode=TwoWay}"
+                          Foreground="{DynamicResource Text0Brush}">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Translate Postman scripts (pm.* → bru.*)"
+                                   FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text0Brush}" />
+                        <TextBlock Text="Rewrites pm.environment / pm.test / pm.response etc. to Vegha's bru / req / res / test surface. Without this, imported scripts throw 'pm is not defined' on first Send."
+                                   FontSize="11" Foreground="{DynamicResource Text2Brush}"
+                                   TextWrapping="Wrap" MaxWidth="640" />
+                    </StackPanel>
+                </CheckBox>
+
+                <!-- Diagnostics list — only visible when the lint pass found pm.* tokens the
+                     regex table couldn't translate (e.g. pm["env"]["get"] bracket access). -->
+                <Border IsVisible="{Binding HasTranslationDiagnostics}"
+                        Background="{DynamicResource Bg3Brush}"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="1" CornerRadius="3" Padding="10,8">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Some scripts contain patterns that couldn't be translated automatically:"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource StatusWarnBrush}"
+                                   TextWrapping="Wrap" />
+                        <ScrollViewer MaxHeight="120">
+                            <ItemsControl ItemsSource="{Binding TranslationDiagnostics}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock FontSize="11" FontFamily="{StaticResource MonoFont}"
+                                                   Foreground="{DynamicResource Text2Brush}"
+                                                   TextWrapping="Wrap">
+                                            <Run Text="{Binding RequestName}" FontWeight="SemiBold" />
+                                            <Run Text=" (" /><Run Text="{Binding Phase}" /><Run Text="): " />
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- Tab content -->
+        <TabControl Margin="20,12,20,0">
+            <TabControl.Styles>
+                <Style Selector="TabItem">
+                    <Setter Property="FontSize" Value="13" />
+                    <Setter Property="Padding" Value="14,6" />
+                </Style>
+            </TabControl.Styles>
+
+            <!-- ===== File tab ===== -->
+            <TabItem Header="File">
+                <Border Name="FileDropArea" Margin="0,12,0,0"
+                        Background="{DynamicResource Bg2Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        BorderThickness="2"
+                        CornerRadius="6"
+                        Padding="20" MinHeight="280">
+                    <Border.Styles>
+                        <Style Selector="Border.dragOver">
+                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+                        </Style>
+                    </Border.Styles>
+                    <StackPanel Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="📥" FontSize="40" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                        <TextBlock HorizontalAlignment="Center" FontSize="13"
+                                   Foreground="{DynamicResource Text1Brush}">
+                            <Run Text="Drop file(s) to import or " />
+                            <Run Text="choose file(s)"
+                                 Foreground="{DynamicResource AccentBrush}"
+                                 TextDecorations="Underline" />
+                        </TextBlock>
+                        <Button Content="Choose file(s)…" Click="OnBrowseFile_Click"
+                                Background="{DynamicResource Bg3Brush}"
+                                BorderBrush="{DynamicResource Border1Brush}"
+                                Foreground="{DynamicResource Text0Brush}"
+                                Padding="14,6" CornerRadius="3" HorizontalAlignment="Center" />
+                        <TextBlock Text="Supports Bruno, OpenCollection, Postman, Insomnia, OpenAPI 3.x / Swagger 2.0, WSDL, and ZIP formats"
+                                   FontSize="11" Foreground="{DynamicResource Text3Brush}"
+                                   TextAlignment="Center" TextWrapping="Wrap" MaxWidth="440" />
+                        <Button Content="Pick a folder instead (Bruno collection)"
+                                Click="OnBrowseFolder_Click"
+                                Background="Transparent" BorderThickness="0"
+                                Foreground="{DynamicResource AccentBrush}"
+                                FontSize="11" HorizontalAlignment="Center" />
+                        <TextBlock Text="{Binding SelectedPath}"
+                                   FontSize="10" FontFamily="{StaticResource MonoFont}"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"
+                                   IsVisible="{Binding SelectedPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+                </Border>
+            </TabItem>
+
+            <!-- ===== URL tab ===== -->
+            <TabItem Header="URL">
+                <StackPanel Margin="0,16,0,0" Spacing="12">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Collection URL" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text0Brush}" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding Url, Mode=TwoWay}"
+                                     Watermark="https://example.com/postman_collection.json"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="8,6" CornerRadius="3" />
+                            <Button Grid.Column="1" Content="Fetch"
+                                    Command="{Binding FetchUrlCommand}"
+                                    Background="{DynamicResource Bg3Brush}"
+                                    BorderBrush="{DynamicResource Border1Brush}"
+                                    Foreground="{DynamicResource Text0Brush}"
+                                    Padding="14,6" Margin="6,0,0,0" CornerRadius="3" />
+                        </Grid>
+                        <TextBlock Text="Vegha fetches the URL and auto-detects the format. Supports raw Postman/Insomnia/OpenAPI/WSDL files served over HTTP."
+                                   FontSize="11" Foreground="{DynamicResource Text3Brush}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+            </TabItem>
+
+            <!-- ===== Git tab ===== -->
+            <TabItem Header="Git Repository">
+                <ScrollViewer>
+                    <StackPanel Margin="0,16,0,0" Spacing="12">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Repository URL" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text0Brush}" />
+                            <TextBox Text="{Binding GitUrl, Mode=TwoWay}"
+                                     Watermark="https://gitlab.example/group/repo.git"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="8,6" CornerRadius="3" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Branch (optional)" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text0Brush}" />
+                            <TextBox Text="{Binding GitBranch, Mode=TwoWay}"
+                                     Watermark="main"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="8,6" CornerRadius="3" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Authentication" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text0Brush}" />
+                            <ComboBox SelectedIndex="0" Name="GitAuthCombo"
+                                      Background="{DynamicResource Bg3Brush}"
+                                      BorderBrush="{DynamicResource Border1Brush}"
+                                      Foreground="{DynamicResource Text0Brush}"
+                                      SelectionChanged="OnGitAuthMode_Changed">
+                                <ComboBoxItem Content="None (public repo)" Tag="none" />
+                                <ComboBoxItem Content="HTTPS + Personal Access Token" Tag="https-pat" />
+                                <ComboBoxItem Content="SSH (system-configured agent)" Tag="ssh-key" />
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Name="GitHttpsPanel" Spacing="6" IsVisible="False">
+                            <Grid ColumnDefinitions="*,8,*">
+                                <StackPanel Grid.Column="0" Spacing="4">
+                                    <TextBlock Text="Username (optional)" FontSize="11"
+                                               Foreground="{DynamicResource Text2Brush}" />
+                                    <TextBox Text="{Binding GitUsername, Mode=TwoWay}"
+                                             Watermark="x-access-token"
+                                             FontSize="12"
+                                             Background="{DynamicResource BgInputBrush}"
+                                             BorderBrush="{DynamicResource Border1Brush}"
+                                             Foreground="{DynamicResource Text0Brush}"
+                                             Padding="8,6" CornerRadius="3" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <TextBlock Text="Personal Access Token" FontSize="11"
+                                               Foreground="{DynamicResource Text2Brush}" />
+                                    <TextBox Text="{Binding GitPassword, Mode=TwoWay}"
+                                             PasswordChar="•"
+                                             FontSize="12"
+                                             Background="{DynamicResource BgInputBrush}"
+                                             BorderBrush="{DynamicResource Border1Brush}"
+                                             Foreground="{DynamicResource Text0Brush}"
+                                             Padding="8,6" CornerRadius="3" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                        <Button Content="Clone &amp; import"
+                                Command="{Binding CloneGitCommand}"
+                                IsEnabled="{Binding !IsFetching}"
+                                Background="{DynamicResource Bg3Brush}"
+                                BorderBrush="{DynamicResource Border1Brush}"
+                                Foreground="{DynamicResource Text0Brush}"
+                                Padding="14,6" CornerRadius="3" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===== GitHub tab ===== -->
+            <TabItem Header="GitHub">
+                <ScrollViewer>
+                    <StackPanel Margin="0,16,0,0" Spacing="12">
+                        <Grid ColumnDefinitions="*,8,*">
+                            <StackPanel Grid.Column="0" Spacing="4">
+                                <TextBlock Text="Owner" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text0Brush}" />
+                                <TextBox Text="{Binding GitHubOwner, Mode=TwoWay}"
+                                         Watermark="usebruno"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="8,6" CornerRadius="3" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Spacing="4">
+                                <TextBlock Text="Repository" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text0Brush}" />
+                                <TextBox Text="{Binding GitHubRepo, Mode=TwoWay}"
+                                         Watermark="bruno"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="8,6" CornerRadius="3" />
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Token (optional, increases rate limit)" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text0Brush}" />
+                            <TextBox Text="{Binding GitHubToken, Mode=TwoWay}"
+                                     PasswordChar="•"
+                                     FontSize="12"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="8,6" CornerRadius="3" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Branch" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text0Brush}" />
+                            <Grid ColumnDefinitions="*,6,Auto">
+                                <ComboBox Grid.Column="0" Name="GitHubBranchCombo"
+                                          ItemsSource="{Binding GitHubBranches}"
+                                          SelectedItem="{Binding GitHubBranch, Mode=TwoWay}"
+                                          PlaceholderText="(load branches first)"
+                                          Background="{DynamicResource Bg3Brush}"
+                                          BorderBrush="{DynamicResource Border1Brush}"
+                                          Foreground="{DynamicResource Text0Brush}" />
+                                <Button Grid.Column="2" Content="Load branches"
+                                        Command="{Binding LoadGithubBranchesCommand}"
+                                        Background="{DynamicResource Bg3Brush}"
+                                        BorderBrush="{DynamicResource Border1Brush}"
+                                        Foreground="{DynamicResource Text0Brush}"
+                                        Padding="12,6" CornerRadius="3" />
+                            </Grid>
+                        </StackPanel>
+                        <Button Content="Clone &amp; import"
+                                Command="{Binding CloneGithubCommand}"
+                                IsEnabled="{Binding !IsFetching}"
+                                Background="{DynamicResource Bg3Brush}"
+                                BorderBrush="{DynamicResource Border1Brush}"
+                                Foreground="{DynamicResource Text0Brush}"
+                                Padding="14,6" CornerRadius="3" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

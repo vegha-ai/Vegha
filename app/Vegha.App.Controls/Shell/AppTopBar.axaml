@@ -1,0 +1,218 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             xmlns:conv="using:Vegha.App.Controls.Converters"
+             mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="40"
+             x:Class="Vegha.App.Controls.Shell.AppTopBar"
+             x:DataType="vm:MainWindowViewModel"
+             Height="40">
+    <UserControl.Styles>
+        <Style Selector="Button.envPickerRow">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.envPickerRow:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border Background="{DynamicResource Bg2Brush}"
+            BorderBrush="{DynamicResource Border0Brush}"
+            BorderThickness="0,0,0,1">
+        <!-- Workspace header: always-visible band carrying the collection switcher + add (left)
+             and the env picker (right). Lives outside the Collections sidebar panel so the
+             user can switch collections + envs no matter which sidebar tab they're on. -->
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="10,0">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4"
+                        VerticalAlignment="Center">
+                <!-- Collection picker — clicking shows a MenuFlyout with every workspace
+                     collection. Active collection is bolded + ✓-prefixed (built in code-behind
+                     via RebuildCollectionPickerMenu so the dynamic check icon stays accurate). -->
+                <Button x:Name="CollectionPickerButton"
+                        Background="{DynamicResource Bg3Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        BorderThickness="1"
+                        Padding="10,4"
+                        Height="28"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Cursor="Hand"
+                        ToolTip.Tip="Switch collection">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <icons:Icon Kind="Collection" Size="13" />
+                        <TextBlock Text="{Binding Collections.ActiveCollection.Name, FallbackValue='Collections', TargetNullValue='Collections'}"
+                                   FontSize="12" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="200" />
+                        <TextBlock Text="▾" FontSize="13"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft" />
+                    </Button.Flyout>
+                </Button>
+
+                <!-- "+ Add collection" — replaces the in-panel + button so the entry point
+                     for Create / Open / Import is always visible. Handlers persist through
+                     WorkspacesViewModel.LinkCollection so the collection survives a restart. -->
+                <Button ToolTip.Tip="Add collection"
+                        Background="{DynamicResource Bg3Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        BorderThickness="1"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Width="28" Height="28" Padding="0"
+                        CornerRadius="3"
+                        Cursor="Hand"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center">
+                    <icons:Icon Kind="Plus" Size="14" />
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                            <MenuItem Header="Create collection" Click="OnCreateCollection_Click">
+                                <MenuItem.Icon>
+                                    <icons:Icon Kind="Collection" Size="14" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="Open collection..." Click="OnOpenCollection_Click">
+                                <MenuItem.Icon>
+                                    <icons:Icon Kind="FolderOpen" Size="14" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="Import collection..." Click="OnImportCollection_Click">
+                                <MenuItem.Icon>
+                                    <icons:Icon Kind="Download" Size="14" />
+                                </MenuItem.Icon>
+                            </MenuItem>
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+
+            <Border Grid.Column="1" Background="Transparent" />
+
+            <!-- Split env selector: collection (left) | global (right). Each button opens its
+                 own scope-specific picker popup — no shared tabbed view. The clicked button
+                 also serves as the popup's placement anchor. Icon + text are tinted with the
+                 active env's color; the pill background uses a translucent shade of the same
+                 color so the active env reads at a glance. -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
+                        VerticalAlignment="Center"
+                        Margin="0,0,8,0">
+                <Button x:Name="CollectionEnvButton"
+                        Click="OnCollectionEnvButton_Click"
+                        Background="{Binding Collections.ActiveEnvironment.Color, Converter={x:Static conv:EnvColorTranslucentConverter.Instance}, ConverterParameter=#9CA3AF}"
+                        BorderBrush="{Binding Collections.ActiveEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        Padding="8,4"
+                        Height="28"
+                        Cursor="Hand"
+                        ToolTip.Tip="Collection environment">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <icons:Icon Kind="Collection" Size="13"
+                                    Foreground="{Binding Collections.ActiveEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}" />
+                        <TextBlock Text="{Binding Collections.ActiveEnvironment.Name, FallbackValue='No env', TargetNullValue='No env'}"
+                                   FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{Binding Collections.ActiveEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="140" />
+                        <TextBlock Text="▾" FontSize="13"
+                                   Foreground="{Binding Collections.ActiveEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="GlobalEnvButton"
+                        Click="OnGlobalEnvButton_Click"
+                        Background="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorTranslucentConverter.Instance}, ConverterParameter=#10B981}"
+                        BorderBrush="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#10B981}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        Padding="8,4"
+                        Height="28"
+                        Cursor="Hand"
+                        ToolTip.Tip="Global environment">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <icons:Icon Kind="Workspace" Size="13"
+                                    Foreground="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#10B981}" />
+                        <TextBlock Text="{Binding Collections.ActiveGlobalEnvironment.Name, FallbackValue='No env', TargetNullValue='No env'}"
+                                   FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#10B981}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="140" />
+                        <TextBlock Text="▾" FontSize="13"
+                                   Foreground="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#10B981}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <!-- Per-scope picker popup. Anchored at runtime to whichever env button was clicked;
+                 the same popup serves both scopes since only one is open at a time. The scope
+                 label header replaces the old tab strip — each pill now opens its own picker. -->
+            <Popup x:Name="EnvPickerPopup"
+                   Grid.Column="2"
+                   Placement="BottomEdgeAlignedLeft"
+                   IsLightDismissEnabled="True">
+                <Border Background="{DynamicResource Bg1Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Width="280"
+                        BoxShadow="0 4 12 0 #20000000">
+                    <DockPanel Margin="0">
+                        <!-- Configure footer pinned via DockPanel.Dock=Bottom so the env list
+                             above can scroll independently without pushing it offscreen. -->
+                        <Border DockPanel.Dock="Bottom"
+                                BorderBrush="{DynamicResource Border0Brush}"
+                                BorderThickness="0,1,0,0">
+                            <Button Click="OnConfigureEnvs_Click"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Background="Transparent" BorderThickness="0"
+                                    Foreground="{DynamicResource Text1Brush}"
+                                    Padding="8,8">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <icons:Icon Kind="Settings" Size="13" />
+                                    <TextBlock Text="Configure" FontSize="12" />
+                                </StackPanel>
+                            </Button>
+                        </Border>
+
+                        <!-- Scope header — replaces the previous Collection/Global tab strip
+                             now that the two scopes have separate pills + popups. -->
+                        <Border DockPanel.Dock="Top"
+                                BorderBrush="{DynamicResource Border0Brush}"
+                                BorderThickness="0,0,0,1"
+                                Padding="10,6">
+                            <StackPanel x:Name="EnvPickerScopeHeader"
+                                        Orientation="Horizontal" Spacing="6"
+                                        VerticalAlignment="Center" />
+                        </Border>
+
+                        <!-- Bounded-height scrollable list so long env lists don't push the
+                             Configure footer offscreen. MaxHeight is generous enough that
+                             short lists still hug their content. -->
+                        <ScrollViewer MaxHeight="320"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel x:Name="EnvList" Margin="0,4" />
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+            </Popup>
+
+            <!-- (Code-panel toggle moved to the request editor next to Save; theme toggle
+                 moved to the activity rail. Avatar removed — no login concept in the app.) -->
+        </Grid>
+    </Border>
+</UserControl>

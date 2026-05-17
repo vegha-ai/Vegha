@@ -1,0 +1,42 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="using:Vegha.App.Controls.Converters"
+             x:Class="Vegha.App.App"
+             RequestedThemeVariant="Dark">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Theme-agnostic shared tokens: fonts, sizes, corner radii. -->
+                <ResourceInclude Source="avares://Vegha.App/Themes/Shared.axaml" />
+                <!-- Per-variant brush palette. Swapped at runtime by ThemeService.
+                     The initial include points at the default Dark variant; on startup
+                     ThemeService reads AppSettings.ThemeMode + ThemeVariant{Light,Dark}
+                     and swaps this slot to the matching variant. -->
+                <ResourceInclude Source="avares://Vegha.App/Themes/Tokens/Dark.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <conv:HexToBrushConverter x:Key="HexToBrushConverter" />
+            <conv:RatioToWidthConverter x:Key="RatioToWidthConverter" />
+            <conv:MethodToBrushConverter x:Key="MethodToBrushConverter" />
+            <conv:LevelToIndentConverter x:Key="LevelToIndentConverter" />
+            <conv:BytesToBitmapConverter x:Key="BytesToBitmapConverter" />
+            <conv:BoolToPasswordCharConverter x:Key="BoolToPasswordCharConverter" />
+
+            <!-- UI font size — fixed 12px throughout the app for consistency. -->
+            <x:Double x:Key="AppFontSize">12</x:Double>
+
+            <!-- Code-editor font size — overwritten at startup from AppSettings.FontSize. -->
+            <x:Double x:Key="EditorFontSize">12</x:Double>
+
+            <!-- Editor preferences exposed as dynamic resources so VariableAwareTextEditor
+                 picks up settings changes live. -->
+            <x:Int32 x:Key="EditorTabSize">2</x:Int32>
+            <x:Boolean x:Key="EditorWordWrap">True</x:Boolean>
+            <x:Boolean x:Key="EditorShowLineNumbers">True</x:Boolean>
+        </ResourceDictionary>
+    </Application.Resources>
+    <Application.Styles>
+        <FluentTheme />
+        <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
+        <StyleInclude Source="avares://Vegha.App/Themes/Styles.axaml" />
+    </Application.Styles>
+</Application>

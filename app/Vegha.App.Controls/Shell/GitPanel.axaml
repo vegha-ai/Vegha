@@ -1,0 +1,763 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="700"
+             x:Class="Vegha.App.Controls.Shell.GitPanel"
+             x:DataType="vm:GitViewModel">
+    <UserControl.Styles>
+        <Style Selector="Button.headerAction">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.headerAction:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        </Style>
+
+        <Style Selector="Button.rowAction">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Width" Value="20" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.rowAction:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Bg4Brush}" />
+        </Style>
+
+        <!-- Row container: full-width clickable Border that shows hover bg + reveals action cluster. -->
+        <Style Selector="Border.gitRow">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="10,3,8,3" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Border.gitRow:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        </Style>
+
+        <!-- Swap: kind badge is shown by default; on hover it fades out and the row-action
+             icons fade in. Both children of the right-side Panel are stacked at the same
+             position, so the right column's width stays constant (the actions cluster always
+             reserves its space) and the filename column never reflows on hover. -->
+        <Style Selector="Border.gitRow StackPanel.rowActions">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
+        <Style Selector="Border.gitRow:pointerover StackPanel.rowActions">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="IsHitTestVisible" Value="True" />
+        </Style>
+        <Style Selector="Border.gitRow:pointerover TextBlock.kindBadge">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+
+        <!-- Section header: clickable border with chevron + name + count badge + hover bulk
+             actions. Same hover-swap pattern as the row. -->
+        <Style Selector="Border.sectionHeader">
+            <Setter Property="Padding" Value="10,4,8,4" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Border.sectionHeader:pointerover">
+            <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        </Style>
+        <Style Selector="Border.sectionHeader StackPanel.sectionActions">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
+        <Style Selector="Border.sectionHeader:pointerover StackPanel.sectionActions">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="IsHitTestVisible" Value="True" />
+        </Style>
+
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="0,6" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+        </Style>
+
+        <!-- Status footer turns red-tinted when the last op failed. -->
+        <Style Selector="Border.failed">
+            <Setter Property="Background" Value="#22DC2626" />
+        </Style>
+        <Style Selector="Border.failed TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource StatusErrBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <DockPanel Background="{DynamicResource Bg2Brush}">
+        <!-- ============== HEADER ============== -->
+        <Border DockPanel.Dock="Top" Padding="10,6,8,6"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="SOURCE CONTROL"
+                           FontSize="10" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text2Brush}"
+                           VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                    <Button Classes="headerAction"
+                            Command="{Binding RefreshCommand}"
+                            ToolTip.Tip="Refresh"
+                            IsVisible="{Binding IsRepoActive}">
+                        <icons:Icon Kind="Refresh" Size="14" />
+                    </Button>
+                    <Button Classes="headerAction"
+                            Command="{Binding PullCommand}"
+                            ToolTip.Tip="Pull"
+                            IsVisible="{Binding IsRepoActive}">
+                        <icons:Icon Kind="CloudDownload" Size="15" />
+                    </Button>
+                    <Button Classes="headerAction"
+                            Command="{Binding PushCommand}"
+                            ToolTip.Tip="Push"
+                            IsVisible="{Binding IsRepoActive}">
+                        <icons:Icon Kind="CloudUpload" Size="15" />
+                    </Button>
+                    <Button x:Name="MoreButton" Classes="headerAction"
+                            ToolTip.Tip="More actions"
+                            IsVisible="{Binding IsRepoActive}">
+                        <icons:Icon Kind="MoreVertical" Size="14" />
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="Fetch" Command="{Binding FetchCommand}" />
+                                <MenuItem Header="Pull" Command="{Binding PullCommand}" />
+                                <MenuItem Header="Push" Command="{Binding PushCommand}" />
+                                <MenuItem Header="Sync" Command="{Binding SyncCommand}" />
+                                <Separator />
+                                <MenuItem Header="Stage All" Command="{Binding StageAllCommand}" />
+                                <MenuItem Header="Unstage All" Command="{Binding UnstageAllCommand}" />
+                                <MenuItem Header="Discard All Changes"
+                                          Click="OnDiscardAll_Click" />
+                                <Separator />
+                                <MenuItem Header="Stash..." Click="OnStash_Click" />
+                                <MenuItem Header="Pop Latest Stash" Command="{Binding StashPopCommand}" />
+                                <Separator />
+                                <MenuItem Header="Amend Last Commit" Command="{Binding CommitAmendCommand}" />
+                                <Separator />
+                                <MenuItem Header="Manage Remotes..." Click="OnManageRemotes_Click" />
+                                <Separator />
+                                <MenuItem Header="Toggle Git Output" Command="{Binding ToggleGitOutputCommand}" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ============== EMPTY / NON-REPO STATES ============== -->
+        <StackPanel DockPanel.Dock="Top" IsVisible="{Binding NoFolderActive}"
+                    Margin="14,40,14,0" Spacing="8" HorizontalAlignment="Center">
+            <TextBlock Text="No workspace open." FontSize="11" FontStyle="Italic"
+                       Foreground="{DynamicResource Text3Brush}"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Top" IsVisible="{Binding IsNonRepoFolderActive}"
+                    Margin="14,40,14,0" Spacing="10" HorizontalAlignment="Center">
+            <TextBlock Text="This folder is not a Git repository." FontSize="11"
+                       Foreground="{DynamicResource Text2Brush}" TextWrapping="Wrap"
+                       HorizontalAlignment="Center" />
+            <Button Content="git init" Command="{Binding InitCommand}"
+                    Background="{DynamicResource AccentBrush}" Foreground="White"
+                    Padding="14,6" HorizontalAlignment="Center" />
+        </StackPanel>
+
+        <!-- ============== AUTHOR WARNING ============== -->
+        <Border DockPanel.Dock="Top" Padding="10,8" Margin="8,8,8,0"
+                Background="{DynamicResource Bg3Brush}"
+                BorderBrush="{DynamicResource StatusWarnBrush}" BorderThickness="2,0,0,0"
+                CornerRadius="2">
+            <Border.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                    <Binding Path="IsRepoActive" />
+                    <Binding Path="HasGitIdentity" Converter="{x:Static BoolConverters.Not}" />
+                </MultiBinding>
+            </Border.IsVisible>
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="Set git user.name and user.email to commit."
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Text1Brush}"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="Configure..."
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource AccentBrush}"
+                        FontSize="11" Padding="6,2" Margin="6,0,0,0"
+                        Click="OnConfigureIdentity_Click"
+                        Cursor="Hand" />
+            </Grid>
+        </Border>
+
+        <!-- ============== COMMIT FORM ============== -->
+        <Border DockPanel.Dock="Top" Padding="10,8,10,8"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1"
+                IsVisible="{Binding IsRepoActive}">
+            <StackPanel Spacing="6">
+                <TextBox Text="{Binding CommitMessage}"
+                         Watermark="Message (Ctrl+Enter to commit)"
+                         FontFamily="{StaticResource MonoFont}" FontSize="11"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         AcceptsReturn="True" Padding="8,6"
+                         MinHeight="60" MaxHeight="120"
+                         TextWrapping="Wrap">
+                    <TextBox.KeyBindings>
+                        <KeyBinding Gesture="Ctrl+Enter" Command="{Binding CommitCommand}" />
+                    </TextBox.KeyBindings>
+                </TextBox>
+                <Button Classes="primary" Command="{Binding CommitCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <icons:Icon Kind="Save" Size="13" Foreground="White" />
+                        <TextBlock Text="Commit" FontSize="12" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- ============== GIT OUTPUT (bottom, collapsible) ============== -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{DynamicResource Bg1Brush}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,1,0,0"
+                IsVisible="{Binding IsGitOutputVisible}">
+            <DockPanel>
+                <Border DockPanel.Dock="Top" Padding="10,4,8,4"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                        <icons:Icon Grid.Column="0" Kind="ChevronDown" Size="12"
+                                    Foreground="{DynamicResource Text2Brush}"
+                                    VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="GIT OUTPUT"
+                                   FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   VerticalAlignment="Center" Margin="6,0,0,0" />
+                        <Button Grid.Column="2" Classes="rowAction"
+                                Command="{Binding ClearGitOutputCommand}"
+                                ToolTip.Tip="Clear">
+                            <icons:Icon Kind="Trash" Size="12" />
+                        </Button>
+                        <Button Grid.Column="3" Classes="rowAction"
+                                Command="{Binding ToggleGitOutputCommand}"
+                                ToolTip.Tip="Hide">
+                            <icons:Icon Kind="Close" Size="11" />
+                        </Button>
+                    </Grid>
+                </Border>
+                <ScrollViewer MaxHeight="160" Padding="10,6">
+                    <SelectableTextBlock Text="{Binding GitOutput}"
+                                         FontFamily="{StaticResource MonoFont}"
+                                         FontSize="10"
+                                         Foreground="{DynamicResource Text1Brush}"
+                                         TextWrapping="Wrap" />
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- ============== STATUS FOOTER ============== -->
+        <Border DockPanel.Dock="Bottom" Padding="10,4,10,4"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,1,0,0"
+                Classes.failed="{Binding LastOpFailed}"
+                IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <Grid ColumnDefinitions="Auto,*">
+                <icons:Icon Grid.Column="0" Kind="Refresh" Size="11"
+                            Foreground="{DynamicResource Text2Brush}"
+                            VerticalAlignment="Center"
+                            IsVisible="{Binding IsBusy}" />
+                <TextBlock Grid.Column="1" Text="{Binding StatusMessage}"
+                           FontSize="11" TextWrapping="Wrap"
+                           Margin="6,0,0,0"
+                           Foreground="{DynamicResource Text1Brush}"
+                           VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <!-- ============== CHANGE SECTIONS ============== -->
+        <ScrollViewer IsVisible="{Binding IsRepoActive}">
+            <StackPanel Spacing="2" Margin="0,4,0,0">
+
+                <!-- MERGE CHANGES -->
+                <StackPanel IsVisible="{Binding MergeChanges.Count}">
+                    <Border Classes="sectionHeader" Background="#22D97706">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Stage All" Command="{Binding StageAllCommand}" />
+                                <MenuItem Header="Refresh" Command="{Binding RefreshCommand}" />
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <icons:Icon Grid.Column="0" Kind="ChevronDown" Size="12"
+                                        Foreground="{DynamicResource Text2Brush}"
+                                        VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                                        Margin="6,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="MERGE CHANGES" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource StatusWarnBrush}" />
+                                <Border Background="{DynamicResource Bg4Brush}" CornerRadius="9"
+                                        Padding="8,0" Height="16" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding MergeChanges.Count}" FontSize="10"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Classes="sectionActions"
+                                        Orientation="Horizontal" Spacing="0">
+                                <Button Classes="rowAction"
+                                        Command="{Binding StageAllCommand}"
+                                        ToolTip.Tip="Stage all">
+                                    <icons:Icon Kind="Plus" Size="14" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding MergeChanges}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:GitChangeRow">
+                                <Border Classes="gitRow"
+                                        Tag="{Binding}"
+                                        PointerPressed="OnRow_PointerPressed">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Open File" Tag="{Binding}" Click="OnOpenFile_Click" />
+                                            <MenuItem Header="Open Changes" Tag="{Binding}" Click="OnOpenDiff_Click" />
+                                            <Separator />
+                                            <MenuItem Header="Accept Current Change" Tag="{Binding}" Click="OnResolveOurs_Click" />
+                                            <MenuItem Header="Accept Incoming Change" Tag="{Binding}" Click="OnResolveTheirs_Click" />
+                                            <Separator />
+                                            <MenuItem Header="Stage" Tag="{Binding}" Click="OnStage_Click" />
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                    <Grid ColumnDefinitions="16,*,Auto">
+                                        <icons:Icon Grid.Column="0" Kind="FileText" Size="14"
+                                                    Foreground="{DynamicResource Text2Brush}"
+                                                    VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Margin="6,0,8,0"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" FontSize="11">
+                                            <Run Text="{Binding FileName}" Foreground="{DynamicResource Text0Brush}" />
+                                            <Run Text=" " />
+                                            <Run Text="{Binding Directory}" Foreground="{DynamicResource Text2Brush}" />
+                                        </TextBlock>
+                                        <Panel Grid.Column="2" MinWidth="78" Height="20" VerticalAlignment="Center">
+                                            <TextBlock Classes="kindBadge" Text="{Binding KindLabel}"
+                                                       FontSize="10" FontWeight="SemiBold"
+                                                       FontFamily="{StaticResource MonoFont}"
+                                                       Foreground="{DynamicResource StatusErrBrush}"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Right"
+                                                       Margin="0,0,4,0" />
+                                            <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="0"
+                                                        HorizontalAlignment="Right">
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnResolveOurs_Click"
+                                                        ToolTip.Tip="Accept Current">
+                                                    <icons:Icon Kind="Undo" Size="12" />
+                                                </Button>
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnResolveTheirs_Click"
+                                                        ToolTip.Tip="Accept Incoming">
+                                                    <icons:Icon Kind="Discard" Size="12" />
+                                                </Button>
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnStage_Click"
+                                                        ToolTip.Tip="Stage">
+                                                    <icons:Icon Kind="Plus" Size="13" />
+                                                </Button>
+                                            </StackPanel>
+                                        </Panel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- STAGED CHANGES -->
+                <StackPanel IsVisible="{Binding StagedChanges.Count}">
+                    <Border Classes="sectionHeader">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Unstage All" Command="{Binding UnstageAllCommand}" />
+                                <MenuItem Header="Commit" Command="{Binding CommitCommand}" />
+                                <MenuItem Header="Amend Last Commit" Command="{Binding CommitAmendCommand}" />
+                                <Separator />
+                                <MenuItem Header="Stash..." Click="OnStash_Click" />
+                                <MenuItem Header="Refresh" Command="{Binding RefreshCommand}" />
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <icons:Icon Grid.Column="0" Kind="ChevronDown" Size="12"
+                                        Foreground="{DynamicResource Text2Brush}"
+                                        VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                                        Margin="6,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="STAGED CHANGES" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text2Brush}" />
+                                <Border Background="{DynamicResource Bg4Brush}" CornerRadius="9"
+                                        Padding="8,0" Height="16" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding StagedChanges.Count}" FontSize="10"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Classes="sectionActions"
+                                        Orientation="Horizontal" Spacing="0">
+                                <Button Classes="rowAction"
+                                        Command="{Binding UnstageAllCommand}"
+                                        ToolTip.Tip="Unstage all">
+                                    <icons:Icon Kind="Minus" Size="14" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding StagedChanges}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:GitChangeRow">
+                                <Border Classes="gitRow"
+                                        Tag="{Binding}"
+                                        PointerPressed="OnRow_PointerPressed">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Open File" Tag="{Binding}" Click="OnOpenFile_Click" />
+                                            <MenuItem Header="Open Changes" Tag="{Binding}" Click="OnOpenDiff_Click" />
+                                            <Separator />
+                                            <MenuItem Header="Unstage" Tag="{Binding}" Click="OnUnstage_Click" />
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                    <Grid ColumnDefinitions="16,*,Auto">
+                                        <icons:Icon Grid.Column="0" Kind="FileText" Size="14"
+                                                    Foreground="{DynamicResource Text2Brush}"
+                                                    VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Margin="6,0,8,0"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" FontSize="11">
+                                            <Run Text="{Binding FileName}" Foreground="{DynamicResource Text0Brush}" />
+                                            <Run Text=" " />
+                                            <Run Text="{Binding Directory}" Foreground="{DynamicResource Text2Brush}" />
+                                        </TextBlock>
+                                        <Panel Grid.Column="2" MinWidth="56" Height="20" VerticalAlignment="Center">
+                                            <TextBlock Classes="kindBadge" Text="{Binding KindLabel}"
+                                                       FontSize="10" FontWeight="SemiBold"
+                                                       FontFamily="{StaticResource MonoFont}"
+                                                       Foreground="{DynamicResource StatusOkBrush}"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Right"
+                                                       Margin="0,0,4,0" />
+                                            <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="0"
+                                                        HorizontalAlignment="Right">
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnOpenDiff_Click"
+                                                        ToolTip.Tip="Open changes">
+                                                    <icons:Icon Kind="FileText" Size="12" />
+                                                </Button>
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnUnstage_Click"
+                                                        ToolTip.Tip="Unstage">
+                                                    <icons:Icon Kind="Minus" Size="13" />
+                                                </Button>
+                                            </StackPanel>
+                                        </Panel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- STASHES -->
+                <StackPanel IsVisible="{Binding Stashes.Count}">
+                    <Border Classes="sectionHeader">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Stash Current Changes..." Click="OnStash_Click" />
+                                <MenuItem Header="Pop Latest" Command="{Binding StashPopCommand}" />
+                                <Separator />
+                                <MenuItem Header="Refresh" Command="{Binding RefreshCommand}" />
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <icons:Icon Grid.Column="0" Kind="ChevronDown" Size="12"
+                                        Foreground="{DynamicResource Text2Brush}"
+                                        VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                                        Margin="6,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="STASHES" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text2Brush}" />
+                                <Border Background="{DynamicResource Bg4Brush}" CornerRadius="9"
+                                        Padding="8,0" Height="16" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Stashes.Count}" FontSize="10"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Classes="sectionActions"
+                                        Orientation="Horizontal" Spacing="0">
+                                <Button Classes="rowAction"
+                                        Click="OnStash_Click"
+                                        ToolTip.Tip="Stash current changes...">
+                                    <icons:Icon Kind="Plus" Size="13" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding Stashes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:GitStashRow">
+                                <Border Classes="gitRow"
+                                        Tag="{Binding}"
+                                        ToolTip.Tip="{Binding Message}">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Apply (keep stash)" Tag="{Binding}" Click="OnStashApply_Click" />
+                                            <MenuItem Header="Pop (apply and remove)" Tag="{Binding}" Click="OnStashPop_Click" />
+                                            <Separator />
+                                            <MenuItem Header="Drop" Tag="{Binding}" Click="OnStashDrop_Click" />
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                    <Grid ColumnDefinitions="16,*,Auto">
+                                        <icons:Icon Grid.Column="0" Kind="Stash" Size="14"
+                                                    Foreground="{DynamicResource Text2Brush}"
+                                                    VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Margin="6,0,8,0"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" FontSize="11">
+                                            <Run Text="{Binding ShortSha}" Foreground="{DynamicResource Text2Brush}" FontFamily="{StaticResource MonoFont}" />
+                                            <Run Text=" " />
+                                            <Run Text="{Binding Message}" Foreground="{DynamicResource Text0Brush}" />
+                                        </TextBlock>
+                                        <Panel Grid.Column="2" MinWidth="74" Height="20" VerticalAlignment="Center">
+                                            <TextBlock Classes="kindBadge" Text="{Binding When}"
+                                                       FontSize="10"
+                                                       Foreground="{DynamicResource Text3Brush}"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Right"
+                                                       Margin="0,0,4,0" />
+                                            <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="0"
+                                                        HorizontalAlignment="Right">
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnStashApply_Click"
+                                                        ToolTip.Tip="Apply">
+                                                    <icons:Icon Kind="Plus" Size="12" />
+                                                </Button>
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnStashPop_Click"
+                                                        ToolTip.Tip="Pop">
+                                                    <icons:Icon Kind="Upload" Size="12" />
+                                                </Button>
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnStashDrop_Click"
+                                                        ToolTip.Tip="Drop">
+                                                    <icons:Icon Kind="Trash" Size="12"
+                                                                Foreground="{DynamicResource StatusErrBrush}" />
+                                                </Button>
+                                            </StackPanel>
+                                        </Panel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- CHANGES (unstaged + untracked, VSCode-style) -->
+                <StackPanel>
+                    <StackPanel.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                            <Binding Path="UnstagedChanges.Count" />
+                            <Binding Path="UntrackedChanges.Count" />
+                        </MultiBinding>
+                    </StackPanel.IsVisible>
+                    <Border Classes="sectionHeader">
+                        <Border.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Stage All" Command="{Binding StageAllCommand}" />
+                                <MenuItem Header="Discard All Changes" Click="OnDiscardAll_Click" />
+                                <Separator />
+                                <MenuItem Header="Stash..." Click="OnStash_Click" />
+                                <MenuItem Header="Pop Latest Stash" Command="{Binding StashPopCommand}" />
+                                <Separator />
+                                <MenuItem Header="Refresh" Command="{Binding RefreshCommand}" />
+                            </ContextMenu>
+                        </Border.ContextMenu>
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <icons:Icon Grid.Column="0" Kind="ChevronDown" Size="12"
+                                        Foreground="{DynamicResource Text2Brush}"
+                                        VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                                        Margin="6,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="CHANGES" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text2Brush}" />
+                                <Border Background="{DynamicResource Bg4Brush}" CornerRadius="9"
+                                        Padding="8,0" Height="16" VerticalAlignment="Center">
+                                    <TextBlock FontSize="10"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               VerticalAlignment="Center"
+                                               Text="{Binding UnstagedChanges.Count}" />
+                                </Border>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Classes="sectionActions"
+                                        Orientation="Horizontal" Spacing="0">
+                                <Button Classes="rowAction"
+                                        Click="OnDiscardAll_Click"
+                                        ToolTip.Tip="Discard all changes">
+                                    <icons:Icon Kind="Discard" Size="13"
+                                                Foreground="{DynamicResource StatusErrBrush}" />
+                                </Button>
+                                <Button Classes="rowAction"
+                                        Command="{Binding StageAllCommand}"
+                                        ToolTip.Tip="Stage all changes">
+                                    <icons:Icon Kind="Plus" Size="14" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <ItemsControl ItemsSource="{Binding UnstagedChanges}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:GitChangeRow">
+                                <Border Classes="gitRow"
+                                        Tag="{Binding}"
+                                        PointerPressed="OnRow_PointerPressed">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Open File" Tag="{Binding}" Click="OnOpenFile_Click" />
+                                            <MenuItem Header="Open Changes" Tag="{Binding}" Click="OnOpenDiff_Click" />
+                                            <Separator />
+                                            <MenuItem Header="Stage" Tag="{Binding}" Click="OnStage_Click" />
+                                            <MenuItem Header="Discard Changes" Tag="{Binding}" Click="OnDiscardFile_Click" />
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                    <Grid ColumnDefinitions="16,*,Auto">
+                                        <icons:Icon Grid.Column="0" Kind="FileText" Size="14"
+                                                    Foreground="{DynamicResource Text2Brush}"
+                                                    VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Margin="6,0,8,0"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" FontSize="11">
+                                            <Run Text="{Binding FileName}" Foreground="{DynamicResource Text0Brush}" />
+                                            <Run Text=" " />
+                                            <Run Text="{Binding Directory}" Foreground="{DynamicResource Text2Brush}" />
+                                        </TextBlock>
+                                        <Panel Grid.Column="2" MinWidth="78" Height="20" VerticalAlignment="Center">
+                                            <TextBlock Classes="kindBadge" Text="{Binding KindLabel}"
+                                                       FontSize="10" FontWeight="SemiBold"
+                                                       FontFamily="{StaticResource MonoFont}"
+                                                       Foreground="{DynamicResource AccentBrush}"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Right"
+                                                       Margin="0,0,4,0" />
+                                            <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="0"
+                                                        HorizontalAlignment="Right">
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnOpenDiff_Click"
+                                                        ToolTip.Tip="Open changes">
+                                                    <icons:Icon Kind="FileText" Size="12" />
+                                                </Button>
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnDiscardFile_Click"
+                                                        ToolTip.Tip="Discard changes">
+                                                    <icons:Icon Kind="Discard" Size="12"
+                                                                Foreground="{DynamicResource StatusErrBrush}" />
+                                                </Button>
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnStage_Click"
+                                                        ToolTip.Tip="Stage">
+                                                    <icons:Icon Kind="Plus" Size="13" />
+                                                </Button>
+                                            </StackPanel>
+                                        </Panel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ItemsControl ItemsSource="{Binding UntrackedChanges}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:GitChangeRow">
+                                <Border Classes="gitRow"
+                                        Tag="{Binding}"
+                                        PointerPressed="OnRow_PointerPressed">
+                                    <Border.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Open File" Tag="{Binding}" Click="OnOpenFile_Click" />
+                                            <Separator />
+                                            <MenuItem Header="Stage" Tag="{Binding}" Click="OnStage_Click" />
+                                            <MenuItem Header="Add to .gitignore" Tag="{Binding}" Click="OnAddToGitignore_Click" />
+                                            <Separator />
+                                            <MenuItem Header="Delete (move to recycle bin)" Tag="{Binding}" Click="OnDiscardFile_Click" />
+                                        </ContextMenu>
+                                    </Border.ContextMenu>
+                                    <Grid ColumnDefinitions="16,*,Auto">
+                                        <icons:Icon Grid.Column="0" Kind="FileText" Size="14"
+                                                    Foreground="{DynamicResource Text2Brush}"
+                                                    VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Margin="6,0,8,0"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" FontSize="11">
+                                            <Run Text="{Binding FileName}" Foreground="{DynamicResource Text1Brush}" />
+                                            <Run Text=" " />
+                                            <Run Text="{Binding Directory}" Foreground="{DynamicResource Text2Brush}" />
+                                        </TextBlock>
+                                        <Panel Grid.Column="2" MinWidth="56" Height="20" VerticalAlignment="Center">
+                                            <TextBlock Classes="kindBadge" Text="U"
+                                                       FontSize="10" FontWeight="SemiBold"
+                                                       FontFamily="{StaticResource MonoFont}"
+                                                       Foreground="{DynamicResource Text3Brush}"
+                                                       VerticalAlignment="Center"
+                                                       HorizontalAlignment="Right"
+                                                       Margin="0,0,4,0" />
+                                            <StackPanel Classes="rowActions" Orientation="Horizontal" Spacing="0"
+                                                        HorizontalAlignment="Right">
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnDiscardFile_Click"
+                                                        ToolTip.Tip="Delete file">
+                                                    <icons:Icon Kind="Trash" Size="12"
+                                                                Foreground="{DynamicResource StatusErrBrush}" />
+                                                </Button>
+                                                <Button Classes="rowAction" Tag="{Binding}"
+                                                        Click="OnStage_Click"
+                                                        ToolTip.Tip="Stage">
+                                                    <icons:Icon Kind="Plus" Size="13" />
+                                                </Button>
+                                            </StackPanel>
+                                        </Panel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

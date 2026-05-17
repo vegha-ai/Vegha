@@ -1,0 +1,235 @@
+name: Release
+
+# Triggered manually or by pushing a v* tag. Builds Velopack installers for
+# Windows, macOS, and Linux and uploads them as workflow artifacts.
+#
+# Optional code signing & notarization:
+#   - Windows: provide WIN_SIGN_PFX_BASE64 (a base64-encoded .pfx) and
+#     WIN_SIGN_PFX_PASSWORD secrets. The workflow runs signtool against the
+#     packaged .exe + setup.exe before upload.
+#   - macOS:   provide MAC_DEVELOPER_ID_BASE64 (a base64-encoded .p12),
+#     MAC_DEVELOPER_ID_PASSWORD, MAC_NOTARY_APPLE_ID, MAC_NOTARY_TEAM_ID, and
+#     MAC_NOTARY_PASSWORD (app-specific) secrets. The workflow imports the
+#     identity into a temp keychain, codesigns the .app, submits the .pkg for
+#     notarization via notarytool, and staples the ticket.
+# When the secrets are absent, the corresponding step is skipped — local
+# signing remains an option and the workflow still produces unsigned bits.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 0.1.0)'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  package:
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            artifact-suffix: windows-x64
+          - os: windows-latest
+            rid: win-arm64
+            artifact-suffix: windows-arm64
+          - os: macos-13
+            rid: osx-x64
+            artifact-suffix: macos-x64
+          - os: macos-14
+            rid: osx-arm64
+            artifact-suffix: macos-arm64
+          - os: ubuntu-latest
+            rid: linux-x64
+            artifact-suffix: linux-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk
+
+      - name: Build Velopack installer
+        shell: pwsh
+        run: |
+          ./eng/Pack-Installer.ps1 `
+            -Runtime ${{ matrix.rid }} `
+            -Version ${{ steps.ver.outputs.version }}
+
+      # ============================================================
+      # Windows: Authenticode-sign the published exe + Velopack setup.
+      # Only runs when the WIN_SIGN_PFX_BASE64 secret is set.
+      # ============================================================
+      - name: Authenticode sign (Windows)
+        if: matrix.os == 'windows-latest' && env.WIN_SIGN_PFX_BASE64 != ''
+        env:
+          WIN_SIGN_PFX_BASE64: ${{ secrets.WIN_SIGN_PFX_BASE64 }}
+          WIN_SIGN_PFX_PASSWORD: ${{ secrets.WIN_SIGN_PFX_PASSWORD }}
+        shell: pwsh
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WIN_SIGN_PFX_BASE64))
+          $signtool = "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.22000.0\x64\signtool.exe"
+          if (-not (Test-Path $signtool)) {
+            $signtool = (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe `
+              | Where-Object { $_.FullName -like "*\x64\signtool.exe" } `
+              | Select-Object -First 1).FullName
+          }
+          $files = Get-ChildItem releases/${{ matrix.rid }} -Recurse -Include "*.exe","*.dll" -ErrorAction SilentlyContinue
+          foreach ($f in $files) {
+            & $signtool sign /f $pfxPath /p $env:WIN_SIGN_PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 $f.FullName
+          }
+          Remove-Item $pfxPath -Force
+
+      # ============================================================
+      # macOS: codesign + notarize via notarytool, staple ticket.
+      # Only runs when MAC_DEVELOPER_ID_BASE64 is set.
+      # ============================================================
+      - name: Import signing identity (macOS)
+        if: startsWith(matrix.os, 'macos-') && env.MAC_DEVELOPER_ID_BASE64 != ''
+        env:
+          MAC_DEVELOPER_ID_BASE64: ${{ secrets.MAC_DEVELOPER_ID_BASE64 }}
+          MAC_DEVELOPER_ID_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASS="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 7200 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          P12="$RUNNER_TEMP/codesign.p12"
+          echo "$MAC_DEVELOPER_ID_BASE64" | base64 --decode > "$P12"
+          security import "$P12" -k "$KEYCHAIN_PATH" -P "$MAC_DEVELOPER_ID_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          rm "$P12"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
+
+      - name: Codesign + notarize (macOS)
+        if: startsWith(matrix.os, 'macos-') && env.MAC_DEVELOPER_ID_BASE64 != ''
+        env:
+          MAC_DEVELOPER_ID_BASE64: ${{ secrets.MAC_DEVELOPER_ID_BASE64 }}
+          MAC_NOTARY_APPLE_ID: ${{ secrets.MAC_NOTARY_APPLE_ID }}
+          MAC_NOTARY_TEAM_ID: ${{ secrets.MAC_NOTARY_TEAM_ID }}
+          MAC_NOTARY_PASSWORD: ${{ secrets.MAC_NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep 'Developer ID Application' | head -n1 | awk -F'"' '{print $2}')"
+          if [ -z "$IDENTITY" ]; then
+            echo "::warning::No Developer ID Application identity found; skipping codesign."
+            exit 0
+          fi
+          for app in releases/${{ matrix.rid }}/*.app; do
+            [ -e "$app" ] || continue
+            codesign --deep --force --options runtime --timestamp --sign "$IDENTITY" "$app"
+          done
+          for pkg in releases/${{ matrix.rid }}/*.pkg releases/${{ matrix.rid }}/*.dmg; do
+            [ -e "$pkg" ] || continue
+            xcrun notarytool submit "$pkg" \
+              --apple-id "$MAC_NOTARY_APPLE_ID" \
+              --team-id "$MAC_NOTARY_TEAM_ID" \
+              --password "$MAC_NOTARY_PASSWORD" \
+              --wait
+            xcrun stapler staple "$pkg" || true
+          done
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vegha-${{ steps.ver.outputs.version }}-${{ matrix.artifact-suffix }}
+          path: releases/${{ matrix.rid }}/*
+          if-no-files-found: error
+
+  # ============================================================
+  # Collect every platform's installer and publish a GitHub
+  # Release with STABLE asset names. The website's download
+  # buttons point at:
+  #   releases/latest/download/Vegha-<rid>-Setup.exe   (etc.)
+  # so the names below must stay in sync with src/data/downloads.ts
+  # in the website repo.
+  # ============================================================
+  publish:
+    name: publish github release
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download all installer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage release assets with stable names
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p release
+
+          # stage <glob> <stable-name>: copy the single matching installer
+          # to release/<stable-name>, failing loudly if nothing matches.
+          stage() {
+            local matches=( $1 )
+            if [ ${#matches[@]} -eq 0 ]; then
+              echo "::error::No installer matched '$1' — did the package job produce it?"
+              exit 1
+            fi
+            cp "${matches[0]}" "release/$2"
+            echo "  staged $2  <-  ${matches[0]}"
+          }
+
+          stage "artifacts/vegha-*-windows-x64/*Setup.exe"   "Vegha-win-x64-Setup.exe"
+          stage "artifacts/vegha-*-windows-arm64/*Setup.exe" "Vegha-win-arm64-Setup.exe"
+          stage "artifacts/vegha-*-macos-x64/"*.pkg          "Vegha-osx-x64.pkg"
+          stage "artifacts/vegha-*-macos-arm64/"*.pkg        "Vegha-osx-arm64.pkg"
+          stage "artifacts/vegha-*-linux-x64/"*.AppImage     "Vegha-linux-x64.AppImage"
+
+          ( cd release && sha256sum * > SHA256SUMS.txt )
+          echo "Release assets:"
+          ls -la release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Vegha v${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release/*

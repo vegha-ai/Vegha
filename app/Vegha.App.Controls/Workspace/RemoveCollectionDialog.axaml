@@ -1,0 +1,82 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:icons="using:Vegha.App.Controls.Icons"
+        mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="320"
+        x:Class="Vegha.App.Controls.Workspace.RemoveCollectionDialog"
+        Title="Remove Collection"
+        Width="560" Height="340"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        SystemDecorations="BorderOnly">
+    <DockPanel Margin="0">
+        <!-- Title bar with warning icon + title + X close -->
+        <Border DockPanel.Dock="Top" Padding="18,14"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <!-- Warning glyph (orange circle with exclamation). Inline Path so the dialog
+                     doesn't depend on the existing icon library having a "warning" entry. -->
+                <Border Grid.Column="0" Width="22" Height="22" CornerRadius="11"
+                        Background="#FB923C" VerticalAlignment="Center">
+                    <TextBlock Text="!" Foreground="White" FontWeight="Bold" FontSize="14"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Grid.Column="1" Text="Remove Collection"
+                           FontWeight="SemiBold" FontSize="15"
+                           Foreground="{DynamicResource Text0Brush}"
+                           Margin="10,0,0,0" VerticalAlignment="Center" />
+                <Button Grid.Column="2" Click="OnCancel_Click"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource Text2Brush}"
+                        Width="28" Height="28" Padding="0"
+                        Cursor="Hand"
+                        ToolTip.Tip="Close">
+                    <icons:Icon Kind="Close" Size="14" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Footer with Cancel / Remove buttons -->
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto" Margin="20,12,20,18">
+            <Button Grid.Column="1" Content="Cancel" Click="OnCancel_Click"
+                    Background="Transparent" Foreground="{DynamicResource Text1Brush}"
+                    BorderThickness="0" Padding="14,6" Margin="0,0,8,0" />
+            <Button Grid.Column="2" Content="Remove" Click="OnRemove_Click"
+                    IsDefault="True"
+                    Background="#FB923C" Foreground="White"
+                    BorderThickness="0" Padding="22,6" CornerRadius="3"
+                    FontWeight="SemiBold" />
+        </Grid>
+
+        <StackPanel Margin="20,16,20,0" Spacing="14">
+            <TextBlock Text="Are you sure you want to close the following collection in Vegha?"
+                       FontSize="13"
+                       Foreground="{DynamicResource Text0Brush}"
+                       TextWrapping="Wrap" />
+
+            <!-- Info card: collection name + path -->
+            <Border Background="{DynamicResource Bg2Brush}"
+                    BorderBrush="{DynamicResource Border1Brush}"
+                    BorderThickness="1" CornerRadius="6"
+                    Padding="14,12">
+                <StackPanel Spacing="6">
+                    <TextBlock Name="NameLabel" FontWeight="SemiBold" FontSize="13"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <TextBlock Name="PathLabel" FontSize="11"
+                               FontFamily="{StaticResource MonoFont}"
+                               Foreground="{DynamicResource Text2Brush}"
+                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock FontSize="11"
+                       Foreground="{DynamicResource Text2Brush}"
+                       TextWrapping="Wrap"
+                       Text="It will still be available in the filesystem at the above location and can be re-opened later." />
+        </StackPanel>
+    </DockPanel>
+</Window>

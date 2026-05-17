@@ -1,0 +1,82 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Vegha.App.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="420"
+        x:Class="Vegha.App.Controls.Workspace.ManageWorkspacesDialog"
+        Title="Manage Workspaces"
+        Width="640" Height="420"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="16">
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                <Button Content="Create…" Click="OnCreate_Click"
+                        Background="{DynamicResource Bg3Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="14,6" CornerRadius="3" />
+                <Button Content="Open…" Click="OnOpen_Click"
+                        Background="{DynamicResource Bg3Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="14,6" CornerRadius="3" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Close" Click="OnClose_Click"
+                    IsDefault="True"
+                    Background="{DynamicResource AccentBrush}" Foreground="White"
+                    BorderThickness="0" Padding="18,6" CornerRadius="3"
+                    FontWeight="SemiBold" />
+        </Grid>
+
+        <ListBox Name="WorkspaceList"
+                 Background="{DynamicResource Bg2Brush}"
+                 BorderBrush="{DynamicResource Border1Brush}"
+                 BorderThickness="1">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:WorkspaceItemViewModel">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="2,4">
+                        <Border Grid.Column="0" Width="22" Height="22" CornerRadius="4"
+                                Background="#3B82F6" Margin="0,0,10,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Initials}" FontSize="10" FontWeight="Bold"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" />
+                                <Border Background="{DynamicResource Bg3Brush}"
+                                        BorderBrush="{DynamicResource Border1Brush}"
+                                        BorderThickness="1" CornerRadius="3" Padding="5,1"
+                                        IsVisible="{Binding IsDefault}">
+                                    <TextBlock Text="DEFAULT" FontSize="9" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text2Brush}" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="{Binding FolderPath}" FontSize="10"
+                                       FontFamily="{StaticResource MonoFont}"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <Button Grid.Column="2" Content="Edit" Click="OnEdit_Click"
+                                Tag="{Binding}"
+                                Background="Transparent" Foreground="{DynamicResource AccentBrush}"
+                                BorderThickness="0" Padding="8,4" FontSize="11"
+                                ToolTip.Tip="Open workspace editor (Overview + Environments)" />
+                        <Button Grid.Column="3" Content="Activate" Click="OnActivate_Click"
+                                Tag="{Binding}"
+                                Background="Transparent" Foreground="{DynamicResource AccentBrush}"
+                                BorderThickness="0" Padding="8,4" FontSize="11" />
+                        <Button Grid.Column="4" Content="Remove" Click="OnRemove_Click"
+                                Tag="{Binding}"
+                                IsEnabled="{Binding !IsDefault}"
+                                Background="Transparent" Foreground="{DynamicResource Text2Brush}"
+                                BorderThickness="0" Padding="8,4" FontSize="11" />
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</Window>

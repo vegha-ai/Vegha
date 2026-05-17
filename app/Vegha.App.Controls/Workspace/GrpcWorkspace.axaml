@@ -1,0 +1,172 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="Vegha.App.Controls.Workspace.GrpcWorkspace"
+             x:DataType="vm:GrpcWorkspaceViewModel">
+    <DockPanel Background="{DynamicResource Bg2Brush}">
+        <!-- Address bar + reflection -->
+        <Border DockPanel.Dock="Top" Padding="12,10"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto" >
+                <TextBlock Grid.Column="0" Text="gRPC"
+                           FontFamily="{StaticResource MonoFont}"
+                           FontSize="11" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text2Brush}"
+                           VerticalAlignment="Center"
+                           Margin="0,0,10,0" />
+                <TextBox Grid.Column="1"
+                         Text="{Binding Address}"
+                         Watermark="https://grpc.example.com:443"
+                         FontFamily="{StaticResource MonoFont}" FontSize="12"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         Padding="8,6" CornerRadius="3" />
+                <Button Grid.Column="2"
+                        Command="{Binding ListServicesCommand}"
+                        Content="Reflect"
+                        Background="{DynamicResource Bg3Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="14,6" Margin="8,0,0,0" />
+            </Grid>
+        </Border>
+
+        <!-- Body: services list, method+payload, response -->
+        <Grid ColumnDefinitions="220,*,*">
+            <!-- Services -->
+            <Border Grid.Column="0"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="0,0,1,0">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Services"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text2Brush}"
+                               Padding="10,8" />
+                    <ListBox ItemsSource="{Binding Services}"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}"
+                                           FontFamily="{StaticResource MonoFont}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource Text0Brush}" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- Method + payload -->
+            <DockPanel Grid.Column="1" Margin="12,12,12,12">
+                <StackPanel DockPanel.Dock="Top" Spacing="6">
+                    <TextBlock Text="Method"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text2Brush}" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding Method}"
+                                 Watermark="/package.Service/Method"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                        <Button Grid.Column="1"
+                                Command="{Binding LoadMethodSchemaCommand}"
+                                Content="Load schema"
+                                Background="{DynamicResource Bg3Brush}"
+                                Foreground="{DynamicResource Text0Brush}"
+                                Padding="10,6" Margin="6,0,0,0"
+                                ToolTip.Tip="Resolve the input/output message types via reflection and seed the JSON skeleton" />
+                    </Grid>
+                    <TextBlock FontSize="10"
+                               Foreground="{DynamicResource Text3Brush}"
+                               IsVisible="{Binding SelectedInputType, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <Run Text="in:" />
+                        <Run Text="{Binding SelectedInputType}" />
+                        <Run Text=" · out:" />
+                        <Run Text="{Binding SelectedOutputType}" />
+                    </TextBlock>
+                    <TextBlock Text="Request body (JSON when schema loaded; otherwise hex)"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text2Brush}" />
+                </StackPanel>
+                <Button DockPanel.Dock="Bottom"
+                        Command="{Binding SendCommand}"
+                        Content="Send"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="White"
+                        Padding="14,8" Margin="0,8,0,0"
+                        HorizontalAlignment="Stretch" />
+                <Grid>
+                    <TextBox Text="{Binding RequestJson}"
+                             IsVisible="{Binding SelectedInputType, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource BgInputBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="8,6" CornerRadius="3" />
+                    <TextBox Text="{Binding RequestPayloadHex}"
+                             IsVisible="{Binding SelectedInputType, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource BgInputBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="8,6" CornerRadius="3" />
+                </Grid>
+            </DockPanel>
+
+            <!-- Response -->
+            <DockPanel Grid.Column="2" Margin="0,12,12,12">
+                <StackPanel DockPanel.Dock="Top" Spacing="6">
+                    <TextBlock Text="Response"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text2Brush}" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding ResponseStatus}"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text0Brush}" />
+                        <TextBlock Grid.Column="1">
+                            <Run Text="{Binding ResponseElapsedMs}" />
+                            <Run Text=" ms" />
+                        </TextBlock>
+                    </Grid>
+                </StackPanel>
+                <Border DockPanel.Dock="Bottom"
+                        Background="{DynamicResource Bg3Brush}"
+                        Padding="10,4"
+                        IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <TextBlock Text="{Binding StatusMessage}"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text2Brush}" />
+                </Border>
+                <ScrollViewer>
+                    <Grid>
+                        <SelectableTextBlock Text="{Binding ResponseJson}"
+                                             IsVisible="{Binding ResponseJson, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                             FontFamily="{StaticResource MonoFont}"
+                                             FontSize="11"
+                                             TextWrapping="Wrap"
+                                             Foreground="{DynamicResource Text0Brush}" />
+                        <SelectableTextBlock Text="{Binding ResponseBytes}"
+                                             IsVisible="{Binding ResponseJson, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                             FontFamily="{StaticResource MonoFont}"
+                                             FontSize="10"
+                                             TextWrapping="Wrap"
+                                             Foreground="{DynamicResource Text0Brush}" />
+                    </Grid>
+                </ScrollViewer>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</UserControl>

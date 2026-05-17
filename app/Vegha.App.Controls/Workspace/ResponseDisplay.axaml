@@ -1,0 +1,469 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="360"
+             x:Class="Vegha.App.Controls.Workspace.ResponseDisplay"
+             x:DataType="vm:RequestEditorViewModel">
+    <Border Background="{DynamicResource Bg2Brush}">
+        <DockPanel>
+            <!-- Status line -->
+            <Border DockPanel.Dock="Top" Padding="12,8" Height="36"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="0,0,0,1">
+                <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+                    <TextBlock Grid.Column="0" Text="RESPONSE"
+                               FontSize="10" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text2Brush}"
+                               Margin="0,0,14,0"
+                               VerticalAlignment="Center" />
+
+                    <TextBlock Grid.Column="1"
+                               Text="(no response yet — press Send)"
+                               IsVisible="{Binding !HasResponse}"
+                               FontSize="11" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               VerticalAlignment="Center" />
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                                Margin="0,0,14,0"
+                                IsVisible="{Binding HasResponse}"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="Status:" Foreground="{DynamicResource Text2Brush}" FontSize="11" />
+                        <TextBlock FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{DynamicResource StatusOkBrush}">
+                            <Run Text="{Binding ResponseStatusCode}" />
+                            <Run Text=" " />
+                            <Run Text="{Binding ResponseStatusText}" />
+                        </TextBlock>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
+                                Margin="0,0,14,0"
+                                IsVisible="{Binding HasResponse}"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="Time:" Foreground="{DynamicResource Text2Brush}" FontSize="11" />
+                        <TextBlock FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{DynamicResource Text0Brush}">
+                            <Run Text="{Binding ResponseElapsedMilliseconds}" />
+                            <Run Text=" ms" />
+                        </TextBlock>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6"
+                                IsVisible="{Binding HasResponse}"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="Size:" Foreground="{DynamicResource Text2Brush}" FontSize="11" />
+                        <TextBlock FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{DynamicResource Text0Brush}">
+                            <Run Text="{Binding ResponseBody.Length}" />
+                            <Run Text=" chars" />
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Error banner -->
+            <Border DockPanel.Dock="Top"
+                    IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Background="#26DC2626"
+                    BorderBrush="#80DC2626"
+                    BorderThickness="0,0,0,1"
+                    Padding="12,8">
+                <TextBlock Text="{Binding ErrorMessage}"
+                           Foreground="{DynamicResource StatusErrBrush}"
+                           FontSize="12"
+                           TextWrapping="Wrap" />
+            </Border>
+
+            <!-- Subtabs -->
+            <TabControl Classes="subtabs"
+                        SelectedIndex="{Binding ResponseTabIndex}">
+                <!-- Body — switches between text / image / PDF based on Content-Type.
+                     Uses Grid (not DockPanel) for the body-mode children so the active
+                     editor always fills the cell. With DockPanel, only the LAST child
+                     auto-fills; siblings default to Dock=Left and auto-size to their
+                     content width — which made the ReadOnlyCodeView visibly narrow and
+                     pushed AvaloniaEdit's V-scrollbar inward to the right edge of the
+                     longest line of text (visible as a "scrollbar trailing the text"
+                     for long single-line responses). Same fix as BodyEditor.axaml. -->
+                <TabItem>
+                    <TabItem.Header>
+                        <TextBlock Text="Body" />
+                    </TabItem.Header>
+                    <Grid Background="{DynamicResource CodeBgBrush}"
+                          RowDefinitions="Auto,*">
+                        <!-- Toolbar: filter / format dropdown / Save. Wrap toggle removed (body
+                             already wraps by default). Pretty-XML toggle removed — the Format
+                             dropdown's JSON/XML modes auto-prettify via PrettyByFormat, so a
+                             separate toggle was redundant and inconsistent with the request side. -->
+                        <Border Grid.Row="0" Padding="10,4"
+                                Background="{DynamicResource Bg2Brush}"
+                                BorderBrush="{DynamicResource Border0Brush}"
+                                BorderThickness="0,0,0,1">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
+                                <TextBox Grid.Column="0"
+                                         Text="{Binding JsonPathFilter}"
+                                         IsVisible="{Binding ResponseIsJson}"
+                                         Watermark="JSONPath filter — e.g. $.users[*].email"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="6,3" CornerRadius="3" />
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding ResponseContentType}"
+                                           IsVisible="{Binding !ResponseIsJson}"
+                                           FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                           Foreground="{DynamicResource Text3Brush}"
+                                           VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1"
+                                          ItemsSource="{Binding AvailableResponseFormats}"
+                                          SelectedItem="{Binding ResponseFormat}"
+                                          MinWidth="80" Height="22"
+                                          FontSize="11"
+                                          Margin="6,0,0,0"
+                                          VerticalAlignment="Center"
+                                          ToolTip.Tip="Pick the display format. Auto picks based on Content-Type; Raw shows bytes verbatim." />
+                                <Button Grid.Column="2"
+                                        Name="SaveResponseButton"
+                                        Click="OnSaveResponse_Click"
+                                        IsVisible="{Binding HasResponse}"
+                                        Content="Save…"
+                                        FontSize="10"
+                                        Background="{DynamicResource Bg3Brush}"
+                                        Foreground="{DynamicResource Text0Brush}"
+                                        Padding="10,3" Margin="6,0,0,0"
+                                        ToolTip.Tip="Save the raw response body to a file" />
+                            </Grid>
+                        </Border>
+
+                        <!-- All three body-mode views share Grid.Row=1 — only the one whose
+                             IsVisible binding fires paints. With every child filling the cell,
+                             the active editor takes the full viewport width and AvaloniaEdit's
+                             V-scrollbar sits at the right edge of the viewport, never inside
+                             the content. -->
+
+                        <!-- Text view (default for non-binary) — AvaloniaEdit-based read-only editor
+                             gives line numbers + syntax highlighting + selection. WordWrap is bound
+                             to ResponseWordWrap (default true) so long lines don't cause horizontal
+                             scrolling — which avoids AvaloniaEdit's V-scrollbar drift bug. -->
+                        <ws:ReadOnlyCodeView Grid.Row="1"
+                                             IsVisible="{Binding ResponseIsTextual}"
+                                             Text="{Binding DisplayedBody}"
+                                             SyntaxHighlightingName="{Binding ResponseSyntaxHighlightingName}"
+                                             WordWrap="{Binding ResponseWordWrap}" />
+
+                        <!-- Image preview for image/* responses. -->
+                        <ScrollViewer Grid.Row="1"
+                                      IsVisible="{Binding ResponseIsImage}"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Auto"
+                                      Background="{DynamicResource Bg2Brush}">
+                            <Border Padding="12">
+                                <Image Source="{Binding ResponseBodyBytes, Converter={StaticResource BytesToBitmapConverter}}"
+                                       Stretch="None"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                            </Border>
+                        </ScrollViewer>
+
+                        <!-- PDF preview placeholder; rendered by code-behind once PdfPig is wired (3.1c). -->
+                        <Border Grid.Row="1"
+                                IsVisible="{Binding ResponseIsPdf}"
+                                Padding="14,12"
+                                Background="{DynamicResource Bg2Brush}">
+                            <ContentControl Name="PdfPreviewHost" />
+                        </Border>
+                    </Grid>
+                </TabItem>
+
+                <!-- Cookies — parsed from Set-Cookie headers on this response. -->
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="Cookies" />
+                            <Border Classes="countPill">
+                                <TextBlock Text="{Binding ResponseCookies.Count}"
+                                           FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text1Brush}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <ScrollViewer Background="{DynamicResource Bg2Brush}">
+                        <Grid>
+                            <TextBlock IsVisible="{Binding !ResponseCookies.Count}"
+                                       Text="No Set-Cookie headers in this response."
+                                       Foreground="{DynamicResource Text3Brush}"
+                                       FontSize="11" FontStyle="Italic"
+                                       Padding="14,12" />
+                            <ItemsControl ItemsSource="{Binding ResponseCookies}"
+                                          IsVisible="{Binding !!ResponseCookies.Count}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ResponseCookieRow">
+                                        <Border BorderBrush="{DynamicResource Border0Brush}"
+                                                BorderThickness="0,0,0,1"
+                                                Padding="12,8">
+                                            <StackPanel Spacing="2">
+                                                <Grid ColumnDefinitions="180,*">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding Name}"
+                                                               FontWeight="SemiBold" FontSize="12"
+                                                               Foreground="{DynamicResource Text0Brush}" />
+                                                    <SelectableTextBlock Grid.Column="1"
+                                                                         Text="{Binding Value}"
+                                                                         FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                                         Foreground="{DynamicResource Text0Brush}"
+                                                                         TextWrapping="Wrap" />
+                                                </Grid>
+                                                <Grid ColumnDefinitions="180,*">
+                                                    <TextBlock Grid.Column="0" Text="Domain · Path"
+                                                               FontSize="10"
+                                                               Foreground="{DynamicResource Text2Brush}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                                               Foreground="{DynamicResource Text2Brush}">
+                                                        <Run Text="{Binding Domain}" />
+                                                        <Run Text=" · " />
+                                                        <Run Text="{Binding Path}" />
+                                                    </TextBlock>
+                                                </Grid>
+                                                <Grid ColumnDefinitions="180,*"
+                                                      IsVisible="{Binding FlagsLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                    <TextBlock Grid.Column="0" Text="Flags"
+                                                               FontSize="10"
+                                                               Foreground="{DynamicResource Text2Brush}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding FlagsLabel}"
+                                                               FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                                               Foreground="{DynamicResource Text2Brush}" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- Headers -->
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="Headers" />
+                            <Border Classes="countPill">
+                                <TextBlock Text="{Binding ResponseHeaders.Count}"
+                                           FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text1Brush}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <ScrollViewer Background="{DynamicResource Bg2Brush}">
+                        <ItemsControl ItemsSource="{Binding ResponseHeaders}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:HeaderRow">
+                                    <Border BorderBrush="{DynamicResource Border0Brush}"
+                                            BorderThickness="0,0,0,1"
+                                            Padding="12,6">
+                                        <Grid ColumnDefinitions="240,*">
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding Name}"
+                                                       FontSize="12"
+                                                       Foreground="{DynamicResource Text1Brush}"
+                                                       VerticalAlignment="Top" />
+                                            <SelectableTextBlock Grid.Column="1"
+                                                                 Text="{Binding Value}"
+                                                                 FontFamily="{StaticResource MonoFont}"
+                                                                 FontSize="12"
+                                                                 Foreground="{DynamicResource Text0Brush}"
+                                                                 TextWrapping="Wrap" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- Test Results -->
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="Test Results" />
+                            <Border Classes="countPill">
+                                <TextBlock Text="{Binding TestResults.Count}"
+                                           FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text1Brush}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <ScrollViewer Background="{DynamicResource Bg2Brush}">
+                        <ItemsControl ItemsSource="{Binding TestResults}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TestResultRow">
+                                    <Border BorderBrush="{DynamicResource Border0Brush}"
+                                            BorderThickness="0,0,0,1"
+                                            Padding="12,8">
+                                        <Grid ColumnDefinitions="20,*,Auto">
+                                            <TextBlock Grid.Column="0" FontSize="13" FontWeight="Bold"
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.Text>
+                                                    <MultiBinding StringFormat="{}{0}">
+                                                        <Binding Path="Passed" Converter="{x:Static ObjectConverters.Equal}" ConverterParameter="True" />
+                                                    </MultiBinding>
+                                                </TextBlock.Text>
+                                            </TextBlock>
+                                            <StackPanel Grid.Column="1">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
+                                                               Foreground="{DynamicResource StatusOkBrush}"
+                                                               IsVisible="{Binding Passed}" />
+                                                    <TextBlock Text="✗" FontSize="13" FontWeight="Bold"
+                                                               Foreground="{DynamicResource StatusErrBrush}"
+                                                               IsVisible="{Binding !Passed}" />
+                                                    <TextBlock Text="{Binding Name}"
+                                                               FontSize="12"
+                                                               Foreground="{DynamicResource Text0Brush}"
+                                                               VerticalAlignment="Center" />
+                                                </StackPanel>
+                                                <SelectableTextBlock Text="{Binding FailureMessage}"
+                                                                     FontFamily="{StaticResource MonoFont}"
+                                                                     FontSize="11"
+                                                                     Foreground="{DynamicResource StatusErrBrush}"
+                                                                     Margin="20,2,0,0"
+                                                                     TextWrapping="Wrap"
+                                                                     IsVisible="{Binding !Passed}" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2"
+                                                       FontFamily="{StaticResource MonoFont}"
+                                                       FontSize="10"
+                                                       Foreground="{DynamicResource Text3Brush}"
+                                                       VerticalAlignment="Center">
+                                                <Run Text="{Binding DurationMs, StringFormat={}{0:F1}}" />
+                                                <Run Text=" ms" />
+                                            </TextBlock>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- Timeline -->
+                <TabItem Header="Timeline">
+                    <ScrollViewer Background="{DynamicResource Bg2Brush}">
+                        <Border Padding="14,12">
+                            <StackPanel Spacing="14">
+                                <TextBlock FontSize="12" Foreground="{DynamicResource Text1Brush}">
+                                    <Run Text="Total · " />
+                                    <Run Text="{Binding TimingTotalMs, StringFormat={}{0:F1}}" />
+                                    <Run Text=" ms" />
+                                </TextBlock>
+
+                                <!-- Stacked phase bar -->
+                                <Border BorderBrush="{DynamicResource Border0Brush}" BorderThickness="1" CornerRadius="3"
+                                        Height="22">
+                                    <ItemsControl ItemsSource="{Binding TimelinePhases}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:TimelinePhase">
+                                                <Border Background="{Binding ColorHex, Converter={StaticResource HexToBrushConverter}}"
+                                                        Width="{Binding WidthRatio, Converter={StaticResource RatioToWidthConverter}, ConverterParameter=600}"
+                                                        Height="20"
+                                                        ToolTip.Tip="{Binding Name}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Border>
+
+                                <!-- Per-phase legend rows -->
+                                <ItemsControl ItemsSource="{Binding TimelinePhases}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:TimelinePhase">
+                                            <Grid ColumnDefinitions="14,180,*,Auto" Margin="0,2">
+                                                <Border Grid.Column="0" Width="10" Height="10" CornerRadius="2"
+                                                        Background="{Binding ColorHex, Converter={StaticResource HexToBrushConverter}}"
+                                                        VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                                           Margin="6,0,0,0" FontSize="12"
+                                                           Foreground="{DynamicResource Text1Brush}"
+                                                           VerticalAlignment="Center" />
+                                                <ProgressBar Grid.Column="2"
+                                                             Minimum="0" Maximum="1"
+                                                             Value="{Binding WidthRatio}"
+                                                             Foreground="{Binding ColorHex, Converter={StaticResource HexToBrushConverter}}"
+                                                             Background="{DynamicResource Bg3Brush}"
+                                                             Height="6"
+                                                             VerticalAlignment="Center"
+                                                             Margin="0,0,8,0" />
+                                                <TextBlock Grid.Column="3"
+                                                           FontFamily="{StaticResource MonoFont}"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource Text0Brush}"
+                                                           VerticalAlignment="Center">
+                                                    <Run Text="{Binding DurationMs, StringFormat={}{0:F1}}" />
+                                                    <Run Text=" ms" />
+                                                </TextBlock>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="DNS / TCP / TLS phases are 0 on reused connections (HTTP keep-alive)."
+                                           Foreground="{DynamicResource Text3Brush}"
+                                           FontSize="10" FontStyle="Italic"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- (Sent tab moved into the request pane — it shows the *outgoing* payload,
+                     conceptually a request-side concern, not a response-side one.) -->
+
+                <!-- Raw -->
+                <!--
+                    Nested ScrollViewer pattern so the V-scrollbar stays anchored at the
+                    viewport's right edge, never drifting with horizontal scroll. Outer
+                    ScrollViewer does only vertical scrolling — its V-scrollbar lives in
+                    a fixed Grid column. Inner ScrollViewer does only horizontal scrolling
+                    of the long lines. AllowAutoHide=False keeps the V-scrollbar in a
+                    dedicated column rather than rendering as an overlay over the content,
+                    which avoids the Avalonia 11 overlay-vs-overflow rendering quirk.
+                -->
+                <TabItem Header="Raw">
+                    <ScrollViewer Name="RawOuterScroll"
+                                  Background="{DynamicResource CodeBgBrush}"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  AllowAutoHide="False">
+                        <ScrollViewer Name="RawInnerScroll"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      AllowAutoHide="False">
+                            <SelectableTextBlock Text="{Binding RawResponseText}"
+                                                 FontFamily="{StaticResource MonoFont}"
+                                                 FontSize="12"
+                                                 Foreground="{DynamicResource Text0Brush}"
+                                                 Padding="14,12" />
+                        </ScrollViewer>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </DockPanel>
+    </Border>
+</UserControl>

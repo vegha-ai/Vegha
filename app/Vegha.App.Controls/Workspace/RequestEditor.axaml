@@ -1,0 +1,99 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="48"
+             x:Class="Vegha.App.Controls.Workspace.RequestEditor"
+             x:DataType="vm:RequestEditorViewModel">
+    <Border Background="{DynamicResource Bg2Brush}"
+            BorderBrush="{DynamicResource Border0Brush}"
+            BorderThickness="0,0,0,1"
+            Padding="8">
+        <Grid ColumnDefinitions="100,*,Auto,Auto,Auto">
+            <!-- Method selector -->
+            <ComboBox Grid.Column="0"
+                      ItemsSource="{Binding Methods}"
+                      SelectedItem="{Binding Method}"
+                      Height="32" FontWeight="SemiBold"
+                      FontFamily="{StaticResource MonoFont}"
+                      Background="{DynamicResource Bg3Brush}"
+                      BorderBrush="{DynamicResource Border1Brush}"
+                      Margin="0,0,6,0"
+                      VerticalAlignment="Center"
+                      HorizontalAlignment="Stretch" />
+
+            <!-- URL input — variable-aware editor with hover tooltips and {{ autocomplete -->
+            <ws:VariableAwareTextEditor x:Name="UrlEditor"
+                                        Grid.Column="1"
+                                        Text="{Binding Url, Mode=TwoWay}"
+                                        Watermark="{}{{baseUrl}}/v1/users/{{userId}}"
+                                        SingleLine="True"
+                                        Height="32"
+                                        Margin="0,0,6,0"
+                                        VerticalAlignment="Center" />
+
+            <!-- Send (icon-only) -->
+            <Button Grid.Column="2"
+                    Command="{Binding SendCommand}"
+                    ToolTip.Tip="Send request"
+                    Width="36" Height="32" Padding="0" Margin="0,0,6,0"
+                    Background="{DynamicResource AccentBrush}"
+                    Foreground="White"
+                    BorderThickness="0"
+                    CornerRadius="3"
+                    Cursor="Hand"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    VerticalAlignment="Center">
+                <icons:Icon Kind="Send" Size="16" />
+            </Button>
+
+            <!-- Save (icon-only; dot appears when dirty) -->
+            <Button Grid.Column="3"
+                    Command="{Binding SaveCommand}"
+                    ToolTip.Tip="Save (Ctrl+S)"
+                    Width="36" Height="32" Padding="0"
+                    Background="{DynamicResource Bg3Brush}"
+                    Foreground="{DynamicResource Text0Brush}"
+                    BorderBrush="{DynamicResource Border1Brush}"
+                    BorderThickness="1"
+                    CornerRadius="3"
+                    Cursor="Hand"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    VerticalAlignment="Center">
+                <Grid>
+                    <icons:Icon Kind="Save" Size="16" />
+                    <Ellipse Width="6" Height="6"
+                             Fill="{DynamicResource AccentBrush}"
+                             HorizontalAlignment="Right" VerticalAlignment="Top"
+                             Margin="0,-2,-2,0"
+                             ToolTip.Tip="Unsaved changes"
+                             IsVisible="{Binding IsDirty}" />
+                </Grid>
+            </Button>
+
+            <!-- Codegen panel toggle — moved from the top bar so it sits next to Save.
+                 Raises a bubbling routed event MainWindow picks up. -->
+            <Button Grid.Column="4"
+                    Click="OnToggleCodegen_Click"
+                    ToolTip.Tip="Show / hide code panel"
+                    Width="36" Height="32" Padding="0" Margin="6,0,0,0"
+                    Background="{DynamicResource Bg3Brush}"
+                    Foreground="{DynamicResource Text0Brush}"
+                    BorderBrush="{DynamicResource Border1Brush}"
+                    BorderThickness="1"
+                    CornerRadius="3"
+                    Cursor="Hand"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    VerticalAlignment="Center">
+                <TextBlock Text="&lt;/&gt;" FontFamily="{StaticResource MonoFont}"
+                           FontSize="12" FontWeight="SemiBold" />
+            </Button>
+        </Grid>
+    </Border>
+</UserControl>

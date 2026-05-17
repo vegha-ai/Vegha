@@ -1,0 +1,463 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             xmlns:cmn="using:Vegha.App.Controls.Common"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
+             x:Class="Vegha.App.Controls.Workspace.RequestWorkspace"
+             x:DataType="vm:RequestEditorViewModel">
+    <DockPanel>
+        <!-- URL bar -->
+        <ws:RequestEditor DockPanel.Dock="Top" />
+
+        <!-- Sub-tabs with trailing tools docked to the right of the header strip via the
+             TabControl.Tag slot (re-templated in Styles.axaml). The tools are only visible
+             when Body is the active sub-tab; the Tag content presenter still reserves no
+             extra width when the StackPanel collapses. Uses OverflowTabControl so tabs
+             that don't fit on narrow widths collapse into a "»" dropdown instead of a
+             hidden horizontal scroll — the active tab is always promoted into view. -->
+        <cmn:OverflowTabControl Classes="overflowtabs"
+                                SelectedIndex="{Binding RequestTabIndex}">
+            <!-- Params — superscript count next to label (visible only when >0).
+                 Count uses a smaller font + negative top margin to sit above the baseline
+                 like a true typographic superscript, and the accent color makes it pop. -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                        <TextBlock Text="Params" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Params.Count}"
+                                   FontSize="9" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   VerticalAlignment="Top" Margin="1,-1,0,0"
+                                   IsVisible="{Binding Params.Count}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ws:KvEditor ItemsSource="{Binding Params}"
+                             Variables="{Binding ResolvedVariablesSnapshot}"
+                             AddCommand="{Binding AddParamCommand}"
+                             RemoveCommand="{Binding RemoveParamCommand}" />
+            </TabItem>
+
+            <!-- Authorization — header carries a small data-dot when an auth type is configured. -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="Authorization" />
+                        <Ellipse Width="6" Height="6"
+                                 Fill="{DynamicResource AccentBrush}"
+                                 VerticalAlignment="Top" Margin="0,2,0,0"
+                                 IsVisible="{Binding AuthHasData}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ws:AuthEditor />
+            </TabItem>
+
+            <!-- Headers — superscript count -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                        <TextBlock Text="Headers" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Headers.Count}"
+                                   FontSize="9" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   VerticalAlignment="Top" Margin="1,-1,0,0"
+                                   IsVisible="{Binding Headers.Count}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ws:KvEditor ItemsSource="{Binding Headers}"
+                             Variables="{Binding ResolvedVariablesSnapshot}"
+                             AddCommand="{Binding AddHeaderCommand}"
+                             RemoveCommand="{Binding RemoveHeaderCommand}"
+                             Mode="headers" />
+            </TabItem>
+
+            <!-- Vars — request-scoped variables. Two stacked sections (Pre Request +
+                 Post Response) matching Bruno's `vars:pre-request` + `vars:post-response`
+                 blocks. Same KvEditor template as Params / Headers. -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                        <TextBlock Text="Vars" VerticalAlignment="Center" />
+                        <!-- Single total count (Pre + Post combined) so the user sees one
+                             number at a glance. -->
+                        <TextBlock Text="{Binding VarsTotalCount}"
+                                   FontSize="9" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   VerticalAlignment="Top" Margin="1,-1,0,0"
+                                   IsVisible="{Binding VarsTotalCount}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <Grid RowDefinitions="Auto,*,Auto,*">
+                    <!-- Pre Request section -->
+                    <Border Grid.Row="0" Padding="12,8,12,4"
+                            BorderBrush="{DynamicResource Border0Brush}"
+                            BorderThickness="0,0,0,1">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="PRE REQUEST" Classes="sectionHeaderMinor" />
+                            <TextBlock Text="Static key/value pairs merged into {{var}} interpolation before the request is sent."
+                                       Classes="helpText" />
+                        </StackPanel>
+                    </Border>
+                    <ws:KvEditor Grid.Row="1"
+                                 ItemsSource="{Binding Variables}"
+                                 Variables="{Binding ResolvedVariablesSnapshot}"
+                                 AddCommand="{Binding AddVariableCommand}"
+                                 RemoveCommand="{Binding RemoveVariableCommand}" />
+
+                    <!-- Post Response section -->
+                    <Border Grid.Row="2" Padding="12,8,12,4"
+                            BorderBrush="{DynamicResource Border0Brush}"
+                            BorderThickness="0,1,0,1">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="POST RESPONSE" Classes="sectionHeaderMinor" />
+                            <TextBlock Text="Variables captured after the response. Value may be a literal or a JavaScript expression evaluated against res / req / bru."
+                                       Classes="helpText" />
+                        </StackPanel>
+                    </Border>
+                    <ws:KvEditor Grid.Row="3"
+                                 ItemsSource="{Binding PostResponseVariables}"
+                                 Variables="{Binding ResolvedVariablesSnapshot}"
+                                 AddCommand="{Binding AddPostResponseVariableCommand}"
+                                 RemoveCommand="{Binding RemovePostResponseVariableCommand}" />
+                </Grid>
+            </TabItem>
+
+            <!-- Body — data-dot when body type isn't "none". -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="Body" />
+                        <Ellipse Width="6" Height="6"
+                                 Fill="{DynamicResource AccentBrush}"
+                                 VerticalAlignment="Top" Margin="0,2,0,0"
+                                 IsVisible="{Binding BodyHasData}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <ws:BodyEditor />
+            </TabItem>
+
+            <!-- Pre-request -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="Pre-request" />
+                        <Ellipse Width="6" Height="6"
+                                 Fill="{DynamicResource AccentBrush}"
+                                 VerticalAlignment="Top" Margin="0,2,0,0"
+                                 IsVisible="{Binding PreRequestScriptHasData}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <DockPanel Background="{DynamicResource Bg2Brush}">
+                    <Border DockPanel.Dock="Top" Padding="14,8"
+                            BorderBrush="{DynamicResource Border0Brush}"
+                            BorderThickness="0,0,0,1">
+                        <StackPanel Spacing="6">
+                            <TextBlock FontSize="10" FontStyle="Italic"
+                                       Foreground="{DynamicResource Text3Brush}"
+                                       TextWrapping="Wrap"
+                                       Text="Runs before the request is sent. bru.{setVar/getVar/setEnvVar/getCollectionVar/setNextRequest/sendRequest/interpolate/sleep/cookies.jar/utils.minifyJson}. req.{setHeader/setMethod/setUrl/setBody/getHost/getPath/getQueryString/getPathParams/headerList.add/upsert/remove/each/filter/map}. Built-ins: _ (lodash-lite), axios, console, {{$randomUUID}} / {{$timestamp}} / {{$randomInt}} dynamic vars." />
+                            <ws:InheritedBanner IsVisible="{Binding IsPreRequestScriptInherited}"
+                                                InheritedFrom="{Binding PreRequestScriptInheritedFrom}"
+                                                OverrideCommand="{Binding OverrideInheritedPreRequestScriptCommand}" />
+                        </StackPanel>
+                    </Border>
+                    <ws:VariableAwareTextEditor
+                        Text="{Binding PreRequestScript, Mode=TwoWay}"
+                        Variables="{Binding ResolvedVariablesSnapshot}"
+                        SingleLine="False"
+                        ShowLineNumbers="True"
+                        SyntaxHighlightingName="JavaScript"
+                        Bordered="False"
+                        Watermark="// pre-request script (JavaScript)" />
+                </DockPanel>
+            </TabItem>
+
+            <!-- Post-response — runs after the response, BEFORE tests. Bruno parity
+                 (script:post-response { } block). Use for side-effects: extracting a token
+                 with bru.setEnvVar, inspecting headers, prepping data for tests below. -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="Post-response" />
+                        <Ellipse Width="6" Height="6"
+                                 Fill="{DynamicResource AccentBrush}"
+                                 VerticalAlignment="Top" Margin="0,2,0,0"
+                                 IsVisible="{Binding PostResponseScriptHasData}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <DockPanel Background="{DynamicResource Bg2Brush}">
+                    <Border DockPanel.Dock="Top" Padding="14,8"
+                            BorderBrush="{DynamicResource Border0Brush}"
+                            BorderThickness="0,0,0,1">
+                        <StackPanel Spacing="6">
+                            <TextBlock FontSize="10" FontStyle="Italic"
+                                       Foreground="{DynamicResource Text3Brush}"
+                                       TextWrapping="Wrap"
+                                       Text="Runs after the response, before the Tests block. Same bru / res / req surface as Tests; mutations to runtime / env vars are visible inside test('...') blocks below. Use for token extraction, header inspection, chained-request prep." />
+                            <ws:InheritedBanner IsVisible="{Binding IsPostResponseScriptInherited}"
+                                                InheritedFrom="{Binding PostResponseScriptInheritedFrom}"
+                                                OverrideCommand="{Binding OverrideInheritedPostResponseScriptCommand}" />
+                        </StackPanel>
+                    </Border>
+                    <ws:VariableAwareTextEditor
+                        Text="{Binding PostResponseScript, Mode=TwoWay}"
+                        Variables="{Binding ResolvedVariablesSnapshot}"
+                        SingleLine="False"
+                        ShowLineNumbers="True"
+                        SyntaxHighlightingName="JavaScript"
+                        Bordered="False"
+                        Watermark="// post-response script (JavaScript)&#x0A;// e.g. bru.setEnvVar('token', res.getBody().access_token);" />
+                </DockPanel>
+            </TabItem>
+
+            <!-- Tests — runs after post-response. Use test('name', fn) and expect(actual).
+                 Both Jest-style matchers (.toBe / .toEqual / ...) and Chai-style chains
+                 (.to.equal / .to.have.property / .to.have.status / .to.be.true) work. -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="Tests" />
+                        <Ellipse Width="6" Height="6"
+                                 Fill="{DynamicResource AccentBrush}"
+                                 VerticalAlignment="Top" Margin="0,2,0,0"
+                                 IsVisible="{Binding TestsScriptHasData}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <DockPanel Background="{DynamicResource Bg2Brush}">
+                    <Border DockPanel.Dock="Top" Padding="14,8"
+                            BorderBrush="{DynamicResource Border0Brush}"
+                            BorderThickness="0,0,0,1">
+                        <StackPanel Spacing="6">
+                            <TextBlock FontSize="10" FontStyle="Italic"
+                                       Foreground="{DynamicResource Text3Brush}"
+                                       TextWrapping="Wrap"
+                                       Text="Runs after Post-response. Use test('name', fn) and expect(actual). Jest matchers: .not, toBe / toEqual / toContain / toHaveLength / toMatch / toBeTruthy / toBeFalsy / toBeGreaterThan(OrEqual) / toBeLessThan(OrEqual) / toBeNull / toBeDefined / toMatchSchema / toThrow. Chai chains: .to.equal / .to.have.property / .to.have.status / .to.be.true / .to.contain." />
+                            <ws:InheritedBanner IsVisible="{Binding IsTestsScriptInherited}"
+                                                InheritedFrom="{Binding TestsScriptInheritedFrom}"
+                                                OverrideCommand="{Binding OverrideInheritedTestsScriptCommand}" />
+                        </StackPanel>
+                    </Border>
+                    <ws:VariableAwareTextEditor
+                        Text="{Binding TestsScript, Mode=TwoWay}"
+                        Variables="{Binding ResolvedVariablesSnapshot}"
+                        SingleLine="False"
+                        ShowLineNumbers="True"
+                        SyntaxHighlightingName="JavaScript"
+                        Bordered="False"
+                        Watermark="// tests (JavaScript)&#x0A;// test('status is 200', () => { expect(res.getStatus()).to.equal(200); });" />
+                </DockPanel>
+            </TabItem>
+
+            <!-- Docs — split: editable markdown on the left, rendered preview on the right. -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBlock Text="Docs" />
+                        <Ellipse Width="6" Height="6"
+                                 Fill="{DynamicResource AccentBrush}"
+                                 VerticalAlignment="Top" Margin="0,2,0,0"
+                                 IsVisible="{Binding DocsHasData}" />
+                    </StackPanel>
+                </TabItem.Header>
+                <Grid Background="{DynamicResource Bg2Brush}" ColumnDefinitions="*,4,*">
+                    <ws:VariableAwareTextEditor Grid.Column="0"
+                        Text="{Binding Docs, Mode=TwoWay}"
+                        SingleLine="False"
+                        ShowLineNumbers="False"
+                        SyntaxHighlightingName="MarkDown"
+                        Bordered="False"
+                        Watermark="# Notes about this request (Markdown)" />
+                    <GridSplitter Grid.Column="1" Classes="col" />
+                    <ws:MarkdownView Grid.Column="2"
+                                     Markdown="{Binding Docs}" />
+                </Grid>
+            </TabItem>
+
+            <!-- Settings -->
+            <TabItem Header="Settings">
+                <ScrollViewer Background="{DynamicResource Bg2Brush}">
+                    <StackPanel Margin="14,12" Spacing="10">
+                        <ToggleSwitch IsChecked="{Binding SettingFollowRedirects}"
+                                      OnContent="Follow redirects"
+                                      OffContent="Follow redirects (off)" />
+                        <ToggleSwitch IsChecked="{Binding SettingVerifySsl}"
+                                      OnContent="Verify SSL certificates"
+                                      OffContent="Verify SSL certificates (off — INSECURE)" />
+                        <ToggleSwitch IsChecked="{Binding SettingEncodeUrl}"
+                                      OnContent="Encode URL automatically"
+                                      OffContent="Encode URL automatically (off)" />
+                        <ToggleSwitch IsChecked="{Binding SettingSendCookies}"
+                                      OnContent="Send cookies"
+                                      OffContent="Send cookies (off)" />
+                        <ToggleSwitch IsChecked="{Binding SettingSaveCookies}"
+                                      OnContent="Save received cookies"
+                                      OffContent="Save received cookies (off)" />
+                        <ToggleSwitch IsChecked="{Binding SettingHttp2}"
+                                      OnContent="Prefer HTTP/2"
+                                      OffContent="Prefer HTTP/2 (off)" />
+
+                        <!-- mTLS client cert -->
+                        <Border Margin="0,8,0,0" Padding="0,4,0,0"
+                                BorderBrush="{DynamicResource Border0Brush}"
+                                BorderThickness="0,1,0,0">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Client certificate (mTLS)"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text0Brush}"
+                                           Margin="0,6,0,0" />
+                                <TextBlock Text="Path to a .pfx / .p12 file (with password) or a .pem file. Leave blank to skip mTLS."
+                                           FontSize="10"
+                                           Foreground="{DynamicResource Text3Brush}"
+                                           TextWrapping="Wrap" />
+                                <TextBox Text="{Binding MtlsCertPath}"
+                                         Watermark="C:\path\to\client.pfx"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="6,4" CornerRadius="3" />
+                                <TextBox Text="{Binding MtlsCertPassword}"
+                                         Watermark="PFX password (if any)"
+                                         PasswordChar="•"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="6,4" CornerRadius="3" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,8,0,0" Padding="10"
+                                Background="{DynamicResource Bg3Brush}"
+                                CornerRadius="3"
+                                BorderBrush="{DynamicResource Border1Brush}"
+                                BorderThickness="1">
+                            <TextBlock FontSize="11" FontStyle="Italic"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextWrapping="Wrap"
+                                       Text="Wired today: Follow redirects · Verify SSL. Cookie jar + HTTP/2 + URL encoding will land alongside the cookies sidebar and HTTP/2 transport flags." />
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Sent — exact HTTP-style render of the outgoing request, captured just
+                 before the wire send. Lives in the request pane (it's a request-side
+                 concern) — moved out of the response display where it didn't fit. -->
+            <TabItem Header="Sent">
+                <DockPanel Background="{DynamicResource CodeBgBrush}">
+                    <Border DockPanel.Dock="Top" Padding="12,6"
+                            Background="{DynamicResource Bg2Brush}"
+                            BorderBrush="{DynamicResource Border0Brush}"
+                            BorderThickness="0,0,0,1">
+                        <TextBlock Text="What we sent — request line, headers (incl. Content-Type added by the runtime), and the body byte-for-byte."
+                                   FontSize="10" FontStyle="Italic"
+                                   Foreground="{DynamicResource Text3Brush}"
+                                   TextWrapping="Wrap" />
+                    </Border>
+                    <!--
+                        Nested ScrollViewer pattern (same as Response.Raw tab) so the V-bar
+                        is in a fixed Grid column anchored to the viewport's right edge and
+                        does not drift when the user scrolls horizontally through a long
+                        single-line request body. AllowAutoHide=False forces dedicated-column
+                        scrollbar chrome instead of the overlay style.
+                    -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  AllowAutoHide="False">
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Disabled"
+                                      AllowAutoHide="False">
+                            <SelectableTextBlock Text="{Binding SentRequestText}"
+                                                 FontFamily="{StaticResource MonoFont}"
+                                                 FontSize="12"
+                                                 Foreground="{DynamicResource Text0Brush}"
+                                                 Padding="14,12" />
+                        </ScrollViewer>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+            <!-- Body-tab trailing tools live in the Tag slot: the OverflowTabControl
+                 template renders Tag as a ContentPresenter docked to the right of the
+                 overflow chevron, so there's no overlap regardless of how many tabs are
+                 visible. The StackPanel collapses (IsVisible=False) when not on the
+                 Body tab so trailing space disappears for the other sub-tabs. -->
+            <cmn:OverflowTabControl.Tag>
+                <StackPanel Orientation="Horizontal" Spacing="14"
+                            IsVisible="{Binding IsBodyTabSelected}">
+            <Button Background="Transparent" BorderThickness="0"
+                    Foreground="{DynamicResource AccentBrush}"
+                    FontWeight="SemiBold"
+                    FontSize="12"
+                    Padding="4,2"
+                    Cursor="Hand"
+                    ToolTip.Tip="Pick body type">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="{Binding BodyTypeDisplay}" />
+                    <TextBlock Text="▼" FontSize="9" VerticalAlignment="Center" />
+                </StackPanel>
+                <Button.Flyout>
+                    <MenuFlyout>
+                        <MenuItem Header="FORM" IsEnabled="False" />
+                        <MenuItem Header="Multipart Form"
+                                  Command="{Binding SetBodyTypeCommand}"
+                                  CommandParameter="multipart-form" />
+                        <MenuItem Header="Form URL Encoded"
+                                  Command="{Binding SetBodyTypeCommand}"
+                                  CommandParameter="form-urlencoded" />
+                        <Separator />
+                        <MenuItem Header="RAW" IsEnabled="False" />
+                        <MenuItem Header="JSON"
+                                  Command="{Binding SetBodyTypeCommand}"
+                                  CommandParameter="json" />
+                        <MenuItem Header="XML"
+                                  Command="{Binding SetBodyTypeCommand}"
+                                  CommandParameter="xml" />
+                        <MenuItem Header="TEXT"
+                                  Command="{Binding SetBodyTypeCommand}"
+                                  CommandParameter="text" />
+                        <MenuItem Header="SPARQL"
+                                  Command="{Binding SetBodyTypeCommand}"
+                                  CommandParameter="sparql" />
+                        <Separator />
+                        <MenuItem Header="OTHER" IsEnabled="False" />
+                        <MenuItem Header="File / Binary"
+                                  Command="{Binding SetBodyTypeCommand}"
+                                  CommandParameter="file" />
+                        <MenuItem Header="No Body"
+                                  Command="{Binding SetBodyTypeCommand}"
+                                  CommandParameter="none" />
+                        <MenuItem Header="GraphQL"
+                                  Command="{Binding SetBodyTypeCommand}"
+                                  CommandParameter="graphql" />
+                    </MenuFlyout>
+                </Button.Flyout>
+            </Button>
+
+            <Button Command="{Binding ConvertJsonBodyToXmlCommand}"
+                    Content="JSON→XML"
+                    IsVisible="{Binding IsBodyXml}"
+                    Background="Transparent"
+                    Foreground="{DynamicResource Text0Brush}"
+                    BorderThickness="0"
+                    FontSize="12"
+                    Padding="4,2"
+                    Cursor="Hand"
+                    ToolTip.Tip="Convert JSON in the body to SOAP XML using namespaces from the last XML envelope (the one loaded with this request)" />
+
+            <Button Command="{Binding PrettifyCommand}"
+                    Content="Prettify"
+                    Background="Transparent"
+                    Foreground="{DynamicResource Text0Brush}"
+                    BorderThickness="0"
+                    FontSize="12"
+                    Padding="4,2"
+                    Cursor="Hand"
+                    ToolTip.Tip="Reformat the body with the current type's formatter (JSON / XML)" />
+                </StackPanel>
+            </cmn:OverflowTabControl.Tag>
+        </cmn:OverflowTabControl>
+    </DockPanel>
+</UserControl>

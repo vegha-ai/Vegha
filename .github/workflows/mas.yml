@@ -1,0 +1,71 @@
+name: MAS
+
+# Builds a Mac App Store .pkg. Triggered manually because Apple's signing + notarization
+# expects identities pinned to a specific developer account; running this in fork CIs
+# would just produce unsigned bundles. Maintainer downloads the artifact and uploads to
+# App Store Connect via Transporter.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Mac App Store version (e.g., 0.1.0)'
+        required: true
+        type: string
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  package:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Patch Info.plist version
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ github.event.inputs.version }}" \
+            app/Vegha.App/Resources/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.event.inputs.version }}" \
+            app/Vegha.App/Resources/Info.plist
+
+      - name: Restore + publish
+        run: |
+          dotnet restore
+          dotnet publish app/Vegha.App/Vegha.App.csproj \
+            -c Release -r osx-arm64 --self-contained true \
+            -p:DefineConstants=Vegha_MAS \
+            -o publish/osx-arm64
+
+      - name: Build .app bundle
+        run: |
+          APP="Vegha.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp -R publish/osx-arm64/* "$APP/Contents/MacOS/"
+          cp app/Vegha.App/Resources/Info.plist "$APP/Contents/"
+          # Icon if present.
+          if [ -f app/Vegha.App/Assets/app.ico ]; then
+            cp app/Vegha.App/Assets/app.ico "$APP/Contents/Resources/"
+          fi
+
+      - name: Build .pkg with productbuild
+        run: |
+          # Without a real signing identity in CI, this produces an unsigned .pkg —
+          # the maintainer signs locally before uploading to App Store Connect.
+          productbuild --component Vegha.app /Applications \
+            --component-plist app/Vegha.App/Resources/Vegha.entitlements \
+            "Vegha-${{ github.event.inputs.version }}.pkg" || \
+            productbuild --component Vegha.app /Applications \
+            "Vegha-${{ github.event.inputs.version }}.pkg"
+
+      - name: Upload .pkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vegha-mas-${{ github.event.inputs.version }}
+          path: 'Vegha-*.pkg'
+          if-no-files-found: error

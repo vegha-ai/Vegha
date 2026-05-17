@@ -1,0 +1,89 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="32"
+             x:Class="Vegha.App.Controls.Shell.AppTitleBar"
+             x:Name="Root"
+             x:DataType="vm:MainWindowViewModel"
+             Height="32">
+    <Border Background="{DynamicResource Bg0Brush}"
+            BorderBrush="{DynamicResource Border0Brush}"
+            BorderThickness="0,0,0,1">
+        <!-- NOTE: PointerPressed for window drag/maximize used to live on this outer Border —
+             that intercepted every click before the ComboBox / + button could receive it, so
+             the workspace dropdown never opened. The handler now lives only on the empty
+             spacer column (Grid.Column=6, the strip between the title text and the OS close
+             buttons), which is the only "dead" region where drag-to-move makes sense. -->
+        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,*,Auto">
+            <!-- macOS: leave room for the OS-rendered traffic-light buttons (top-left). -->
+            <Border Grid.Column="0" Width="80" IsVisible="{OnPlatform False, macOS=True}" />
+            <!-- Windows / Linux: small left padding. -->
+            <Border Grid.Column="0" Width="8" IsVisible="{OnPlatform True, macOS=False}" />
+
+            <!-- Hamburger menu — File / Edit / View / Help. The actual MenuFlyout is set
+                 from MainWindow.axaml so click handlers stay in MainWindow code-behind. -->
+            <Button Grid.Column="1"
+                    Classes="ghostIcon"
+                    Width="30" Height="26"
+                    Padding="6"
+                    Margin="0,0,4,0"
+                    VerticalAlignment="Center"
+                    ToolTip.Tip="Menu"
+                    Flyout="{Binding #Root.HamburgerMenu}">
+                <icons:Icon Kind="Menu" Size="14" />
+            </Button>
+
+            <!-- Workspace switcher — a single drop-button whose text is the active workspace name.
+                 Auto-sizes to the name (no fixed MinWidth). Clicking opens a MenuFlyout whose
+                 items are rebuilt on Opening: one row per workspace (with a ✓ on the active),
+                 a "Workspaces" section header, then the Create / Open / Manage actions. -->
+            <Button Grid.Column="2"
+                    x:Name="WorkspaceDropButton"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Padding="8,2"
+                    Height="24"
+                    VerticalAlignment="Center"
+                    Foreground="{DynamicResource Text0Brush}"
+                    Cursor="Hand"
+                    ToolTip.Tip="Workspaces">
+                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).Workspaces.ActiveWorkspace.Name, FallbackValue='No workspace', TargetNullValue='No workspace'}"
+                               FontSize="12" FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="▾" FontSize="13"
+                               Foreground="{DynamicResource Text2Brush}"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+                <Button.Flyout>
+                    <MenuFlyout Placement="BottomEdgeAlignedLeft" />
+                </Button.Flyout>
+            </Button>
+
+            <!-- Left drag region between the workspace button and the centered brand. -->
+            <Border Grid.Column="3" Background="Transparent"
+                    PointerPressed="OnPointerPressed" />
+
+            <!-- App brand — centered wordmark (logo + lettering); clicks pass through (drag region behind).
+                 Height nearly fills the 32px bar (1px bottom border + small breathing room). -->
+            <Image Grid.Column="4"
+                   Source="avares://Vegha.App/Assets/wordmark.png"
+                   Height="28"
+                   Stretch="Uniform"
+                   VerticalAlignment="Center"
+                   IsHitTestVisible="False" />
+
+            <!-- Right drag region between the brand and the OS button padding. -->
+            <Border Grid.Column="5" Background="Transparent"
+                    PointerPressed="OnPointerPressed" />
+
+            <!-- Windows: leave room for OS-rendered min/max/close (top-right, ~138px). -->
+            <Border Grid.Column="6" Width="138" IsVisible="{OnPlatform True, macOS=False}" />
+            <Border Grid.Column="6" Width="12" IsVisible="{OnPlatform False, macOS=True}" />
+        </Grid>
+    </Border>
+</UserControl>

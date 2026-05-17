@@ -1,0 +1,31 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>CS1591;NU1903</WarningsNotAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <NoWarn>$(NoWarn);CA1014</NoWarn>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <RootNamespace>Vegha</RootNamespace>
+    <!-- Release version. Bumped by eng/Publish-Release.ps1 and used as the
+         vpk pack version when -Version is not passed explicitly. -->
+    <Version>1.0.0</Version>
+    <Authors>Vamsi Maddirala</Authors>
+    <Company>Vegha</Company>
+    <Copyright>Copyright (c) 2026 Vamsi Maddirala</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Distribution flavor">
+    <!-- Set by CI to one of: Direct, MSIX, MAS. Default = Direct. -->
+    <VeghaFlavor Condition="'$(VeghaFlavor)' == ''">Direct</VeghaFlavor>
+    <DefineConstants Condition="'$(VeghaFlavor)' == 'Direct'">$(DefineConstants);VEGHA_DIRECT</DefineConstants>
+    <DefineConstants Condition="'$(VeghaFlavor)' == 'MSIX'">$(DefineConstants);VEGHA_MSIX</DefineConstants>
+    <DefineConstants Condition="'$(VeghaFlavor)' == 'MAS'">$(DefineConstants);VEGHA_MAS</DefineConstants>
+  </PropertyGroup>
+</Project>

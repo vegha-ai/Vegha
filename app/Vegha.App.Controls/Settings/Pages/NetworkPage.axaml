@@ -1,0 +1,179 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels.Settings"
+             mc:Ignorable="d" d:DesignWidth="780"
+             x:Class="Vegha.App.Controls.Settings.Pages.NetworkPage"
+             x:DataType="vm:NetworkSettingsViewModel">
+    <StackPanel Spacing="28" MaxWidth="820">
+        <TextBlock Text="Network"
+                   FontSize="20" FontWeight="SemiBold"
+                   Foreground="{DynamicResource Text0Brush}" />
+
+        <!-- Request timeout -->
+        <StackPanel Spacing="10">
+            <TextBlock Text="REQUEST TIMEOUT"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text2Brush}" />
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <NumericUpDown Value="{Binding RequestTimeoutSeconds, Mode=TwoWay}"
+                               Minimum="1" Maximum="3600" Increment="10" />
+                <TextBlock Text="seconds"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource Text2Brush}" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Proxy -->
+        <StackPanel Spacing="14">
+            <TextBlock Text="PROXY SETTINGS"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text2Brush}" />
+
+            <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+
+                <!-- Mode -->
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Mode"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <StackPanel Grid.Row="0" Grid.Column="1"
+                            Orientation="Horizontal" Spacing="16">
+                    <RadioButton GroupName="ProxyMode" Content="Off" Tag="off" Click="OnProxyModeClick"
+                                 IsChecked="{Binding ProxyMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=off, Mode=OneWay}" />
+                    <RadioButton GroupName="ProxyMode" Content="On" Tag="on" Click="OnProxyModeClick"
+                                 IsChecked="{Binding ProxyMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=on, Mode=OneWay}" />
+                    <RadioButton GroupName="ProxyMode" Content="System Proxy" Tag="system" Click="OnProxyModeClick"
+                                 IsChecked="{Binding ProxyMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=system, Mode=OneWay}" />
+                    <RadioButton GroupName="ProxyMode" Content="PAC" Tag="pac" Click="OnProxyModeClick"
+                                 IsChecked="{Binding ProxyMode, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=pac, Mode=OneWay}" />
+                </StackPanel>
+
+                <!-- Protocol -->
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Protocol"
+                           VerticalAlignment="Center" Margin="0,10,0,0"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <StackPanel Grid.Row="1" Grid.Column="1"
+                            Orientation="Horizontal" Spacing="16" Margin="0,10,0,0">
+                    <RadioButton GroupName="ProxyProtocol" Content="HTTP" Tag="http" Click="OnProxyProtocolClick"
+                                 IsChecked="{Binding ProxyProtocol, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=http, Mode=OneWay}" />
+                    <RadioButton GroupName="ProxyProtocol" Content="HTTPS" Tag="https" Click="OnProxyProtocolClick"
+                                 IsChecked="{Binding ProxyProtocol, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=https, Mode=OneWay}" />
+                    <RadioButton GroupName="ProxyProtocol" Content="SOCKS4" Tag="socks4" Click="OnProxyProtocolClick"
+                                 IsChecked="{Binding ProxyProtocol, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=socks4, Mode=OneWay}" />
+                    <RadioButton GroupName="ProxyProtocol" Content="SOCKS5" Tag="socks5" Click="OnProxyProtocolClick"
+                                 IsChecked="{Binding ProxyProtocol, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=socks5, Mode=OneWay}" />
+                </StackPanel>
+
+                <!-- Hostname -->
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Hostname"
+                           VerticalAlignment="Center" Margin="0,12,0,0"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <TextBox Grid.Row="2" Grid.Column="1"
+                         Text="{Binding ProxyHost, Mode=TwoWay}"
+                         Margin="0,12,0,0"
+                         Watermark="proxy.acme.io"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         Padding="8,6" CornerRadius="3" />
+
+                <!-- Port -->
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Port"
+                           VerticalAlignment="Center" Margin="0,8,0,0"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <NumericUpDown Grid.Row="3" Grid.Column="1"
+                               Value="{Binding ProxyPort, Mode=TwoWay}"
+                               Minimum="0" Maximum="65535" Increment="1"
+                               Margin="0,8,0,0" />
+
+                <!-- Auth -->
+                <TextBlock Grid.Row="4" Grid.Column="0" Text="Auth"
+                           VerticalAlignment="Center" Margin="0,12,0,0"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <CheckBox Grid.Row="4" Grid.Column="1"
+                          IsChecked="{Binding ProxyAuthEnabled, Mode=TwoWay}"
+                          Margin="0,12,0,0" />
+
+                <!-- Username -->
+                <TextBlock Grid.Row="5" Grid.Column="0" Text="Username"
+                           VerticalAlignment="Center" Margin="0,8,0,0"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <TextBox Grid.Row="5" Grid.Column="1"
+                         Text="{Binding ProxyUsername, Mode=TwoWay}"
+                         IsEnabled="{Binding ProxyAuthEnabled}"
+                         Margin="0,8,0,0"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         Padding="8,6" CornerRadius="3" />
+
+                <!-- Password -->
+                <TextBlock Grid.Row="6" Grid.Column="0" Text="Password"
+                           VerticalAlignment="Center" Margin="0,8,0,0"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <TextBox Grid.Row="6" Grid.Column="1"
+                         Text="{Binding ProxyPassword, Mode=TwoWay}"
+                         IsEnabled="{Binding ProxyAuthEnabled}"
+                         PasswordChar="•"
+                         Margin="0,8,0,0"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         Padding="8,6" CornerRadius="3" />
+
+                <!-- Proxy Bypass -->
+                <TextBlock Grid.Row="7" Grid.Column="0" Text="Proxy Bypass"
+                           VerticalAlignment="Center" Margin="0,8,0,0"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <TextBox Grid.Row="7" Grid.Column="1"
+                         Text="{Binding ProxyBypass, Mode=TwoWay}"
+                         Watermark="localhost, *.corp.example.com"
+                         Margin="0,8,0,0"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         Padding="8,6" CornerRadius="3" />
+            </Grid>
+        </StackPanel>
+
+        <!-- SSL session cache -->
+        <StackPanel Spacing="10">
+            <TextBlock Text="CACHE SSL SESSION"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text2Brush}" />
+            <CheckBox Content="Enable SSL session caching"
+                      IsChecked="{Binding CacheSslSessions, Mode=TwoWay}" />
+            <TextBlock TextWrapping="Wrap"
+                       FontSize="11"
+                       Foreground="{DynamicResource Text2Brush}"
+                       Text="Reuses TLS sessions and connections across requests for faster handshakes. Disable to create a fresh connection for every request." />
+            <Button Content="Clear" Click="OnClearSslPool_Click"
+                    HorizontalAlignment="Left"
+                    Background="Transparent" BorderThickness="0"
+                    Foreground="{DynamicResource AccentBrush}" Padding="0,4" />
+        </StackPanel>
+
+        <!-- Trusted CAs -->
+        <StackPanel Spacing="10">
+            <TextBlock Text="TRUSTED CAs"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text2Brush}" />
+            <TextBlock TextWrapping="Wrap"
+                       FontSize="11"
+                       Foreground="{DynamicResource Text2Brush}"
+                       Text="One entry per line. Each entry is either an absolute path to a PEM file, or an inline -----BEGIN CERTIFICATE----- block. Lines starting with # are comments." />
+            <!-- MinHeight (not Height) so the outer Settings ScrollViewer can scroll to the
+                 textbox and the textbox itself can still grow if the user pastes a long PEM. -->
+            <TextBox Text="{Binding CustomTrustCAsText, Mode=TwoWay}"
+                     AcceptsReturn="True"
+                     MinHeight="140"
+                     TextWrapping="NoWrap"
+                     FontFamily="{StaticResource MonoFont}" FontSize="11"
+                     Background="{DynamicResource BgInputBrush}"
+                     BorderBrush="{DynamicResource Border1Brush}"
+                     Foreground="{DynamicResource Text0Brush}"
+                     Padding="8,6" CornerRadius="3" />
+        </StackPanel>
+    </StackPanel>
+</UserControl>

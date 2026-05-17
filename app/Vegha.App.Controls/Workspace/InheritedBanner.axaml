@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="32"
+             x:Class="Vegha.App.Controls.Workspace.InheritedBanner"
+             x:Name="Root">
+    <!-- "Inherited from {parent}" pill with an Override action button. Used inside the
+         Authorization tab and the Pre-request / Post-response / Tests script tabs to
+         indicate the displayed value is being inherited from a parent folder/collection,
+         and to let the user materialize an override on the current request. Replaces four
+         copy-pasted instances that had drifted by 1-2px in padding. -->
+    <Border Background="{DynamicResource Bg3Brush}"
+            CornerRadius="3" Padding="10,4">
+        <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0" FontSize="11"
+                       Foreground="{DynamicResource Text2Brush}"
+                       VerticalAlignment="Center">
+                <Run Text="Inherited from " />
+                <Run Text="{Binding #Root.InheritedFrom}" FontWeight="SemiBold" />
+            </TextBlock>
+            <Button Grid.Column="1"
+                    Classes="primary"
+                    Command="{Binding #Root.OverrideCommand}"
+                    Content="Override"
+                    Padding="10,4"
+                    FontSize="11" />
+        </Grid>
+    </Border>
+</UserControl>

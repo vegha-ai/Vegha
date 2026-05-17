@@ -1,0 +1,751 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             xmlns:cmn="using:Vegha.App.Controls.Common"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="320"
+             x:Class="Vegha.App.Controls.Workspace.AuthEditor"
+             x:DataType="vm:RequestEditorViewModel">
+    <ScrollViewer Background="{DynamicResource Bg2Brush}">
+        <DockPanel>
+            <!-- Type selector -->
+            <Border DockPanel.Dock="Top"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="14,10">
+                <StackPanel Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Auth type:" VerticalAlignment="Center"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                        <ComboBox SelectedItem="{Binding AuthType}"
+                                  ItemsSource="{Binding AvailableAuthTypes}"
+                                  MinWidth="160" Height="28"
+                                  Background="{DynamicResource Bg3Brush}"
+                                  BorderBrush="{DynamicResource Border1Brush}"
+                                  FontSize="12"
+                                  VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Inherited-from hint + Override action -->
+                    <ws:InheritedBanner IsVisible="{Binding IsAuthInherited}"
+                                        InheritedFrom="{Binding AuthInheritedFrom}"
+                                        OverrideCommand="{Binding OverrideInheritedAuthCommand}"
+                                        ToolTip.Tip="Materialize the inherited auth onto this request" />
+                </StackPanel>
+            </Border>
+
+            <!-- Per-type forms (only one visible at a time) -->
+            <StackPanel Margin="14,12" Spacing="10">
+
+                <!-- None -->
+                <TextBlock Text="No authentication will be applied to this request."
+                           FontSize="11" FontStyle="Italic"
+                           Foreground="{DynamicResource Text3Brush}"
+                           IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=none}" />
+
+                <!-- Inherit -->
+                <TextBlock Text="Auth is inherited from the parent folder or collection. (Inherited resolution lands in a later MVP iteration — for now this acts like 'none'.)"
+                           FontSize="11" FontStyle="Italic"
+                           Foreground="{DynamicResource Text3Brush}"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=inherit}" />
+
+                <!-- Bearer -->
+                <StackPanel Spacing="6"
+                            IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=bearer}">
+                    <TextBlock Text="Token" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                    <ws:VariableAwareTextEditor Text="{Binding BearerToken, Mode=TwoWay}"
+                             Variables="{Binding ResolvedVariablesSnapshot}"
+                             Watermark="{}{{access_token}}"
+                             SingleLine="True" Height="32" />
+                    <TextBlock Text="Sent as: Authorization: Bearer &lt;token&gt;"
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}" />
+                </StackPanel>
+
+                <!-- Basic -->
+                <StackPanel Spacing="8"
+                            IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=basic}">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Username" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding BasicUsername}"
+                                 FontFamily="{StaticResource MonoFont}"
+                                 FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Password" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding BasicPassword}"
+                                 PasswordChar="•"
+                                 FontFamily="{StaticResource MonoFont}"
+                                 FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <TextBlock Text="Sent as: Authorization: Basic base64(user:pass)"
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}" />
+                </StackPanel>
+
+                <!-- Digest (RFC 7616) -->
+                <StackPanel Spacing="8"
+                            IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=digest}">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Username" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding DigestUsername}"
+                                 FontFamily="{StaticResource MonoFont}"
+                                 FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Password" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding DigestPassword}"
+                                 PasswordChar="•"
+                                 FontFamily="{StaticResource MonoFont}"
+                                 FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <TextBlock Text="On Send: the first request goes out unauthenticated to fetch the realm/nonce challenge, then a second request is sent with Authorization: Digest username=…, response=H(HA1:nonce:nc:cnonce:qop:HA2). MD5, SHA-256, and SHA-512-256 are supported."
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <!-- NTLM (explicit NetworkCredential — no Kerberos) -->
+                <StackPanel Spacing="8"
+                            IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=ntlm}">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Username" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding NtlmUsername}"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Password" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding NtlmPassword}" PasswordChar="•"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Domain (optional)" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding NtlmDomain}"
+                                 Watermark="ACME"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <TextBlock Text="On Send: HTTP request uses NetworkCredential for NTLM (no Kerberos / SPNEGO fallback)."
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <!-- OAuth 2.0 — Bruno-style sectioned layout.
+                     Each section is its own StackPanel with a bold header. The order mirrors
+                     the screenshots the user shared:
+                       Grant Type → Access Token preview → Configuration → Token →
+                       Advanced Settings → Settings → Additional Parameters → Actions. -->
+                <StackPanel Spacing="16"
+                            IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=oauth2}">
+
+                    <!-- ============ Grant Type ============ -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Grant Type" Classes="sectionHeaderMajor" />
+                        <ComboBox SelectedItem="{Binding OAuth2GrantType}"
+                                  ItemsSource="{Binding AvailableOAuth2GrantTypes}"
+                                  Height="26" MinWidth="180"
+                                  Background="{DynamicResource Bg3Brush}"
+                                  BorderBrush="{DynamicResource Border1Brush}"
+                                  FontSize="11"
+                                  HorizontalAlignment="Left" />
+                    </StackPanel>
+
+                    <!-- ============ Access Token (preview of last fetched token) ============
+                         Collapsed by default so the token (often a 2 KB JWT) doesn't dominate
+                         the panel — user clicks to expand when they need to inspect it. -->
+                    <Expander Header="Access Token"
+                              IsVisible="{Binding OAuth2LastAccessToken, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                              IsExpanded="False"
+                              FontSize="12"
+                              Background="{DynamicResource Bg3Brush}"
+                              BorderBrush="{DynamicResource Border0Brush}"
+                              BorderThickness="1" CornerRadius="3" Padding="10,4">
+                        <StackPanel Spacing="8" Margin="0,6,0,4">
+                            <!-- Raw JWT — wrapped + selectable so the user can copy. -->
+                            <Border Background="{DynamicResource BgInputBrush}"
+                                    BorderBrush="{DynamicResource Border1Brush}"
+                                    BorderThickness="1" CornerRadius="3" Padding="8">
+                                <SelectableTextBlock Text="{Binding OAuth2LastAccessToken}"
+                                                     FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                     Foreground="{DynamicResource Text1Brush}"
+                                                     TextWrapping="Wrap" />
+                            </Border>
+
+                            <!-- Decoded payload — populated by JwtDecoder.PrettyPrintPayload.
+                                 Hidden when token isn't a JWT (decoded payload is empty). -->
+                            <StackPanel Spacing="4"
+                                        IsVisible="{Binding OAuth2DecodedPayload, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                <TextBlock Text="Decoded Payload" FontWeight="SemiBold" FontSize="12"
+                                           Foreground="{DynamicResource Text1Brush}" />
+                                <SelectableTextBlock Text="{Binding OAuth2DecodedPayload}"
+                                                     FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                     Foreground="{DynamicResource Text1Brush}"
+                                                     TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <TextBlock FontSize="11" Foreground="{DynamicResource Text2Brush}">
+                                <Run Text="Token Type: " />
+                                <Run Text="{Binding OAuth2TokenType}" FontWeight="SemiBold" />
+                            </TextBlock>
+                        </StackPanel>
+                    </Expander>
+
+                    <!-- ============ Configuration ============ -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Configuration" Classes="sectionHeaderMajor" />
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Access Token URL" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding OAuth2TokenUrl}"
+                                     Watermark="https://login.acme.io/oauth2/token"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="8,6" CornerRadius="3" />
+                        </StackPanel>
+
+                        <!-- authorization_code grant: auth URL / callback / state / PKCE — inline
+                             alongside the standard Client ID/Secret/Scope so the form reads top-down. -->
+                        <StackPanel Spacing="8"
+                                    IsVisible="{Binding OAuth2GrantType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=authorization_code}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Authorization URL" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                                <TextBox Text="{Binding OAuth2AuthorizationUrl}"
+                                         Watermark="https://login.acme.io/oauth2/authorize"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="8,6" CornerRadius="3" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Callback URL (loopback)" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                                <TextBox Text="{Binding OAuth2CallbackUrl}"
+                                         Watermark="http://127.0.0.1:8765/oauth/callback"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="8,6" CornerRadius="3" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="State (optional)" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                                <TextBox Text="{Binding OAuth2State}"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="8,6" CornerRadius="3" />
+                            </StackPanel>
+                            <CheckBox Content="Use PKCE (S256)"
+                                      IsChecked="{Binding OAuth2UsePkce}"
+                                      Foreground="{DynamicResource Text1Brush}"
+                                      FontSize="12" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Client ID" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding OAuth2ClientId}"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="8,6" CornerRadius="3" />
+                        </StackPanel>
+
+                        <!-- Client Secret — uses the reusable IconTextBox so the eye toggle
+                             and plaintext-warning glyph render inside the input border via
+                             TextBox.InnerRightContent (no more sibling Grid columns drifting
+                             out of alignment). -->
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Client Secret" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <cmn:IconTextBox Text="{Binding OAuth2ClientSecret, Mode=TwoWay}"
+                                             IsRevealed="{Binding OAuth2IsClientSecretVisible, Mode=TwoWay}"
+                                             ShowReveal="True"
+                                             ShowWarning="True"
+                                             WarningTip="Stored as plaintext on disk — consider {{vault:...}} references."
+                                             FontFamily="{StaticResource MonoFont}" FontSize="12" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Scope" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding OAuth2Scope}"
+                                     Watermark="read write"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="8,6" CornerRadius="3" />
+                        </StackPanel>
+
+                        <!-- password grant: username / password — same Configuration section
+                             so all credentials live together. -->
+                        <StackPanel Spacing="8"
+                                    IsVisible="{Binding OAuth2GrantType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=password}">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Username" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                                <TextBox Text="{Binding OAuth2Username}"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="8,6" CornerRadius="3" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Password" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                                <TextBox Text="{Binding OAuth2Password}"
+                                         PasswordChar="•"
+                                         FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                         Background="{DynamicResource BgInputBrush}"
+                                         BorderBrush="{DynamicResource Border1Brush}"
+                                         Foreground="{DynamicResource Text0Brush}"
+                                         Padding="8,6" CornerRadius="3" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="Add Credentials to" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <ComboBox SelectedItem="{Binding OAuth2CredentialsPlacement}"
+                                      ItemsSource="{Binding AvailableOAuth2CredentialPlacements}"
+                                      Height="26" MinWidth="180"
+                                      Background="{DynamicResource Bg3Brush}"
+                                      BorderBrush="{DynamicResource Border1Brush}"
+                                      FontSize="11"
+                                      HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- ============ Token (how the acquired token is injected on the wire) ============ -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Token" Classes="sectionHeaderMajor" />
+
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="Token Source" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <ComboBox SelectedItem="{Binding OAuth2TokenSource}"
+                                      ItemsSource="{Binding AvailableOAuth2TokenSources}"
+                                      Height="26" MinWidth="160"
+                                      Background="{DynamicResource Bg3Brush}"
+                                      BorderBrush="{DynamicResource Border1Brush}"
+                                      FontSize="11"
+                                      HorizontalAlignment="Left"
+                                      ToolTip.Tip="Which field of the token response is treated as the bearer (access_token, id_token, or refresh_token)." />
+                        </StackPanel>
+
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="Token ID" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding OAuth2TokenId}"
+                                     Watermark="credentials"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="8,6" CornerRadius="3"
+                                     ToolTip.Tip="Cache-isolation label. Change to keep parallel identities separate." />
+                        </StackPanel>
+
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="Add token to" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <ComboBox SelectedItem="{Binding OAuth2AddTokenTo}"
+                                      ItemsSource="{Binding AvailableOAuth2AddTokenTo}"
+                                      Height="26" MinWidth="140"
+                                      Background="{DynamicResource Bg3Brush}"
+                                      BorderBrush="{DynamicResource Border1Brush}"
+                                      FontSize="11"
+                                      HorizontalAlignment="Left" />
+                        </StackPanel>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Header Prefix" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding OAuth2HeaderPrefix}"
+                                     Watermark="Bearer"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="8,6" CornerRadius="3" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- ============ Advanced Settings ============ -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Advanced Settings" Classes="sectionHeaderMajor" />
+
+                        <StackPanel Spacing="3">
+                            <TextBlock Text="Refresh Token URL" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding OAuth2RefreshTokenUrl}"
+                                     Watermark="(optional — falls back to Access Token URL)"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="8,6" CornerRadius="3" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- ============ Settings (auto-fetch + auto-refresh toggles) ============ -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Settings" Classes="sectionHeaderMajor" />
+                        <CheckBox Content="Automatically fetch token if not found"
+                                  IsChecked="{Binding OAuth2AutoFetch}"
+                                  Foreground="{DynamicResource Text1Brush}"
+                                  FontSize="11"
+                                  ToolTip.Tip="On Send, if no cached token exists, fetch one transparently." />
+                        <CheckBox Content="Auto refresh token (with refresh URL)"
+                                  IsChecked="{Binding OAuth2AutoRefresh}"
+                                  Foreground="{DynamicResource Text1Brush}"
+                                  FontSize="11"
+                                  ToolTip.Tip="When the cached token expires and a refresh_token is available, refresh it transparently." />
+                    </StackPanel>
+
+                    <!-- ============ Additional Parameters (Token + Refresh tabs) ============
+                         Uses Classes="subtabs" so the inner tab headers inherit the same
+                         smaller-font / borderless look as the outer Params/Headers/Body strip,
+                         instead of the default Fluent TabItem chrome which renders headers in
+                         18-20pt and looks oversized inside a panel. -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Additional Parameters" Classes="sectionHeaderMajor" />
+                        <TabControl Classes="subtabs">
+                            <TabItem Header="Token">
+                                <StackPanel Spacing="6" Margin="0,8,0,0">
+                                    <Grid ColumnDefinitions="*,*,140,Auto">
+                                        <TextBlock Grid.Column="0" Text="Key" FontSize="11"
+                                                   Foreground="{DynamicResource Text2Brush}" />
+                                        <TextBlock Grid.Column="1" Text="Value" FontSize="11"
+                                                   Foreground="{DynamicResource Text2Brush}" />
+                                        <TextBlock Grid.Column="2" Text="Send In" FontSize="11"
+                                                   Foreground="{DynamicResource Text2Brush}" />
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{Binding OAuth2TokenParameters}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:OAuth2AdditionalParameter">
+                                                <Grid ColumnDefinitions="*,*,140,Auto" Margin="0,3,0,0">
+                                                    <TextBox Grid.Column="0" Text="{Binding Key, Mode=TwoWay}"
+                                                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                             Background="{DynamicResource BgInputBrush}"
+                                                             BorderBrush="{DynamicResource Border1Brush}"
+                                                             Foreground="{DynamicResource Text0Brush}"
+                                                             Padding="6,3" CornerRadius="3" Margin="0,0,4,0" />
+                                                    <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}"
+                                                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                             Background="{DynamicResource BgInputBrush}"
+                                                             BorderBrush="{DynamicResource Border1Brush}"
+                                                             Foreground="{DynamicResource Text0Brush}"
+                                                             Padding="6,3" CornerRadius="3" Margin="0,0,4,0" />
+                                                    <ComboBox Grid.Column="2" SelectedItem="{Binding SendIn, Mode=TwoWay}"
+                                                              ItemsSource="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).AvailableOAuth2ParamSendIn}"
+                                                              Height="26" FontSize="11"
+                                                              Background="{DynamicResource Bg3Brush}"
+                                                              BorderBrush="{DynamicResource Border1Brush}" />
+                                                    <Button Grid.Column="3"
+                                                            Command="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).RemoveOAuth2TokenParameterCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Padding="6,2" Margin="4,0,0,0"
+                                                            ToolTip.Tip="Remove">
+                                                        <TextBlock Text="×" FontSize="14"
+                                                                   Foreground="{DynamicResource Text3Brush}" />
+                                                    </Button>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button Command="{Binding AddOAuth2TokenParameterCommand}"
+                                            Content="+ Add Parameter"
+                                            Background="Transparent" BorderThickness="0"
+                                            Foreground="{DynamicResource AccentBrush}"
+                                            HorizontalAlignment="Left"
+                                            Padding="0,4" FontSize="11" />
+                                </StackPanel>
+                            </TabItem>
+                            <TabItem Header="Refresh">
+                                <StackPanel Spacing="6" Margin="0,8,0,0">
+                                    <Grid ColumnDefinitions="*,*,140,Auto">
+                                        <TextBlock Grid.Column="0" Text="Key" FontSize="11"
+                                                   Foreground="{DynamicResource Text2Brush}" />
+                                        <TextBlock Grid.Column="1" Text="Value" FontSize="11"
+                                                   Foreground="{DynamicResource Text2Brush}" />
+                                        <TextBlock Grid.Column="2" Text="Send In" FontSize="11"
+                                                   Foreground="{DynamicResource Text2Brush}" />
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{Binding OAuth2RefreshParameters}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:OAuth2AdditionalParameter">
+                                                <Grid ColumnDefinitions="*,*,140,Auto" Margin="0,3,0,0">
+                                                    <TextBox Grid.Column="0" Text="{Binding Key, Mode=TwoWay}"
+                                                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                             Background="{DynamicResource BgInputBrush}"
+                                                             BorderBrush="{DynamicResource Border1Brush}"
+                                                             Foreground="{DynamicResource Text0Brush}"
+                                                             Padding="6,3" CornerRadius="3" Margin="0,0,4,0" />
+                                                    <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}"
+                                                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                             Background="{DynamicResource BgInputBrush}"
+                                                             BorderBrush="{DynamicResource Border1Brush}"
+                                                             Foreground="{DynamicResource Text0Brush}"
+                                                             Padding="6,3" CornerRadius="3" Margin="0,0,4,0" />
+                                                    <ComboBox Grid.Column="2" SelectedItem="{Binding SendIn, Mode=TwoWay}"
+                                                              ItemsSource="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).AvailableOAuth2ParamSendIn}"
+                                                              Height="26" FontSize="11"
+                                                              Background="{DynamicResource Bg3Brush}"
+                                                              BorderBrush="{DynamicResource Border1Brush}" />
+                                                    <Button Grid.Column="3"
+                                                            Command="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).RemoveOAuth2RefreshParameterCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Background="Transparent" BorderThickness="0"
+                                                            Padding="6,2" Margin="4,0,0,0"
+                                                            ToolTip.Tip="Remove">
+                                                        <TextBlock Text="×" FontSize="14"
+                                                                   Foreground="{DynamicResource Text3Brush}" />
+                                                    </Button>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <Button Command="{Binding AddOAuth2RefreshParameterCommand}"
+                                            Content="+ Add Parameter"
+                                            Background="Transparent" BorderThickness="0"
+                                            Foreground="{DynamicResource AccentBrush}"
+                                            HorizontalAlignment="Left"
+                                            Padding="0,4" FontSize="11" />
+                                </StackPanel>
+                            </TabItem>
+                        </TabControl>
+                    </StackPanel>
+
+                    <!-- ============ Actions ============ -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                        <Button Classes="primary"
+                                Command="{Binding GetOAuth2AccessTokenCommand}"
+                                Content="Get Access Token" />
+                        <Button Classes="secondary"
+                                Command="{Binding ClearOAuth2CacheCommand}"
+                                Content="Clear Cache" />
+                        <TextBlock Text="{Binding OAuth2StatusMessage}"
+                                   FontSize="11" FontStyle="Italic"
+                                   Foreground="{DynamicResource Text3Brush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock Text="On Send: token is fetched and applied as Authorization: &lt;Header Prefix&gt; &lt;token&gt;. Tokens are cached in memory by Token ID until expires_in elapses. authorization_code opens your default browser for sign-in and listens on the loopback callback URL."
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <!-- AWS Signature v4 -->
+                <StackPanel Spacing="8"
+                            IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=awsv4}">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Access Key ID" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding AwsAccessKeyId}"
+                                 Watermark="AKIA..."
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Secret Access Key" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding AwsSecretAccessKey}"
+                                 PasswordChar="•"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Region" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding AwsRegion}"
+                                 Watermark="us-east-1"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Service" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding AwsService}"
+                                 Watermark="execute-api"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Session Token (optional)" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding AwsSessionToken}"
+                                 PasswordChar="•"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <TextBlock Text="On Send: request is signed with AWS Signature v4 — Authorization, X-Amz-Date and X-Amz-Content-SHA256 headers are added (plus X-Amz-Security-Token if a session token is set)."
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <!-- API Key -->
+                <StackPanel Spacing="8"
+                            IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=apikey}">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Key" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding ApiKeyName}"
+                                 Watermark="X-API-Key"
+                                 FontFamily="{StaticResource MonoFont}"
+                                 FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Value" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <ws:VariableAwareTextEditor Text="{Binding ApiKeyValue, Mode=TwoWay}"
+                                 Variables="{Binding ResolvedVariablesSnapshot}"
+                                 Watermark="{}{{vault:acme/prod/api-key}}"
+                                 SingleLine="True" Height="32" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Add to" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <ComboBox SelectedItem="{Binding ApiKeyPlacement}"
+                                  ItemsSource="{Binding AvailableApiKeyPlacements}"
+                                  Height="28" MinWidth="160"
+                                  Background="{DynamicResource Bg3Brush}"
+                                  BorderBrush="{DynamicResource Border1Brush}"
+                                  FontSize="12" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- OAuth 1.0 (RFC 5849) -->
+                <StackPanel Spacing="8"
+                            IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=oauth1}">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Consumer Key" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding OAuth1ConsumerKey}"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Consumer Secret" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding OAuth1ConsumerSecret}" PasswordChar="•"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Token (optional)" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding OAuth1Token}"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Token Secret (optional)" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding OAuth1TokenSecret}" PasswordChar="•"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Signature method" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <ComboBox SelectedItem="{Binding OAuth1SignatureMethod}"
+                                  ItemsSource="{Binding AvailableOAuth1SignatureMethods}"
+                                  Height="28" MinWidth="200"
+                                  Background="{DynamicResource Bg3Brush}"
+                                  BorderBrush="{DynamicResource Border1Brush}"
+                                  FontSize="12" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Realm (optional)" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding OAuth1Realm}"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <TextBlock Text="On Send: signature is computed over the request method, URL, and OAuth params, and applied as Authorization: OAuth ... HMAC-SHA1/256/512 and PLAINTEXT supported."
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+
+                <!-- WSSE UsernameToken -->
+                <StackPanel Spacing="8"
+                            IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=wsse}">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Username" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding WsseUsername}"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Password" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding WssePassword}" PasswordChar="•"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" />
+                    </StackPanel>
+                    <TextBlock Text="On Send: an X-WSSE header carries UsernameToken with PasswordDigest=SHA1(nonce + created + password) per the WS-Security spec. For SOAP envelope-form WSSE, use the SOAP workspace."
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </StackPanel>
+        </DockPanel>
+    </ScrollViewer>
+</UserControl>

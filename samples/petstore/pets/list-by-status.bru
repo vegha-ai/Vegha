@@ -1,0 +1,26 @@
+meta {
+  name: list-by-status
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/pet/findByStatus?status=available
+  body: none
+  auth: none
+}
+
+tests {
+  test('200', () => {
+    expect(res.status).toBe(200);
+  });
+
+  test('returns array', () => {
+    const body = JSON.parse(res.body);
+    expect(Array.isArray(body)).toBeTruthy();
+  });
+}
+
+docs {
+  Lists pets by status. Default `available` returns the demo pet roster.
+}

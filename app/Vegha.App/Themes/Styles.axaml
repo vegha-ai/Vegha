@@ -1,0 +1,727 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Vegha.App.ViewModels"
+        xmlns:cmn="using:Vegha.App.Controls.Common">
+    <!-- Compact TreeView template: small chevron + 10px indent per level.
+         The chevron is a plain Path (not a ToggleButton) so it doesn't carry Fluent's
+         IsChecked accent background, and so single-click on the row toggles via the
+         user control's class handler without competing with a ToggleButton hit area. -->
+    <Style Selector="TreeView.compact TreeViewItem">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinHeight" Value="22" />
+        <!-- Two-way bind container's IsExpanded ↔ DataContext's IsExpanded so toggling either
+             (chevron, double-tap, our class handler, or persistence restore) stays in sync. -->
+        <Setter Property="IsExpanded">
+            <Setter.Value>
+                <Binding Path="IsExpanded" Mode="TwoWay" x:DataType="vm:CollectionNodeViewModel" />
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <StackPanel>
+                    <Border Name="PART_LayoutRoot"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="3"
+                            Padding="2,1"
+                            MinHeight="22"
+                            Cursor="Hand">
+                        <Grid ColumnDefinitions="Auto,14,*">
+                            <Border Grid.Column="0"
+                                    Width="{Binding Level, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource LevelToIndentConverter}}" />
+                            <Panel Grid.Column="1" Name="PART_ExpandCollapseChevron"
+                                   Width="14" Background="Transparent">
+                                <!-- Right-pointing triangle (collapsed) -->
+                                <Path Width="4" Height="8"
+                                      Stretch="Uniform"
+                                      Data="M 0,0 L 4,4 L 0,8 Z"
+                                      Fill="{DynamicResource Text2Brush}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      IsVisible="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static BoolConverters.Not}}" />
+                                <!-- Down-pointing triangle (expanded) -->
+                                <Path Width="8" Height="4"
+                                      Stretch="Uniform"
+                                      Data="M 0,0 L 8,0 L 4,4 Z"
+                                      Fill="{DynamicResource Text2Brush}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      IsVisible="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
+                            </Panel>
+                            <ContentPresenter Grid.Column="2"
+                                              Name="PART_HeaderPresenter"
+                                              Content="{TemplateBinding Header}"
+                                              ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                              VerticalContentAlignment="Center"
+                                              Margin="2,0,0,0" />
+                        </Grid>
+                    </Border>
+                    <ItemsPresenter Name="PART_ItemsPresenter"
+                                    ItemsPanel="{TemplateBinding ItemsPanel}"
+                                    IsVisible="{TemplateBinding IsExpanded}" />
+                </StackPanel>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <!-- Hide the chevron column for leaf nodes (no children). -->
+    <Style Selector="TreeView.compact TreeViewItem:empty /template/ Panel#PART_ExpandCollapseChevron">
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="TreeView.compact TreeViewItem:selected /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+    <Style Selector="TreeView.compact TreeViewItem:pointerover /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+    </Style>
+    <Style Selector="TreeView.compact TreeViewItem:selected:pointerover /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="{DynamicResource AccentSoftStrongBrush}" />
+    </Style>
+
+    <!-- GridSplitter visuals — 4px hit area, accent on hover/drag -->
+    <Style Selector="GridSplitter.col">
+        <Setter Property="Width" Value="{StaticResource ResizerSize}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="ResizeDirection" Value="Columns" />
+        <Setter Property="Cursor" Value="SizeWestEast" />
+    </Style>
+    <Style Selector="GridSplitter.col:pointerover">
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="GridSplitter.col:pressed">
+        <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+    </Style>
+
+    <Style Selector="GridSplitter.row">
+        <Setter Property="Height" Value="{StaticResource ResizerSize}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="ResizeDirection" Value="Rows" />
+        <Setter Property="Cursor" Value="SizeNorthSouth" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="GridSplitter.row:pointerover">
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="GridSplitter.row:pressed">
+        <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+    </Style>
+
+    <!-- Activity rail buttons -->
+    <Style Selector="Button.rail">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Margin" Value="0,2" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.rail:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <Style Selector="Button.rail.active">
+        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+    <Style Selector="Button.rail.active /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+
+    <!-- Hover "..." button on every tree row that opens the context menu. Visible only
+         on row hover so the tree stays clean at rest. -->
+    <Style Selector="Button.rowMenu">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="6,0" />
+        <Setter Property="Width" Value="22" />
+        <Setter Property="Height" Value="22" />
+        <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="TreeViewItem:pointerover Button.rowMenu">
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Button.rowMenu:pointerover">
+        <Setter Property="Opacity" Value="1" />
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+    </Style>
+
+    <!-- Request tab (one per opened request) -->
+    <Style Selector="Border.reqTab">
+        <Setter Property="MinWidth" Value="140" />
+        <Setter Property="MaxWidth" Value="240" />
+        <Setter Property="Height" Value="36" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0,0,1,2" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Border.reqTab:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+    </Style>
+    <Style Selector="Border.reqTab.active">
+        <Setter Property="Background" Value="{DynamicResource Bg1Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <!-- Workspace mode tab (REST / GraphQL / WebSocket / gRPC / SOAP) -->
+    <Style Selector="Button.tab">
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Padding" Value="14,4" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0,0,0,2" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.tab:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+    </Style>
+    <Style Selector="Button.tab.active">
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <!-- Top-bar workspace switcher button -->
+    <Style Selector="Button.ws">
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.ws:pointerover /template/ ContentPresenter">
+        <Setter Property="BorderBrush" Value="{DynamicResource Border2Brush}" />
+    </Style>
+
+    <!-- Top-bar ghost icon button -->
+    <Style Selector="Button.ghostIcon">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.ghostIcon:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <!-- ghostIcon.active = a feature is currently engaged (e.g. </> when codegen pane is open).
+         Subtle accent tint so the user can see the toggle state at a glance. -->
+    <Style Selector="Button.ghostIcon.active /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <!-- Mac traffic light button -->
+    <Style Selector="Button.macLight">
+        <Setter Property="Width" Value="12" />
+        <Setter Property="Height" Value="12" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <!-- Subtabs (TabControl + TabItem) — match the .subtab spec from tokens.css -->
+    <!-- Tabs use a horizontal StackPanel — overflow scrolls horizontally inside the
+         ScrollViewer that the template wraps around the items presenter. -->
+    <Style Selector="TabControl.subtabs">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+        <Setter Property="ItemsPanel">
+            <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+        </Setter>
+        <!-- Custom template: the header row is a Grid with the tab items on the left
+             (inside a horizontal-scrolling ScrollViewer so they never overflow into the
+             trailing tools area) and a ContentPresenter on the right bound to the
+             TabControl's Tag property. Consumers (RequestWorkspace) drop their format
+             picker + Prettify buttons into Tag — no more absolute-position overlay
+             trick that overlapped tabs. The content area below spans the full width
+             so the body editor still gets the entire pane. -->
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        Padding="{TemplateBinding Padding}">
+                    <DockPanel>
+                        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto"
+                              Background="{TemplateBinding Background}">
+                            <ScrollViewer Grid.Column="0"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          Padding="10,0,0,0">
+                                <ItemsPresenter Name="PART_ItemsPresenter"
+                                                ItemsPanel="{TemplateBinding ItemsPanel}" />
+                            </ScrollViewer>
+                            <ContentPresenter Grid.Column="1"
+                                              Content="{TemplateBinding Tag}"
+                                              Margin="14,0,14,0"
+                                              VerticalAlignment="Center" />
+                        </Grid>
+                        <ContentPresenter Name="PART_SelectedContentHost"
+                                          Content="{TemplateBinding SelectedContent}"
+                                          ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
+                    </DockPanel>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <Style Selector="TabControl.subtabs > TabItem">
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0,0,0,2" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="TabControl.subtabs > TabItem:pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <Style Selector="TabControl.subtabs > TabItem:selected">
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="TabControl.subtabs > TabItem /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="TabControl.subtabs > TabItem /template/ Border#PART_SelectedPipe">
+        <!-- Hide the default Fluent indicator — we use a 2px bottom border instead. -->
+        <Setter Property="IsVisible" Value="False" />
+    </Style>
+
+    <!-- ============================================================================
+         OverflowTabControl — reusable horizontal tab strip that surfaces tabs which
+         don't fit through a "»" dropdown chevron instead of a hidden horizontal
+         scroll. Visual chrome matches TabControl.subtabs (same TabItem padding,
+         12px font, 2px accent underline, Bg2 background) so the two are visually
+         interchangeable. The Tag slot is preserved for trailing tools docked to
+         the right of the chevron.
+         ============================================================================ -->
+    <Style Selector="cmn|OverflowTabControl">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+        <Setter Property="ItemsPanel">
+            <ItemsPanelTemplate>
+                <cmn:OverflowTabsPanel />
+            </ItemsPanelTemplate>
+        </Setter>
+        <Setter Property="Template">
+            <ControlTemplate TargetType="cmn:OverflowTabControl">
+                <Border Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        Padding="{TemplateBinding Padding}">
+                    <DockPanel>
+                        <!-- OverflowHeaderPanel positions chevron flush against the
+                             items presenter's *actual* visible width (right after
+                             the last visible tab) instead of at the right edge of a
+                             greedy grid column. Children must be in this order:
+                             [0] ItemsPresenter, [1] OverflowButton, [2] Tag CP. -->
+                        <cmn:OverflowHeaderPanel DockPanel.Dock="Top"
+                                                 Background="{TemplateBinding Background}">
+                            <!-- Left visual offset is applied by OverflowHeaderPanel.ArrangeOverride
+                                 (ItemsLeftPad), not by an ItemsPresenter Margin, so the inner panel's
+                                 measure-slot matches what the panel uses for overflow detection. -->
+                            <ItemsPresenter Name="PART_ItemsPresenter"
+                                            ItemsPanel="{TemplateBinding ItemsPanel}" />
+                            <Button Name="PART_OverflowButton"
+                                    IsVisible="{TemplateBinding HasOverflow}"
+                                    Background="Transparent" BorderThickness="0"
+                                    Foreground="{DynamicResource Text2Brush}"
+                                    Padding="6,4" Margin="0"
+                                    FontSize="14" FontWeight="SemiBold"
+                                    Cursor="Hand"
+                                    Content="&#xBB;"
+                                    ToolTip.Tip="Show hidden tabs">
+                                <Button.Flyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedRight" />
+                                </Button.Flyout>
+                            </Button>
+                            <ContentPresenter Content="{TemplateBinding Tag}"
+                                              Margin="6,0,14,0"
+                                              VerticalAlignment="Center" />
+                        </cmn:OverflowHeaderPanel>
+                        <ContentPresenter Name="PART_SelectedContentHost"
+                                          Content="{TemplateBinding SelectedContent}"
+                                          ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
+                    </DockPanel>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+    <!-- TabItem visuals — matched via BOTH the type selector and the
+         `overflowtabs` class so consumers can use the control with or without
+         the explicit class attribute. The /template/ rules collapse Fluent's
+         PART_SelectedPipe to zero footprint (Width=0 + Background=Transparent +
+         IsVisible=False, belt-and-suspenders) so only our 2px BorderThickness
+         underline shows for the selected tab. -->
+    <Style Selector="cmn|OverflowTabControl TabItem, TabControl.overflowtabs TabItem">
+        <Setter Property="Padding" Value="12,8" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0,0,0,2" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="cmn|OverflowTabControl TabItem:pointerover, TabControl.overflowtabs TabItem:pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <Style Selector="cmn|OverflowTabControl TabItem:selected, TabControl.overflowtabs TabItem:selected">
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="cmn|OverflowTabControl TabItem /template/ Border#PART_LayoutRoot, TabControl.overflowtabs TabItem /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="cmn|OverflowTabControl TabItem /template/ Border#PART_SelectedPipe, TabControl.overflowtabs TabItem /template/ Border#PART_SelectedPipe">
+        <Setter Property="IsVisible" Value="False" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Width" Value="0" />
+        <Setter Property="Height" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+    </Style>
+    <Style Selector="cmn|OverflowTabControl /template/ Button#PART_OverflowButton:pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+
+    <!-- ============================================================================
+         Section headers — two levels of visual hierarchy used across editors and panels.
+         Apply via Classes="sectionHeaderMajor" or Classes="sectionHeaderMinor" on a
+         TextBlock so all section labels in the app stay aligned in font size, weight,
+         and color. Replaces the per-file `FontSize=10..13` / case / LetterSpacing
+         variants that had drifted between AuthEditor, RequestWorkspace, and BodyEditor.
+
+         Major: title case, prominent (e.g. "Grant Type", "Configuration", "Token")
+         Minor: ALL CAPS with letter-spacing, quieter (e.g. "PRE REQUEST", "QUERY")
+         ============================================================================ -->
+    <Style Selector="TextBlock.sectionHeaderMajor">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <Style Selector="TextBlock.sectionHeaderMinor">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="LetterSpacing" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+    </Style>
+
+    <!-- Inline italic help / hint text — quieter italic gray used under section
+         headings to describe what a section does. Apply via Classes="helpText". -->
+    <Style Selector="TextBlock.helpText">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontStyle" Value="Italic" />
+        <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- ============================================================================
+         Button style classes — apply via Classes="primary" / "secondary" / "tertiary"
+         so the most common visual treatments live in one place instead of being
+         re-declared inline at every call site. Existing rail/winCtrl/ws/tab classes
+         are unchanged; these are for the standard action / link / boxed-link patterns.
+         ============================================================================ -->
+    <!-- Primary: accent background, white text. For the headline action of a panel
+         (Send, Save, Create, Get Access Token, Override). -->
+    <Style Selector="Button.primary">
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+    </Style>
+
+    <!-- Secondary: ghost text-only link. Cancel, Clear Cache, +Add Parameter. -->
+    <Style Selector="Button.secondary">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.secondary:pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+
+    <!-- Tertiary: light boxed link (1px border, panel background). Sits between
+         primary and secondary visually — used for less-frequent actions that still
+         deserve a visible affordance (+Add row in KvEditor, Pick file…). -->
+    <Style Selector="Button.tertiary">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+
+    <!-- Count-pill displayed inside a subtab header -->
+    <Style Selector="Border.countPill">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Padding" Value="5,0" />
+        <Setter Property="MinWidth" Value="20" />
+        <Setter Property="Height" Value="16" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Win chrome control button -->
+    <Style Selector="Button.winCtrl">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Width" Value="44" />
+        <Setter Property="Height" Value="32" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.winCtrl:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+    </Style>
+    <Style Selector="Button.winCtrl.close:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="#e81123" />
+        <Setter Property="TextElement.Foreground" Value="White" />
+    </Style>
+
+    <!-- ============================================================================
+         Global ComboBox polish — Bruno-style: pill-rounded background, single 1px
+         border, accent border on focus, chevron right-aligned. Applies to every
+         ComboBox in the app since the selector targets the bare type. Individual
+         dropdowns can still override Background/etc. inline.
+         ============================================================================ -->
+    <Style Selector="ComboBox">
+        <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ComboBox:pointerover /template/ Border#Background">
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="ComboBox:focus-within /template/ Border#Background">
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <!-- TextBox: same rounded look so input fields and dropdowns match height/radius. -->
+    <Style Selector="TextBox">
+        <Setter Property="CornerRadius" Value="4" />
+    </Style>
+
+    <!-- Generic Button rounding so buttons have a consistent radius across dialogs. -->
+    <Style Selector="Button">
+        <Setter Property="CornerRadius" Value="4" />
+    </Style>
+
+    <!-- MenuItem (used by MenuFlyout, ContextMenu, and any nested submenus) — FluentTheme
+         defaults to 14pt which towers over the rest of the 12pt UI. Pin to the same
+         AppFontSize so the hamburger flyout File / Edit / View / Help match the chrome. -->
+    <Style Selector="MenuItem">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="MinHeight" Value="28" />
+    </Style>
+
+    <!-- Submenu chevron — FluentTheme's MenuItem template hardcodes the Path's
+         Width="8" Height="16" inline, so plain Style setters can't shrink it (template-
+         priority literals beat Style-priority setters in Avalonia). RenderTransform isn't
+         set in the template, so we scale the rendered glyph down instead. 0.55 turns the
+         8x16 chevron into a roughly 4.4x8.8 thin caret that matches the 12pt text. -->
+    <Style Selector="MenuItem /template/ Path#PART_ChevronPath">
+        <Setter Property="RenderTransform">
+            <ScaleTransform ScaleX="0.55" ScaleY="0.55" />
+        </Setter>
+        <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+    </Style>
+
+    <!-- ============================================================================
+         Compact NumericUpDown — one unified border around textbox + spinner column,
+         no detached chrome. The previous attempt left the inner TextBox to draw its
+         own border which floated next to a detached spinner block; this template
+         wraps content + spinners in a single outer Border and styles the inner
+         TextBox to be borderless so the look is integrated.
+         ============================================================================ -->
+    <Style Selector="NumericUpDown">
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="Padding" Value="0" />
+        <!-- Don't stretch into grid cells. Each call site can override with explicit width
+             where it actually wants a wide value field; default behavior is hug-the-content. -->
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="MinWidth" Value="92" />
+    </Style>
+
+    <!-- Inner TextBox: borderless, transparent, zero padding — the outer ContentPresenter
+         in the ButtonSpinner template provides the left/right gap, and the outer Border on
+         that template provides the chrome. Without zeroing Padding here, Fluent's default
+         "10,5,6,5" stacks on top of our Margin and the value ends up double-indented. -->
+    <Style Selector="NumericUpDown /template/ TextBox">
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+    </Style>
+    <Style Selector="NumericUpDown /template/ TextBox /template/ Border#PART_BorderElement">
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="NumericUpDown /template/ TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="NumericUpDown /template/ TextBox:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- ButtonSpinner template: outer Border with content + spinner column inside. -->
+    <Style Selector="NumericUpDown /template/ ButtonSpinner#PART_Spinner">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="{DynamicResource BgInputBrush}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <!-- 10px left padding so the value never butts against the border;
+                             matches the breathing room TextBoxes elsewhere in the dialog
+                             (Hostname, Username, etc.) get from their default Padding. -->
+                        <ContentPresenter Grid.Column="0"
+                                          Name="PART_ContentPresenter"
+                                          Content="{TemplateBinding Content}"
+                                          VerticalContentAlignment="Center"
+                                          HorizontalContentAlignment="Stretch"
+                                          Margin="10,0,4,0" />
+                        <!-- Spinner column: 32px outer border with 1px left separator drawn
+                             via BorderThickness, plus an inner 2-row Grid whose RowDefinitions
+                             each take half the height. Each RepeatButton spans its row and
+                             holds a fixed-size Path triangle centered by a wrapping Grid that
+                             stretches both ways. The wrapping Grid is what makes centering
+                             reliable — without it, the RepeatButton's intrinsic Fluent content
+                             alignment was leaving a small left-bias visible at the user's
+                             rendering scale. The triangles are sized at 11×7 so they're large
+                             enough to make an unambiguous click target. -->
+                        <Border Grid.Column="1" Width="32"
+                                BorderBrush="{DynamicResource Border0Brush}"
+                                BorderThickness="1,0,0,0"
+                                IsVisible="{TemplateBinding ShowButtonSpinner}">
+                            <Grid RowDefinitions="*,*">
+                                <RepeatButton Grid.Row="0"
+                                              Name="PART_IncreaseButton"
+                                              Classes="spinner-step"
+                                              ToolTip.Tip="Increment"
+                                              HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Stretch">
+                                    <Grid HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Stretch">
+                                        <Path Data="M 0,7 L 5.5,0 L 11,7 Z"
+                                              Stretch="None"
+                                              Fill="{DynamicResource Text1Brush}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                                    </Grid>
+                                </RepeatButton>
+                                <RepeatButton Grid.Row="1"
+                                              Name="PART_DecreaseButton"
+                                              Classes="spinner-step"
+                                              ToolTip.Tip="Decrement"
+                                              HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Stretch">
+                                    <Grid HorizontalAlignment="Stretch"
+                                          VerticalAlignment="Stretch">
+                                        <Path Data="M 0,0 L 5.5,7 L 11,0 Z"
+                                              Stretch="None"
+                                              Fill="{DynamicResource Text1Brush}"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                                    </Grid>
+                                </RepeatButton>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <!-- The two spinner buttons themselves: transparent default, Bg3 hover, no border,
+         centered triangle path. Selected via the Classes="spinner-step" tag set in
+         the template so the styles don't leak to other RepeatButtons in the app.
+         Borders are explicitly cleared in all interaction states so the Fluent default
+         hover/focus stroke doesn't draw a 1px ring around the arrow on the spinner. -->
+    <Style Selector="RepeatButton.spinner-step">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="FocusAdorner" Value="{x:Null}" />
+    </Style>
+    <Style Selector="RepeatButton.spinner-step /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="RepeatButton.spinner-step:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="RepeatButton.spinner-step:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg4Brush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+</Styles>

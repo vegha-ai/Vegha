@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Vegha.App.Controls</RootNamespace>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Markdig" />
+    <PackageReference Include="PdfPig" />
+    <PackageReference Include="JsonPath.Net" />
+    <PackageReference Include="DiffPlex" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Vegha.App.ViewModels\Vegha.App.ViewModels.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Domain\Vegha.Core.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- SVG icon assets — loaded at runtime by SvgIconRenderer via AssetLoader.
+         Source of truth lives at docs/icons/*.svg; copies here are what ship in
+         the assembly. Update both when an icon changes. -->
+    <AvaloniaResource Include="Icons\Svg\*.svg" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:edit="using:AvaloniaEdit"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="32"
+             x:Class="Vegha.App.Controls.Workspace.VariableAwareTextEditor"
+             FontSize="12">
+    <Border x:Name="HostBorder"
+            Background="{DynamicResource BgInputBrush}"
+            BorderBrush="{DynamicResource Border1Brush}"
+            BorderThickness="1"
+            CornerRadius="3"
+            Padding="6,5">
+        <!-- WordWrap / HorizontalScrollBarVisibility / VerticalScrollBarVisibility are set
+             imperatively from the code-behind's ApplyMultiLineMode so the per-instance
+             WordWrap / SingleLine properties are the single source of truth. -->
+        <edit:TextEditor x:Name="Editor"
+                         FontFamily="{StaticResource MonoFont}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         Background="Transparent"
+                         ShowLineNumbers="False" />
+    </Border>
+</UserControl>

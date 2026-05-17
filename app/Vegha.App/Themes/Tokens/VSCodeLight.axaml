@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- VS Code Light — neutral white/grey palette with the canonical VS Code blue accent. -->
+
+    <SolidColorBrush x:Key="Bg0Brush" Color="#e7e7e7" />
+    <SolidColorBrush x:Key="Bg1Brush" Color="#f3f3f3" />
+    <SolidColorBrush x:Key="Bg2Brush" Color="#ffffff" />
+    <SolidColorBrush x:Key="Bg3Brush" Color="#f8f8f8" />
+    <SolidColorBrush x:Key="Bg4Brush" Color="#ececec" />
+    <SolidColorBrush x:Key="BgInputBrush" Color="#ffffff" />
+    <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
+    <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#ececec" />
+
+    <SolidColorBrush x:Key="Border0Brush" Color="#e5e5e5" />
+    <SolidColorBrush x:Key="Border1Brush" Color="#d4d4d4" />
+    <SolidColorBrush x:Key="Border2Brush" Color="#b3b3b3" />
+
+    <SolidColorBrush x:Key="Text0Brush" Color="#1f1f1f" />
+    <SolidColorBrush x:Key="Text1Brush" Color="#3b3b3b" />
+    <SolidColorBrush x:Key="Text2Brush" Color="#616161" />
+    <SolidColorBrush x:Key="Text3Brush" Color="#8e8e8e" />
+    <SolidColorBrush x:Key="TextInverseBrush" Color="#ffffff" />
+
+    <SolidColorBrush x:Key="AccentBrush" Color="#0078d4" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#005a9e" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#220078d4" />
+    <SolidColorBrush x:Key="AccentSoftStrongBrush" Color="#380078d4" />
+
+    <SolidColorBrush x:Key="MethodGetBrush" Color="#16825d" />
+    <SolidColorBrush x:Key="MethodPostBrush" Color="#bf8803" />
+    <SolidColorBrush x:Key="MethodPutBrush" Color="#0078d4" />
+    <SolidColorBrush x:Key="MethodPatchBrush" Color="#7c3aed" />
+    <SolidColorBrush x:Key="MethodDeleteBrush" Color="#d13438" />
+    <SolidColorBrush x:Key="MethodHeadBrush" Color="#008575" />
+    <SolidColorBrush x:Key="MethodOptionsBrush" Color="#5c5c5c" />
+
+    <SolidColorBrush x:Key="StatusOkBrush" Color="#16825d" />
+    <SolidColorBrush x:Key="StatusWarnBrush" Color="#bf8803" />
+    <SolidColorBrush x:Key="StatusErrBrush" Color="#d13438" />
+
+    <SolidColorBrush x:Key="CodeBgBrush" Color="#f8f8f8" />
+
+    <SolidColorBrush x:Key="SelectionBrush" Color="#330078d4" />
+
+    <SolidColorBrush x:Key="MacRedBrush" Color="#ff5f57" />
+    <SolidColorBrush x:Key="MacAmberBrush" Color="#ffbd2e" />
+    <SolidColorBrush x:Key="MacGreenBrush" Color="#28c840" />
+</ResourceDictionary>

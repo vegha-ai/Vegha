@@ -1,0 +1,64 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:icons="using:Vegha.App.Controls.Icons"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="240"
+        x:Class="Vegha.App.Controls.Workspace.CloseWorkspaceDialog"
+        x:Name="Root"
+        Title="Close Workspace"
+        Width="520"
+        SizeToContent="Height"
+        CanResize="False"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="20">
+        <!-- Bottom action bar -->
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto" Margin="0,20,0,0">
+            <Border Grid.Column="0" />
+            <Button Grid.Column="1" Content="Cancel" Click="OnCancel_Click"
+                    Background="Transparent"
+                    BorderBrush="{DynamicResource Border1Brush}"
+                    BorderThickness="1"
+                    Foreground="{DynamicResource Text0Brush}"
+                    Padding="14,6" Margin="0,0,8,0"
+                    CornerRadius="4" />
+            <Button x:Name="ConfirmButton"
+                    Grid.Column="2" Content="Close" Click="OnClose_Click"
+                    IsDefault="True"
+                    Background="{DynamicResource AccentBrush}"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Padding="20,6"
+                    CornerRadius="4"
+                    FontWeight="SemiBold" />
+        </Grid>
+
+        <StackPanel Spacing="10">
+            <!-- Workspace identity row -->
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <icons:Icon Kind="FolderOpen" Size="18"
+                            Foreground="{DynamicResource Text1Brush}" />
+                <TextBlock x:Name="NameText"
+                           FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text0Brush}" />
+            </StackPanel>
+            <TextBlock x:Name="PathText"
+                       FontSize="11"
+                       FontFamily="{StaticResource MonoFont}"
+                       Foreground="{DynamicResource Text2Brush}"
+                       TextWrapping="Wrap" />
+            <TextBlock x:Name="PromptText"
+                       Margin="0,6,0,0"
+                       FontSize="13"
+                       Foreground="{DynamicResource Text0Brush}"
+                       TextWrapping="Wrap" />
+            <TextBlock x:Name="FootnoteText"
+                       Text="It will still be available in the file system at the above location and can be re-opened later."
+                       FontSize="12"
+                       Foreground="{DynamicResource Text2Brush}"
+                       TextWrapping="Wrap" />
+        </StackPanel>
+    </DockPanel>
+</Window>

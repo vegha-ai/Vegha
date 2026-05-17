@@ -1,0 +1,20 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Theme-agnostic tokens. Loaded once at app startup; never swapped. The per-variant
+         color dictionaries (Themes/Tokens/*.axaml) provide the brush keys; this file
+         provides the fonts/sizes/corner radii that don't change between variants. -->
+    <CornerRadius x:Key="RadiusSm">3</CornerRadius>
+    <CornerRadius x:Key="RadiusMd">5</CornerRadius>
+    <CornerRadius x:Key="RadiusLg">8</CornerRadius>
+
+    <Thickness x:Key="HairlineThickness">1</Thickness>
+
+    <FontFamily x:Key="UiFont">Inter, $Default</FontFamily>
+    <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas, Menlo, monospace</FontFamily>
+
+    <x:Double x:Key="TitleBarHeight">32</x:Double>
+    <x:Double x:Key="TopBarHeight">40</x:Double>
+    <x:Double x:Key="StatusBarHeight">22</x:Double>
+    <x:Double x:Key="ActivityRailWidth">44</x:Double>
+    <x:Double x:Key="ResizerSize">4</x:Double>
+</ResourceDictionary>

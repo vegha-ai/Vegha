@@ -1,0 +1,352 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="320"
+             x:Class="Vegha.App.Controls.Workspace.BodyEditor"
+             x:DataType="vm:RequestEditorViewModel">
+    <!-- Grid (not DockPanel) so the visible body-mode editor always fills the available
+         space. With DockPanel, only the *last* child fills; the others default to Dock=Left
+         and auto-size to their content width — which made the raw editor visibly narrow,
+         pushing its vertical scrollbar inward and trailing a "right edge" line through the
+         text. All six children share the cell; IsVisible bindings ensure only one paints. -->
+    <Grid Background="{DynamicResource Bg2Brush}">
+        <!-- (The body-type dropdown + Prettify live on the sub-tab header row in
+             RequestWorkspace.axaml so they sit on the same line as Body / Headers / Auth /
+             etc., right-aligned. They appear only when the Body sub-tab is active.) -->
+
+        <!-- GraphQL editor (query + variables + introspected schema) -->
+        <Grid IsVisible="{Binding BodyType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=graphql}"
+              ColumnDefinitions="*,4,260">
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" MinHeight="120" />
+                    <RowDefinition Height="4" />
+                    <RowDefinition Height="160" MinHeight="80" />
+                </Grid.RowDefinitions>
+
+                <DockPanel Grid.Row="0" Background="{DynamicResource CodeBgBrush}">
+                    <Border DockPanel.Dock="Top" Padding="12,2" Height="22"
+                            BorderBrush="{DynamicResource Border0Brush}"
+                            BorderThickness="0,0,0,1">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="QUERY"
+                                       Classes="sectionHeaderMinor"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="1"
+                                    Command="{Binding IntrospectGraphQLCommand}"
+                                    Content="Introspect schema"
+                                    FontSize="10"
+                                    Background="Transparent"
+                                    Foreground="{DynamicResource Text2Brush}"
+                                    Padding="8,1" Height="20"
+                                    ToolTip.Tip="POST the standard introspection query to the URL and render the schema browser" />
+                        </Grid>
+                    </Border>
+                    <ws:VariableAwareTextEditor
+                        Text="{Binding GraphQLQuery, Mode=TwoWay}"
+                        Variables="{Binding ResolvedVariablesSnapshot}"
+                        SingleLine="False"
+                        ShowLineNumbers="True"
+                        Bordered="False"
+                        FontSize="{DynamicResource EditorFontSize}"
+                        Watermark="query GetUser($id: ID!) { user(id: $id) { id email } }" />
+                </DockPanel>
+
+                <GridSplitter Grid.Row="1" Classes="row" />
+
+                <DockPanel Grid.Row="2" Background="{DynamicResource CodeBgBrush}">
+                    <Border DockPanel.Dock="Top" Padding="12,4" Height="22"
+                            BorderBrush="{DynamicResource Border0Brush}"
+                            BorderThickness="0,0,0,1">
+                        <TextBlock Text="VARIABLES (JSON)"
+                                   Classes="sectionHeaderMinor"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <ws:VariableAwareTextEditor
+                        Text="{Binding GraphQLVariables, Mode=TwoWay}"
+                        Variables="{Binding ResolvedVariablesSnapshot}"
+                        SingleLine="False"
+                        ShowLineNumbers="True"
+                        SyntaxHighlightingName="Json"
+                        Bordered="False"
+                        FontSize="{DynamicResource EditorFontSize}"
+                        Watermark='{}{ "id": "u_42" }' />
+                </DockPanel>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" Classes="col" />
+
+            <!-- Schema browser pane: hidden until a successful Introspect. -->
+            <DockPanel Grid.Column="2" Background="{DynamicResource Bg3Brush}">
+                <Border DockPanel.Dock="Top" Padding="10,4" Height="22"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1">
+                    <TextBlock Text="SCHEMA"
+                               Classes="sectionHeaderMinor"
+                               VerticalAlignment="Center" />
+                </Border>
+                <Grid>
+                    <TextBlock IsVisible="{Binding !GraphQLSchemaLoaded}"
+                               Text="No schema loaded — click ‘Introspect schema’."
+                               FontSize="11"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap"
+                               Padding="10,8" />
+                    <ScrollViewer IsVisible="{Binding GraphQLSchemaLoaded}">
+                        <SelectableTextBlock Text="{Binding GraphQLSchemaSummary}"
+                                             FontFamily="{StaticResource MonoFont}"
+                                             FontSize="10"
+                                             TextWrapping="NoWrap"
+                                             Foreground="{DynamicResource Text0Brush}"
+                                             Padding="10,6" />
+                    </ScrollViewer>
+                </Grid>
+            </DockPanel>
+        </Grid>
+
+        <!-- Raw editor (json / xml / text / sparql) — variable-aware + line numbers + syntax.
+             Borderless so the body area renders flush with no boxed input chrome. -->
+        <ws:VariableAwareTextEditor
+            IsVisible="{Binding IsBodyRaw}"
+            Text="{Binding BodyContent, Mode=TwoWay}"
+            Variables="{Binding ResolvedVariablesSnapshot}"
+            SyntaxHighlightingName="{Binding BodySyntaxHighlightingName}"
+            SingleLine="False"
+            ShowLineNumbers="True"
+            Bordered="False"
+            FontSize="{DynamicResource EditorFontSize}"
+            Watermark="(empty body — pick a type and start typing)" />
+
+        <!-- Form URL-Encoded body — key/value table. The wire form is
+             application/x-www-form-urlencoded; the executor encodes via FormUrlEncodedContent. -->
+        <DockPanel IsVisible="{Binding BodyType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=form-urlencoded}"
+                   Background="{DynamicResource CodeBgBrush}">
+            <Border DockPanel.Dock="Top" Padding="12,6"
+                    Background="{DynamicResource Bg2Brush}"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="application/x-www-form-urlencoded"
+                               Classes="sectionHeaderMinor"
+                               VerticalAlignment="Center" />
+                    <Button Content="+ Add row"
+                            Command="{Binding AddFormUrlEncodedItemCommand}"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{DynamicResource AccentBrush}"
+                            FontSize="11" Padding="6,2" />
+                </StackPanel>
+            </Border>
+            <ScrollViewer Background="{DynamicResource Bg2Brush}">
+                <StackPanel Spacing="0">
+                    <Grid ColumnDefinitions="32,*,*,Auto" Margin="12,8,12,4">
+                        <TextBlock Grid.Column="1" Text="Name" FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                        <TextBlock Grid.Column="2" Text="Value" FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding FormUrlEncodedItems}" Margin="12,0,12,8">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:KvEntry">
+                                <Grid ColumnDefinitions="32,*,*,Auto" Margin="0,2,0,0">
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsActive, Mode=TwoWay}"
+                                              VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Text="{Binding Name, Mode=TwoWay}"
+                                             Watermark="key"
+                                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                             Background="{DynamicResource BgInputBrush}"
+                                             BorderBrush="{DynamicResource Border1Brush}"
+                                             Foreground="{DynamicResource Text0Brush}"
+                                             Padding="6,3" CornerRadius="3" Margin="0,0,4,0" />
+                                    <TextBox Grid.Column="2" Text="{Binding Value, Mode=TwoWay}"
+                                             Watermark="value"
+                                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                             Background="{DynamicResource BgInputBrush}"
+                                             BorderBrush="{DynamicResource Border1Brush}"
+                                             Foreground="{DynamicResource Text0Brush}"
+                                             Padding="6,3" CornerRadius="3" Margin="0,0,4,0" />
+                                    <Button Grid.Column="3"
+                                            Command="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).RemoveFormUrlEncodedItemCommand}"
+                                            CommandParameter="{Binding}"
+                                            Background="Transparent" BorderThickness="0"
+                                            Padding="6,2" Margin="4,0,0,0"
+                                            ToolTip.Tip="Remove">
+                                        <TextBlock Text="×" FontSize="14"
+                                                   Foreground="{DynamicResource Text3Brush}" />
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock IsVisible="{Binding !FormUrlEncodedItems.Count}"
+                               Text="(no fields — click '+ Add row')"
+                               FontSize="11" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               HorizontalAlignment="Center"
+                               Margin="0,16,0,16" />
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+
+        <!-- Multipart-form body — full 4-column grid with per-row text/file picker, optional
+             per-part Content-Type override, and an "+ Add" / "+ File" pair to add rows. -->
+        <DockPanel IsVisible="{Binding BodyType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=multipart-form}"
+                   Background="{DynamicResource CodeBgBrush}">
+            <Border DockPanel.Dock="Top" Padding="12,6"
+                    Background="{DynamicResource Bg2Brush}"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="multipart/form-data"
+                               Classes="sectionHeaderMinor"
+                               VerticalAlignment="Center" />
+                    <Button Content="+ Text row"
+                            Command="{Binding AddMultipartTextItemCommand}"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{DynamicResource AccentBrush}"
+                            FontSize="11" Padding="6,2" />
+                    <Button Content="+ File row"
+                            Command="{Binding AddMultipartFileItemCommand}"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="{DynamicResource AccentBrush}"
+                            FontSize="11" Padding="6,2" />
+                </StackPanel>
+            </Border>
+            <ScrollViewer Background="{DynamicResource Bg2Brush}">
+                <StackPanel Spacing="0">
+                    <Grid ColumnDefinitions="32,*,*,140,90,Auto" Margin="12,8,12,4">
+                        <TextBlock Grid.Column="1" Text="Name" FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                        <TextBlock Grid.Column="2" Text="Value" FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                        <TextBlock Grid.Column="3" Text="Content-Type" FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                        <TextBlock Grid.Column="4" Text="Kind" FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding MultipartItems}" Margin="12,0,12,8">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:MultipartFormRow">
+                                <Grid ColumnDefinitions="32,*,*,140,90,Auto" Margin="0,2,0,0">
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsActive, Mode=TwoWay}"
+                                              VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Text="{Binding Name, Mode=TwoWay}"
+                                             Watermark="field-name"
+                                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                             Background="{DynamicResource BgInputBrush}"
+                                             BorderBrush="{DynamicResource Border1Brush}"
+                                             Foreground="{DynamicResource Text0Brush}"
+                                             Padding="6,3" CornerRadius="3" Margin="0,0,4,0" />
+                                    <Grid Grid.Column="2" ColumnDefinitions="*,Auto" Margin="0,0,4,0">
+                                        <TextBox Grid.Column="0" Text="{Binding Value, Mode=TwoWay}"
+                                                 Watermark="value or /path/to/file"
+                                                 FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                 Background="{DynamicResource BgInputBrush}"
+                                                 BorderBrush="{DynamicResource Border1Brush}"
+                                                 Foreground="{DynamicResource Text0Brush}"
+                                                 Padding="6,3" CornerRadius="3" />
+                                        <!-- Per-row file picker. Visible for both kinds — picking forces Kind=file. -->
+                                        <Button Grid.Column="1"
+                                                Command="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).PickMultipartFileCommand}"
+                                                CommandParameter="{Binding}"
+                                                Background="Transparent" BorderThickness="0"
+                                                Padding="6,2" Margin="2,0,0,0"
+                                                ToolTip.Tip="Pick a file">
+                                            <TextBlock Text="📁" FontSize="14" />
+                                        </Button>
+                                    </Grid>
+                                    <TextBox Grid.Column="3" Text="{Binding ContentType, Mode=TwoWay}"
+                                             Watermark="(auto)"
+                                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                             Background="{DynamicResource BgInputBrush}"
+                                             BorderBrush="{DynamicResource Border1Brush}"
+                                             Foreground="{DynamicResource Text0Brush}"
+                                             Padding="6,3" CornerRadius="3" Margin="0,0,4,0" />
+                                    <ComboBox Grid.Column="4" SelectedItem="{Binding Kind, Mode=TwoWay}"
+                                              ItemsSource="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).AvailableMultipartKinds}"
+                                              Height="24" FontSize="11"
+                                              Background="{DynamicResource Bg3Brush}"
+                                              BorderBrush="{DynamicResource Border1Brush}" />
+                                    <Button Grid.Column="5"
+                                            Command="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).RemoveMultipartItemCommand}"
+                                            CommandParameter="{Binding}"
+                                            Background="Transparent" BorderThickness="0"
+                                            Padding="6,2" Margin="4,0,0,0"
+                                            ToolTip.Tip="Remove">
+                                        <TextBlock Text="×" FontSize="14"
+                                                   Foreground="{DynamicResource Text3Brush}" />
+                                    </Button>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock IsVisible="{Binding !MultipartItems.Count}"
+                               Text="(no fields — click '+ Text row' or '+ File row')"
+                               FontSize="11" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               HorizontalAlignment="Center"
+                               Margin="0,16,0,16" />
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+
+        <!-- File / Binary body — single file picker with optional Content-Type override -->
+        <DockPanel IsVisible="{Binding BodyType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=file}"
+                   Background="{DynamicResource CodeBgBrush}">
+            <Border DockPanel.Dock="Top" Padding="12,8">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="The selected file is streamed verbatim as the request body. Content-Type defaults to the file extension."
+                               FontSize="11" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap" />
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button Classes="tertiary"
+                                Content="Pick file…"
+                                Command="{Binding PickBodyFileCommand}" />
+                        <Button Classes="secondary"
+                                Content="Clear"
+                                Command="{Binding ClearBodyFileCommand}"
+                                IsVisible="{Binding FilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+                    <Border IsVisible="{Binding FilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                            Background="{DynamicResource Bg2Brush}"
+                            BorderBrush="{DynamicResource Border0Brush}"
+                            BorderThickness="1" CornerRadius="3" Padding="8,6">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{Binding FilePath}"
+                                       FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                       Foreground="{DynamicResource Text1Brush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Content-Type override (optional)" FontSize="11"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding FileContentType, Mode=TwoWay}"
+                                 Watermark="(auto-detect from extension)"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,6" CornerRadius="3" MaxWidth="320" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </DockPanel>
+
+        <Border IsVisible="{Binding BodyType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=none}"
+                Padding="20" Background="{DynamicResource Bg2Brush}">
+            <TextBlock FontSize="11" FontStyle="Italic"
+                       Foreground="{DynamicResource Text3Brush}"
+                       Text="No body will be sent. Pick a type from the dropdown above to add one." />
+        </Border>
+    </Grid>
+</UserControl>

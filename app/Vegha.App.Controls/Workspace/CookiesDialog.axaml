@@ -1,0 +1,195 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Vegha.App.ViewModels"
+        xmlns:icons="using:Vegha.App.Controls.Icons"
+        mc:Ignorable="d" d:DesignWidth="860" d:DesignHeight="520"
+        x:Class="Vegha.App.Controls.Workspace.CookiesDialog"
+        x:DataType="vm:CookiesViewModel"
+        Title="Cookies"
+        Width="860" Height="520"
+        MinWidth="640" MinHeight="360"
+        CanResize="True"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner">
+    <Window.Styles>
+        <Style Selector="TextBox.cookieField">
+            <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+            <Setter Property="Padding" Value="6,3" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="MinHeight" Value="24" />
+        </Style>
+        <Style Selector="Button.iconAction">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        </Style>
+        <Style Selector="Button.iconAction:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="14">
+        <!-- Bottom bar: primary "Add cookie" + close. -->
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*,Auto" Margin="0,14,0,0">
+            <Button Grid.Column="0"
+                    Click="OnAdd_Click"
+                    Background="{DynamicResource AccentBrush}"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Padding="14,6"
+                    CornerRadius="4">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <icons:Icon Kind="Plus" Size="13" Foreground="White" VerticalAlignment="Center" />
+                    <TextBlock Text="Add cookie" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
+            <Button Grid.Column="2" Content="Close"
+                    Click="OnClose_Click"
+                    IsDefault="True"
+                    Background="Transparent"
+                    BorderBrush="{DynamicResource Border1Brush}"
+                    BorderThickness="1"
+                    Foreground="{DynamicResource Text0Brush}"
+                    Padding="14,6"
+                    CornerRadius="4" />
+        </Grid>
+
+        <!-- Header: title, domain filter, refresh, clear. -->
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,0,0,10">
+            <TextBlock Grid.Column="0" Text="COOKIES"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text2Brush}"
+                       VerticalAlignment="Center" />
+            <TextBox Grid.Column="1"
+                     Text="{Binding DomainFilter, Mode=TwoWay}"
+                     Watermark="Filter by domain..."
+                     Width="220" MinHeight="24"
+                     FontSize="11"
+                     Background="{DynamicResource BgInputBrush}"
+                     BorderBrush="{DynamicResource Border1Brush}"
+                     Foreground="{DynamicResource Text0Brush}"
+                     Padding="6,3"
+                     Margin="0,0,6,0" />
+            <Button Grid.Column="2" Classes="iconAction"
+                    Command="{Binding RefreshCommand}"
+                    ToolTip.Tip="Refresh">
+                <icons:Icon Kind="Refresh" Size="13" Foreground="{DynamicResource Text2Brush}" />
+            </Button>
+            <Button Grid.Column="3" Classes="iconAction"
+                    Command="{Binding ClearCommand}"
+                    ToolTip.Tip="Clear all cookies">
+                <icons:Icon Kind="Trash" Size="13" Foreground="{DynamicResource Text2Brush}" />
+            </Button>
+        </Grid>
+
+        <!-- Empty state -->
+        <TextBlock DockPanel.Dock="Top"
+                   IsVisible="{Binding !Items.Count}"
+                   Text="No cookies yet. Click 'Add cookie' to create one, or send a request that returns Set-Cookie."
+                   FontStyle="Italic" FontSize="11"
+                   Foreground="{DynamicResource Text3Brush}"
+                   HorizontalAlignment="Center" Margin="0,40,0,0" />
+
+        <!-- Cookie table. Each row exposes editable Domain / Path / Name / Value / Expires
+             + HttpOnly + Secure toggles. Edits flow back through CookieRow's INPC into
+             CookiesViewModel.OnRowChanged → CookieJarStore.UpsertAsync. -->
+        <Border BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                CornerRadius="4"
+                IsVisible="{Binding !!Items.Count}">
+            <DockPanel>
+                <!-- Column headers -->
+                <Border DockPanel.Dock="Top"
+                        Background="{DynamicResource Bg2Brush}"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="8,6">
+                    <Grid ColumnDefinitions="2*,1.5*,1.5*,2*,1.5*,Auto,Auto,32">
+                        <TextBlock Grid.Column="0" Text="DOMAIN" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" Margin="2,0" />
+                        <TextBlock Grid.Column="1" Text="PATH" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" Margin="2,0" />
+                        <TextBlock Grid.Column="2" Text="NAME" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" Margin="2,0" />
+                        <TextBlock Grid.Column="3" Text="VALUE" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" Margin="2,0" />
+                        <TextBlock Grid.Column="4" Text="EXPIRES" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" Margin="2,0" />
+                        <TextBlock Grid.Column="5" Text="HTTP" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" Margin="6,0,4,0" />
+                        <TextBlock Grid.Column="6" Text="SECURE" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text2Brush}" Margin="4,0,6,0" />
+                    </Grid>
+                </Border>
+
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CookieRow">
+                                <Border BorderBrush="{DynamicResource Border0Brush}"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="8,4"
+                                        Background="Transparent">
+                                    <Grid ColumnDefinitions="2*,1.5*,1.5*,2*,1.5*,Auto,Auto,32"
+                                          VerticalAlignment="Center">
+                                        <TextBox Grid.Column="0" Classes="cookieField"
+                                                 Text="{Binding Domain, Mode=TwoWay}"
+                                                 Watermark="example.com"
+                                                 Margin="2,0" />
+                                        <TextBox Grid.Column="1" Classes="cookieField"
+                                                 Text="{Binding Path, Mode=TwoWay}"
+                                                 Watermark="/"
+                                                 Margin="2,0" />
+                                        <TextBox Grid.Column="2" Classes="cookieField"
+                                                 Text="{Binding Name, Mode=TwoWay}"
+                                                 Watermark="session_id"
+                                                 Margin="2,0" />
+                                        <TextBox Grid.Column="3" Classes="cookieField"
+                                                 Text="{Binding Value, Mode=TwoWay}"
+                                                 Watermark="value"
+                                                 Margin="2,0" />
+                                        <TextBox Grid.Column="4" Classes="cookieField"
+                                                 Text="{Binding Expires, Mode=TwoWay}"
+                                                 Watermark="session"
+                                                 Margin="2,0" />
+                                        <CheckBox Grid.Column="5"
+                                                  IsChecked="{Binding HttpOnly, Mode=TwoWay}"
+                                                  ToolTip.Tip="HttpOnly"
+                                                  Margin="10,0,4,0"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                                        <CheckBox Grid.Column="6"
+                                                  IsChecked="{Binding Secure, Mode=TwoWay}"
+                                                  ToolTip.Tip="Secure"
+                                                  Margin="10,0,4,0"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                                        <Button Grid.Column="7" Classes="iconAction"
+                                                Command="{Binding $parent[ItemsControl].((vm:CookiesViewModel)DataContext).DeleteCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="Delete cookie">
+                                            <icons:Icon Kind="Trash" Size="12"
+                                                        Foreground="{DynamicResource Text3Brush}" />
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+    </DockPanel>
+</Window>

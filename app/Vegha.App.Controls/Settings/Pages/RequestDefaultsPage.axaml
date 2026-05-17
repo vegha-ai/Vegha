@@ -1,0 +1,109 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels.Settings"
+             mc:Ignorable="d" d:DesignWidth="780"
+             x:Class="Vegha.App.Controls.Settings.Pages.RequestDefaultsPage"
+             x:DataType="vm:RequestDefaultsSettingsViewModel">
+    <StackPanel Spacing="28" MaxWidth="820">
+        <TextBlock Text="Request defaults"
+                   FontSize="20" FontWeight="SemiBold"
+                   Foreground="{DynamicResource Text0Brush}" />
+
+        <ItemsControl>
+            <ItemsControl.Items>
+                <Border Background="{DynamicResource Bg2Brush}"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="0,14">
+                    <StackPanel Spacing="6">
+                        <CheckBox Content="Follow redirects"
+                                  IsChecked="{Binding FollowRedirects, Mode=TwoWay}" />
+                        <TextBlock Text="Automatically resolve 3xx responses"
+                                   FontSize="11" Foreground="{DynamicResource Text2Brush}"
+                                   Margin="22,0,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Background="{DynamicResource Bg2Brush}"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="0,14">
+                    <StackPanel Spacing="6">
+                        <CheckBox Content="Verify SSL certificates"
+                                  IsChecked="{Binding VerifySsl, Mode=TwoWay}" />
+                        <TextBlock Text="Reject untrusted or expired certs"
+                                   FontSize="11" Foreground="{DynamicResource Text2Brush}"
+                                   Margin="22,0,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Background="{DynamicResource Bg2Brush}"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="0,14">
+                    <StackPanel Spacing="6">
+                        <CheckBox Content="Send cookies with requests"
+                                  IsChecked="{Binding SendCookies, Mode=TwoWay}" />
+                        <TextBlock Text="Attach stored cookies on the outgoing request"
+                                   FontSize="11" Foreground="{DynamicResource Text2Brush}"
+                                   Margin="22,0,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Background="{DynamicResource Bg2Brush}"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="0,14">
+                    <StackPanel Spacing="6">
+                        <CheckBox Content="Save cookies from responses"
+                                  IsChecked="{Binding SaveCookies, Mode=TwoWay}" />
+                        <TextBlock Text="Persist Set-Cookie headers to the local cookie jar"
+                                   FontSize="11" Foreground="{DynamicResource Text2Brush}"
+                                   Margin="22,0,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Background="{DynamicResource Bg2Brush}"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1"
+                        Padding="0,14">
+                    <StackPanel Spacing="6">
+                        <CheckBox Content="URL-encode params"
+                                  IsChecked="{Binding EncodeUrl, Mode=TwoWay}" />
+                        <TextBlock Text="Percent-encode special characters in query strings"
+                                   FontSize="11" Foreground="{DynamicResource Text2Brush}"
+                                   Margin="22,0,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Background="{DynamicResource Bg2Brush}"
+                        Padding="0,14">
+                    <StackPanel Spacing="6">
+                        <CheckBox Content="Save response bodies to history"
+                                  IsChecked="{Binding SaveResponsesToHistory, Mode=TwoWay}" />
+                        <TextBlock Text="History always records method, URL, status, and timing. This toggle adds the response body and the request snapshot used by Replay; off by default for compliance."
+                                   FontSize="11" Foreground="{DynamicResource Text2Brush}"
+                                   TextWrapping="Wrap"
+                                   Margin="22,0,0,0" />
+                    </StackPanel>
+                </Border>
+            </ItemsControl.Items>
+        </ItemsControl>
+
+        <!-- Max body size -->
+        <StackPanel Spacing="6">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock Text="Max body size" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <TextBlock Text="Truncate response previews larger than this"
+                               FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                </StackPanel>
+                <NumericUpDown Grid.Column="1"
+                               Value="{Binding MaxBodySizeMb, Mode=TwoWay}"
+                               Minimum="1" Maximum="2048" Increment="1"
+                               VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="MB"
+                           VerticalAlignment="Center" Margin="10,0,0,0"
+                           Foreground="{DynamicResource Text2Brush}" />
+            </Grid>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

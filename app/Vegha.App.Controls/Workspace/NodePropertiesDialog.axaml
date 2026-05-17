@@ -1,0 +1,235 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Vegha.App.ViewModels"
+        x:Class="Vegha.App.Controls.Workspace.NodePropertiesDialog"
+        x:DataType="vm:NodePropertiesViewModel"
+        Title="{Binding Title}"
+        Width="720" Height="600"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="0">
+        <!-- Footer -->
+        <Border DockPanel.Dock="Bottom"
+                Padding="14,10"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,1,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="Cancel" Click="OnCancel_Click"
+                        Background="{DynamicResource Bg3Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        Padding="14,6" />
+                <Button Content="Save" Click="OnSave_Click"
+                        Command="{Binding SaveCommand}"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="White"
+                        Padding="14,6" />
+            </StackPanel>
+        </Border>
+
+        <!-- Header -->
+        <Border DockPanel.Dock="Top"
+                Padding="14,10"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <StackPanel Spacing="4">
+                <TextBlock FontSize="11" FontWeight="SemiBold"
+                           LetterSpacing="1"
+                           Foreground="{DynamicResource Text2Brush}">
+                    <Run Text="{Binding NodeLabel}" />
+                    <Run Text=" PROPERTIES" />
+                </TextBlock>
+                <TextBox Text="{Binding Name}"
+                         FontSize="14" FontWeight="SemiBold"
+                         Background="{DynamicResource BgInputBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         Padding="8,4" CornerRadius="3" />
+            </StackPanel>
+        </Border>
+
+        <!-- Tabbed editor — constrain tab-header font so it matches the rest of the UI;
+             Fluent's default TabItem header is ~18px which dwarfs the 12-13px body text. -->
+        <TabControl Padding="14,8" Background="{DynamicResource Bg2Brush}">
+            <TabControl.Styles>
+                <Style Selector="TabItem">
+                    <Setter Property="FontSize" Value="13" />
+                    <Setter Property="MinHeight" Value="32" />
+                    <Setter Property="Padding" Value="10,4" />
+                </Style>
+            </TabControl.Styles>
+            <!-- Variables -->
+            <TabItem Header="Variables">
+                <DockPanel Margin="0,8,0,0">
+                    <Button DockPanel.Dock="Top"
+                            Command="{Binding AddVariableCommand}"
+                            Content="+ Add variable"
+                            HorizontalAlignment="Left"
+                            FontSize="11"
+                            Background="{DynamicResource Bg3Brush}"
+                            Foreground="{DynamicResource Text0Brush}"
+                            Padding="10,4" Margin="0,0,0,8" />
+                    <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding Variables}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:KvEntry">
+                                    <Grid ColumnDefinitions="Auto,200,*,Auto" Margin="0,2">
+                                        <CheckBox Grid.Column="0"
+                                                  IsChecked="{Binding Enabled}"
+                                                  ToolTip.Tip="Enabled" />
+                                        <TextBox Grid.Column="1" Text="{Binding Name}"
+                                                 Watermark="name"
+                                                 FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                 Background="{DynamicResource BgInputBrush}"
+                                                 BorderBrush="{DynamicResource Border1Brush}"
+                                                 Padding="6,3" Margin="6,0" />
+                                        <TextBox Grid.Column="2" Text="{Binding Value}"
+                                                 Watermark="value"
+                                                 FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                 Background="{DynamicResource BgInputBrush}"
+                                                 BorderBrush="{DynamicResource Border1Brush}"
+                                                 Padding="6,3" />
+                                        <Button Grid.Column="3"
+                                                Tag="{Binding}"
+                                                Click="OnRemoveVariable_Click"
+                                                Content="✕"
+                                                ToolTip.Tip="Remove"
+                                                Background="Transparent" BorderThickness="0"
+                                                Foreground="{DynamicResource Text2Brush}"
+                                                Width="22" Height="22" Padding="0" Margin="6,0,0,0" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+
+            <!-- Headers -->
+            <TabItem Header="Headers">
+                <DockPanel Margin="0,8,0,0">
+                    <Button DockPanel.Dock="Top"
+                            Command="{Binding AddHeaderCommand}"
+                            Content="+ Add header"
+                            HorizontalAlignment="Left"
+                            FontSize="11"
+                            Background="{DynamicResource Bg3Brush}"
+                            Foreground="{DynamicResource Text0Brush}"
+                            Padding="10,4" Margin="0,0,0,8" />
+                    <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding Headers}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:KvEntry">
+                                    <Grid ColumnDefinitions="Auto,200,*,Auto" Margin="0,2">
+                                        <CheckBox Grid.Column="0"
+                                                  IsChecked="{Binding Enabled}"
+                                                  ToolTip.Tip="Enabled" />
+                                        <TextBox Grid.Column="1" Text="{Binding Name}"
+                                                 Watermark="header"
+                                                 FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                 Background="{DynamicResource BgInputBrush}"
+                                                 BorderBrush="{DynamicResource Border1Brush}"
+                                                 Padding="6,3" Margin="6,0" />
+                                        <TextBox Grid.Column="2" Text="{Binding Value}"
+                                                 Watermark="value"
+                                                 FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                 Background="{DynamicResource BgInputBrush}"
+                                                 BorderBrush="{DynamicResource Border1Brush}"
+                                                 Padding="6,3" />
+                                        <Button Grid.Column="3"
+                                                Tag="{Binding}"
+                                                Click="OnRemoveHeader_Click"
+                                                Content="✕"
+                                                Background="Transparent" BorderThickness="0"
+                                                Foreground="{DynamicResource Text2Brush}"
+                                                Width="22" Height="22" Padding="0" Margin="6,0,0,0" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+
+            <!-- Auth -->
+            <TabItem Header="Auth">
+                <StackPanel Margin="0,8,0,0" Spacing="10">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Type" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource Text2Brush}" FontSize="12" />
+                        <ComboBox SelectedItem="{Binding AuthType}"
+                                  ItemsSource="{Binding AvailableAuthTypes}"
+                                  Width="160"
+                                  Background="{DynamicResource Bg3Brush}"
+                                  BorderBrush="{DynamicResource Border1Brush}" />
+                    </StackPanel>
+                    <TextBlock Text="Parameters (one per line, format: key: value)"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text2Brush}" />
+                    <TextBox Text="{Binding AuthParametersText}"
+                             AcceptsReturn="True"
+                             Height="160"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource BgInputBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="8,4" />
+                    <TextBlock FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap"
+                               Text="Examples — bearer: 'token: {{accessToken}}' · basic: 'username: …' + 'password: …' · awsv4: 'accessKeyId: …', 'secretAccessKey: …', 'region: us-east-1'." />
+                </StackPanel>
+            </TabItem>
+
+            <!-- Pre-request -->
+            <TabItem Header="Pre-request">
+                <DockPanel Margin="0,8,0,0">
+                    <TextBlock DockPanel.Dock="Top"
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap"
+                               Text="Runs before every request in this scope. Available: bru.setVar / getVar / setEnvVar / getEnvVar, plus the lodash + axios shims."
+                               Margin="0,0,0,6" />
+                    <TextBox Text="{Binding PreRequestScript}"
+                             AcceptsReturn="True"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource CodeBgBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="10,8" />
+                </DockPanel>
+            </TabItem>
+
+            <!-- Tests -->
+            <TabItem Header="Tests">
+                <DockPanel Margin="0,8,0,0">
+                    <TextBlock DockPanel.Dock="Top"
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap"
+                               Text="Runs after every request in this scope. Use test('name', fn) and expect(actual)."
+                               Margin="0,0,0,6" />
+                    <TextBox Text="{Binding TestsScript}"
+                             AcceptsReturn="True"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource CodeBgBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="10,8" />
+                </DockPanel>
+            </TabItem>
+
+            <!-- Docs -->
+            <TabItem Header="Docs">
+                <TextBox Text="{Binding Docs}"
+                         AcceptsReturn="True"
+                         Margin="0,8,0,0"
+                         FontFamily="{StaticResource MonoFont}" FontSize="12"
+                         Background="{DynamicResource CodeBgBrush}"
+                         BorderBrush="{DynamicResource Border1Brush}"
+                         Foreground="{DynamicResource Text0Brush}"
+                         Padding="10,8" />
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Vegha.Core.Importers</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.OpenApi" />
+    <PackageReference Include="Microsoft.OpenApi.Readers" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Vegha.Core.Bru.Parser\Vegha.Core.Bru.Parser.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Domain\Vegha.Core.Domain.csproj" />
+    <ProjectReference Include="..\Vegha.Core.FileFormat\Vegha.Core.FileFormat.csproj" />
+    <ProjectReference Include="..\Vegha.Integrations.Wsdl\Vegha.Integrations.Wsdl.csproj" />
+  </ItemGroup>
+</Project>
