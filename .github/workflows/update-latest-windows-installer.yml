@@ -87,10 +87,14 @@ jobs:
             exit 1
           fi
 
-      - name: Setup .NET 10
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          # 10 builds the app; the 8 runtime is required by the Artifact
+          # Signing dlib that signtool loads.
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
       - name: Compute build version
         id: ver
@@ -107,17 +111,18 @@ jobs:
       - name: Install Velopack CLI
         run: dotnet tool install -g vpk
 
-      - name: Install Trusted Signing dlib
+      - name: Install Artifact Signing dlib
         shell: pwsh
         run: |
-          # The Trusted Signing dlib is shipped in this NuGet package; signtool
-          # loads it to sign against the HSM-backed certificate profile.
-          nuget install Microsoft.Trusted.Signing.Client `
+          # The Artifact Signing dlib (Azure.CodeSigning.Dlib.dll) ships in this
+          # NuGet package; signtool loads it to sign against the HSM-backed
+          # certificate profile. -ExcludeVersion keeps the extracted path stable.
+          nuget install Microsoft.ArtifactSigning.Client `
             -OutputDirectory "$env:RUNNER_TEMP/ts" -ExcludeVersion
-          $dlib = Get-ChildItem "$env:RUNNER_TEMP/ts" -Recurse -Filter '*Dlib.dll' |
+          $dlib = Get-ChildItem "$env:RUNNER_TEMP/ts" -Recurse -Filter 'Azure.CodeSigning.Dlib.dll' |
                   Where-Object { $_.FullName -like '*\x64\*' } |
                   Select-Object -First 1
-          if (-not $dlib) { throw "Trusted Signing dlib (*Dlib.dll, x64) not found in the NuGet package." }
+          if (-not $dlib) { throw "Azure.CodeSigning.Dlib.dll (x64) not found in the NuGet package." }
           "TS_DLIB=$($dlib.FullName)" >> $env:GITHUB_ENV
           Write-Host "dlib: $($dlib.FullName)"
 
