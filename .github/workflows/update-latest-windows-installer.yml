@@ -1,0 +1,221 @@
+name: Update Windows Installer on Latest Release
+
+# When a pull request is merged into main, build an Azure Trusted Signing
+# code-signed Windows x64 Velopack installer and refresh the Windows assets
+# on the repository's current "latest" GitHub Release:
+#   https://github.com/vegha-ai/Vegha/releases
+#
+# Each merge gets a UNIQUE version — <major>.<minor>.<run_number> — so the
+# Velopack auto-update feed (RELEASES / releases.win.json / *-full.nupkg)
+# advances every time and installed clients actually pick the build up.
+#
+# This does NOT create a new release or tag — it updates assets on whatever
+# release is currently marked "Latest". Cutting a brand-new versioned release
+# is still done through release.yml (push a v*.*.* tag).
+#
+# === Signing: Azure Trusted Signing ===
+# Trusted Signing certificates are HSM-backed and cannot be downloaded. The
+# build signs by calling the service through signtool + the Trusted Signing
+# dlib, authenticating with an Azure service principal.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   AZURE_TENANT_ID            service principal tenant
+#   AZURE_CLIENT_ID            service principal app/client id
+#   AZURE_CLIENT_SECRET        service principal secret
+#   TRUSTED_SIGNING_ENDPOINT   account endpoint, e.g. https://eus.codesigning.azure.net/
+#   TRUSTED_SIGNING_ACCOUNT    Trusted Signing account name
+#   TRUSTED_SIGNING_PROFILE    certificate profile name
+# The service principal needs the "Trusted Signing Certificate Profile Signer"
+# role on the signing account. The job fails fast if any secret is missing.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build & sign only — upload the result as a workflow artifact instead of updating the GitHub Release.'
+        type: boolean
+        default: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+# Only the newest merge matters — its build already contains every prior
+# merge, so cancel any in-flight run when another PR lands.
+concurrency:
+  group: update-latest-windows-installer
+  cancel-in-progress: true
+
+jobs:
+  build-sign-publish:
+    # Run on a genuine PR merge, or on a manual workflow_dispatch. A
+    # pull_request "closed" event also fires when a PR is closed WITHOUT
+    # merging — that case is excluded by the merged check.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    name: build, sign & update latest release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # PR merge -> the base branch; manual dispatch -> the chosen branch.
+          ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
+
+      - name: Verify signing secrets are configured
+        shell: bash
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          TRUSTED_SIGNING_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          TRUSTED_SIGNING_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          TRUSTED_SIGNING_PROFILE: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+        run: |
+          missing=()
+          for v in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET \
+                   TRUSTED_SIGNING_ENDPOINT TRUSTED_SIGNING_ACCOUNT TRUSTED_SIGNING_PROFILE; do
+            if [ -z "${!v}" ]; then missing+=("$v"); fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing Trusted Signing secret(s): ${missing[*]} — add them under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Compute build version
+        id: ver
+        shell: pwsh
+        run: |
+          $base = [regex]::Match((Get-Content Directory.Build.props -Raw), '<Version>(.*?)</Version>').Groups[1].Value
+          if (-not $base) { throw "Could not read <Version> from Directory.Build.props" }
+          $p = $base -split '\.'
+          # <major>.<minor> from the file, patch = the monotonically rising run number.
+          $version = "$($p[0]).$($p[1]).$($env:GITHUB_RUN_NUMBER)"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Build version: $version  (base $base, run #$env:GITHUB_RUN_NUMBER)"
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk
+
+      - name: Install Trusted Signing dlib
+        shell: pwsh
+        run: |
+          # The Trusted Signing dlib is shipped in this NuGet package; signtool
+          # loads it to sign against the HSM-backed certificate profile.
+          nuget install Microsoft.Trusted.Signing.Client `
+            -OutputDirectory "$env:RUNNER_TEMP/ts" -ExcludeVersion
+          $dlib = Get-ChildItem "$env:RUNNER_TEMP/ts" -Recurse -Filter '*Dlib.dll' |
+                  Where-Object { $_.FullName -like '*\x64\*' } |
+                  Select-Object -First 1
+          if (-not $dlib) { throw "Trusted Signing dlib (*Dlib.dll, x64) not found in the NuGet package." }
+          "TS_DLIB=$($dlib.FullName)" >> $env:GITHUB_ENV
+          Write-Host "dlib: $($dlib.FullName)"
+
+      - name: Build & sign Velopack installer (win-x64)
+        env:
+          # Read by the dlib's DefaultAzureCredential to authenticate to the
+          # Trusted Signing service. Inherited by vpk -> signtool -> dlib.
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          TS_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          TS_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          TS_PROFILE: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+        shell: pwsh
+        run: |
+          # Trusted Signing metadata consumed by signtool via /dmdf.
+          $meta = Join-Path $env:RUNNER_TEMP 'trusted-signing.json'
+          [pscustomobject]@{
+            Endpoint               = $env:TS_ENDPOINT
+            CodeSigningAccountName = $env:TS_ACCOUNT
+            CertificateProfileName = $env:TS_PROFILE
+          } | ConvertTo-Json | Set-Content -Path $meta -Encoding utf8
+
+          # signtool arguments (the target file is appended by Velopack).
+          # Passed to `vpk pack --signParams`, which signs the packaged app
+          # binaries AND the generated Setup.exe. Trusted Signing requires the
+          # Microsoft RFC3161 timestamp service.
+          $signParams = "/v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 " +
+                        "/dlib `"$env:TS_DLIB`" /dmdf `"$meta`""
+
+          ./eng/Pack-Installer.ps1 `
+            -Runtime win-x64 `
+            -Version ${{ steps.ver.outputs.version }} `
+            -SignParams $signParams
+
+      - name: Stage release assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path staged | Out-Null
+          $rel = 'releases/win-x64'
+
+          # Installer + portable build, given stable names the website links to.
+          $setup = Get-ChildItem $rel -Filter '*Setup.exe' | Select-Object -First 1
+          if (-not $setup) { throw "No *Setup.exe produced under $rel." }
+          Copy-Item $setup.FullName staged/Vegha-win-x64-Setup.exe
+
+          $portable = Get-ChildItem $rel -Filter '*Portable.zip' | Select-Object -First 1
+          if ($portable) { Copy-Item $portable.FullName staged/Vegha-win-x64-Portable.zip }
+
+          # Velopack auto-update feed: the RELEASES index, the JSON manifests,
+          # and the version-stamped full package. Clients poll these to update.
+          foreach ($pat in 'RELEASES', 'releases.win.json', 'assets.win.json', '*-full.nupkg') {
+            Get-ChildItem $rel -Filter $pat -ErrorAction SilentlyContinue |
+              ForEach-Object { Copy-Item $_.FullName (Join-Path 'staged' $_.Name) }
+          }
+
+          Write-Host "Staged assets:"
+          Get-ChildItem staged | ForEach-Object { Write-Host "  $($_.Name)" }
+
+      - name: Upload signed build as artifact (dry run)
+        # Dry-run dispatch: keep the build off the public release — just attach
+        # it to the workflow run so it can be downloaded and inspected.
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vegha-win-x64-${{ steps.ver.outputs.version }}
+          path: staged/*
+          if-no-files-found: error
+
+      - name: Update latest GitHub Release
+        # Real merges always publish; a manual dispatch publishes only when
+        # dry_run was unchecked.
+        if: github.event_name == 'pull_request' || github.event.inputs.dry_run == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `gh release view` with no tag resolves to the repo's latest release.
+          tag="$(gh release view --json tagName --jq .tagName 2>/dev/null || true)"
+          if [ -z "$tag" ]; then
+            echo "::error::No published GitHub Release found to update. Cut one first via release.yml (push a v*.*.* tag)."
+            exit 1
+          fi
+          echo "Updating Windows assets on release: $tag"
+
+          # Drop stale Velopack packages first — every build emits a uniquely
+          # named *-full.nupkg, so without cleanup they would accumulate. The
+          # refreshed RELEASES/releases.win.json index references only the new
+          # one, so older packages are dead weight.
+          gh release view "$tag" --json assets --jq '.assets[].name' \
+            | { grep -E '\.nupkg$' || true; } \
+            | while read -r old; do
+                echo "  removing stale package: $old"
+                gh release delete-asset "$tag" "$old" -y
+              done
+
+          # --clobber replaces same-named assets in place; the release, its tag
+          # and its notes are left untouched.
+          gh release upload "$tag" staged/* --clobber
+          echo "Release '$tag' now carries signed Windows build v${{ steps.ver.outputs.version }}."
