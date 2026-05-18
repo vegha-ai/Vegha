@@ -36,6 +36,7 @@ The desktop API-testing category is crowded with Electron apps that boot slowly,
 - gRPC — unary **+ all streaming modes**
 - WebSocket
 - SOAP 1.1 / 1.2 with WSDL
+- SOAP WS-Security (Timestamp · UsernameToken) + WS-Addressing
 - Per-request retry & timeout
 - Connection timeline (DNS / connect / TLS / TTFB)
 - Cookie jar, redirects, system proxy
@@ -84,6 +85,7 @@ OAuth2 authorization-code runs through the **system browser** with a loopback li
   - Insomnia v4 / v5
   - OpenAPI 3.x / Swagger 2.0
   - WSDL → executable SOAP collection
+  - SoapUI / ReadyAPI projects
 - OpenAPI **sync** with drift detection
 
 </td>
@@ -209,7 +211,7 @@ Signed installers and store packages (Velopack, MSIX, MAS) are produced by the s
 ├── app/             # Desktop UI (Avalonia 11) + Core engine projects
 ├── cli/             # Headless CLI — same engine as the UI
 ├── plugin-vscode/   # VSCode extension (planned, v2)
-├── samples/         # Sample collections (Bruno petstore, OpenAPI petstore)
+├── samples/         # Sample collections (Bruno petstore, OpenAPI petstore, SoapUI project)
 ├── docs/            # README icons and assets
 └── eng/             # Build / packaging scripts (Velopack, MSIX, MAS)
 ```

@@ -37,6 +37,68 @@ public class ImportPipelineTests
     }
 
     [Fact]
+    public void SoapUiProject_DetectedFromBytes()
+    {
+        const string project = """
+            <con:soapui-project xmlns:con="http://eviware.com/soapui/config" name="AcmeProject">
+              <con:testSuite name="Smoke">
+                <con:testCase name="Case">
+                  <con:testStep type="restrequest" name="Ping">
+                    <con:config>
+                      <con:restRequest name="Ping">
+                        <con:endpoint>http://acme.test</con:endpoint>
+                        <con:method>GET</con:method>
+                      </con:restRequest>
+                    </con:config>
+                  </con:testStep>
+                </con:testCase>
+              </con:testSuite>
+            </con:soapui-project>
+            """;
+        var r = ImportPipeline.DetectAndImport(Encoding.UTF8.GetBytes(project), "acme-soapui-project.xml");
+
+        r.Success.Should().BeTrue();
+        r.FormatLabel.Should().Be("SoapUI project");
+        r.Collection.Should().NotBeNull();
+        r.Collection!.Name.Should().Be("AcmeProject");
+    }
+
+    [Fact]
+    public void SoapUiProject_WithCachedWsdl_NotMisdetectedAsWsdl()
+    {
+        // SoapUI embeds cached WSDL inside <con:definitionCache>, so this document contains
+        // the WSDL namespace + "definitions" markers. The SoapUI sniff must still win.
+        const string project = """
+            <con:soapui-project xmlns:con="http://eviware.com/soapui/config" name="WsdlBackedProject">
+              <con:interface name="WeatherSoap">
+                <con:definitionCache>
+                  <con:part>
+                    <con:content><![CDATA[<definitions xmlns="http://schemas.xmlsoap.org/wsdl/"/>]]></con:content>
+                  </con:part>
+                </con:definitionCache>
+              </con:interface>
+              <con:testSuite name="Smoke">
+                <con:testCase name="Case">
+                  <con:testStep type="restrequest" name="Ping">
+                    <con:config>
+                      <con:restRequest name="Ping">
+                        <con:endpoint>http://acme.test</con:endpoint>
+                        <con:method>GET</con:method>
+                      </con:restRequest>
+                    </con:config>
+                  </con:testStep>
+                </con:testCase>
+              </con:testSuite>
+            </con:soapui-project>
+            """;
+        var r = ImportPipeline.DetectAndImport(Encoding.UTF8.GetBytes(project), "project.xml");
+
+        r.Success.Should().BeTrue();
+        r.FormatLabel.Should().Be("SoapUI project");
+        r.FormatLabel.Should().NotBe("SOAP WSDL 1.1");
+    }
+
+    [Fact]
     public void PostmanV2_Detected()
     {
         const string json = """

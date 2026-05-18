@@ -343,6 +343,137 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- SOAP — WS-Security / WS-Addressing headers for SOAP requests. The tab is
+                 only shown when the request was loaded as meta.type: soap. -->
+            <TabItem Header="SOAP" IsVisible="{Binding IsSoapRequest}">
+                <ScrollViewer Background="{DynamicResource Bg2Brush}">
+                    <StackPanel Margin="14,12" Spacing="12">
+                        <TextBlock Text="WS-Security and WS-Addressing headers injected into the SOAP &lt;Header&gt; on send. A fresh Timestamp / nonce is generated each time the request is sent."
+                                   FontSize="10" FontStyle="Italic"
+                                   Foreground="{DynamicResource Text3Brush}"
+                                   TextWrapping="Wrap" />
+
+                        <!-- WS-Timestamp -->
+                        <ToggleSwitch IsChecked="{Binding SoapTimestampEnabled}"
+                                      OnContent="WS-Timestamp"
+                                      OffContent="WS-Timestamp (off)" />
+                        <StackPanel Spacing="4" Margin="6,0,0,0"
+                                    IsVisible="{Binding SoapTimestampEnabled}">
+                            <TextBlock Text="Time to live (seconds) — gap between Created and Expires"
+                                       FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <NumericUpDown Value="{Binding SoapTimestampTtl}"
+                                           Minimum="1" Maximum="86400" Increment="30"
+                                           Width="150" HorizontalAlignment="Left"
+                                           FontSize="11" />
+                        </StackPanel>
+
+                        <Border BorderBrush="{DynamicResource Border0Brush}"
+                                BorderThickness="0,1,0,0" Margin="0,2" />
+
+                        <!-- WSS UsernameToken -->
+                        <ToggleSwitch IsChecked="{Binding SoapUsernameTokenEnabled}"
+                                      OnContent="WSS UsernameToken"
+                                      OffContent="WSS UsernameToken (off)" />
+                        <StackPanel Spacing="6" Margin="6,0,0,0"
+                                    IsVisible="{Binding SoapUsernameTokenEnabled}">
+                            <TextBlock Text="Username" FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding SoapWssUsername}"
+                                     Watermark="username or {{var}}"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="6,4" CornerRadius="3" />
+                            <TextBlock Text="Password" FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding SoapWssPassword}"
+                                     Watermark="password or {{var}}" PasswordChar="•"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="6,4" CornerRadius="3" />
+                            <TextBlock Text="Password type" FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}" />
+                            <ComboBox ItemsSource="{Binding SoapPasswordTypes}"
+                                      SelectedItem="{Binding SoapWssPasswordType}"
+                                      MinWidth="150" HorizontalAlignment="Left"
+                                      FontSize="11" />
+                            <TextBlock Text="Digest = Base64(SHA-1(nonce + created + password)); always carries a nonce + created."
+                                       FontSize="10" FontStyle="Italic"
+                                       Foreground="{DynamicResource Text3Brush}"
+                                       TextWrapping="Wrap" />
+                            <ToggleSwitch IsChecked="{Binding SoapWssAddNonce}"
+                                          OnContent="Add Nonce" OffContent="Add Nonce (off)" />
+                            <ToggleSwitch IsChecked="{Binding SoapWssAddCreated}"
+                                          OnContent="Add Created" OffContent="Add Created (off)" />
+                        </StackPanel>
+
+                        <Border BorderBrush="{DynamicResource Border0Brush}"
+                                BorderThickness="0,1,0,0" Margin="0,2" />
+
+                        <!-- WS-Addressing -->
+                        <ToggleSwitch IsChecked="{Binding SoapAddressingEnabled}"
+                                      OnContent="WS-Addressing"
+                                      OffContent="WS-Addressing (off)" />
+                        <StackPanel Spacing="6" Margin="6,0,0,0"
+                                    IsVisible="{Binding SoapAddressingEnabled}">
+                            <TextBlock Text="Action" FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding SoapWsaAction}"
+                                     Watermark="urn:GetWeather"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="6,4" CornerRadius="3" />
+                            <TextBlock Text="To" FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding SoapWsaTo}"
+                                     Watermark="http://service/endpoint"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="6,4" CornerRadius="3" />
+                            <TextBlock Text="ReplyTo" FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding SoapWsaReplyTo}"
+                                     Watermark="http://www.w3.org/2005/08/addressing/anonymous"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="6,4" CornerRadius="3" />
+                            <ToggleSwitch IsChecked="{Binding SoapWsaAutoMessageId}"
+                                          OnContent="Auto MessageID (urn:uuid)"
+                                          OffContent="Auto MessageID (off)" />
+                            <TextBlock Text="MessageID — leave blank to auto-generate when the toggle above is on"
+                                       FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding SoapWsaMessageId}"
+                                     Watermark="urn:uuid:…"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="6,4" CornerRadius="3" />
+                        </StackPanel>
+
+                        <Border Margin="0,8,0,0" Padding="10"
+                                Background="{DynamicResource Bg3Brush}"
+                                CornerRadius="3"
+                                BorderBrush="{DynamicResource Border1Brush}"
+                                BorderThickness="1">
+                            <TextBlock FontSize="11" FontStyle="Italic"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextWrapping="Wrap"
+                                       Text="Outgoing WSS message signing / encryption (X.509 keystores) is not yet wired — Timestamp, UsernameToken and WS-Addressing are." />
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- Sent — exact HTTP-style render of the outgoing request, captured just
                  before the wire send. Lives in the request pane (it's a request-side
                  concern) — moved out of the response display where it didn't fit. -->

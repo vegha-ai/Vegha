@@ -93,6 +93,60 @@ public sealed record RequestItem
     public string? Tests { get; init; }
     public string? Docs { get; init; }
     public RequestSettingsConfig Settings { get; init; } = new();
+
+    /// <summary>SOAP-specific outgoing configuration — WS-Security and WS-Addressing headers
+    /// generated into the SOAP <c>&lt;Header&gt;</c> at send time. Null for non-SOAP requests
+    /// and for SOAP requests with no WS-* configuration. Persisted as the <c>soap { }</c> block.</summary>
+    public SoapConfig? Soap { get; init; }
+}
+
+/// <summary>SOAP WS-* configuration applied to the outgoing envelope at send time. Each
+/// section is independent and optional; a null section means "don't emit that header".
+/// Mirrors the per-request WS-Security a SoapUI project carries.</summary>
+public sealed record SoapConfig
+{
+    /// <summary>WS-Security <c>&lt;wsu:Timestamp&gt;</c> — when set, a fresh Created/Expires
+    /// pair is generated on every send.</summary>
+    public WssTimestampConfig? Timestamp { get; init; }
+    /// <summary>WS-Security <c>&lt;wsse:UsernameToken&gt;</c> inside the <c>&lt;wsse:Security&gt;</c> header.</summary>
+    public WssUsernameTokenConfig? UsernameToken { get; init; }
+    /// <summary>WS-Addressing headers (<c>wsa:Action</c>, <c>wsa:To</c>, …) in the SOAP header.</summary>
+    public WsAddressingConfig? Addressing { get; init; }
+}
+
+/// <summary>WS-Security Timestamp. <see cref="TimeToLiveSeconds"/> is SoapUI's
+/// <c>wss-time-to-live</c> — the gap between <c>Created</c> and <c>Expires</c>.</summary>
+public sealed record WssTimestampConfig
+{
+    public int TimeToLiveSeconds { get; init; } = 60;
+}
+
+/// <summary>WS-Security UsernameToken. Password is sent as plaintext (<see cref="WssPasswordType.Text"/>)
+/// or as a SHA-1 digest of nonce + created + password (<see cref="WssPasswordType.Digest"/>).</summary>
+public sealed record WssUsernameTokenConfig
+{
+    public string Username { get; init; } = string.Empty;
+    public string Password { get; init; } = string.Empty;
+    public WssPasswordType PasswordType { get; init; } = WssPasswordType.Text;
+    public bool AddNonce { get; init; } = true;
+    public bool AddCreated { get; init; } = true;
+}
+
+public enum WssPasswordType
+{
+    Text,
+    Digest,
+}
+
+/// <summary>WS-Addressing headers. An empty <see cref="MessageId"/> with
+/// <see cref="AutoMessageId"/> set emits a fresh <c>urn:uuid:</c> on every send.</summary>
+public sealed record WsAddressingConfig
+{
+    public string? Action { get; init; }
+    public string? To { get; init; }
+    public string? ReplyTo { get; init; }
+    public string? MessageId { get; init; }
+    public bool AutoMessageId { get; init; } = true;
 }
 
 /// <summary>Per-request transport tweaks (the <c>settings { }</c> block in .bru).</summary>

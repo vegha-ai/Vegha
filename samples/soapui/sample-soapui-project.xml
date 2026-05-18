@@ -1,0 +1,59 @@
+<con:soapui-project xmlns:con="http://eviware.com/soapui/config"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    name="Acme Sample">
+  <con:settings/>
+  <con:interface xsi:type="con:WsdlInterface" name="WeatherSoap">
+    <con:endpoints>
+      <con:endpoint>http://acme.test/weather</con:endpoint>
+    </con:endpoints>
+    <con:operation name="GetWeather" action="http://acme.test/weather/GetWeather"/>
+  </con:interface>
+  <con:interface xsi:type="con:RestService" name="AcmeRest">
+    <con:endpoints>
+      <con:endpoint>http://acme.test/api</con:endpoint>
+    </con:endpoints>
+    <con:resource name="Users" path="/users">
+      <con:method name="ListUsers" method="GET"/>
+    </con:resource>
+  </con:interface>
+  <con:testSuite name="SmokeSuite">
+    <con:testCase name="WeatherCase">
+      <con:testStep type="request" name="GetWeather Step">
+        <con:config>
+          <con:interface>WeatherSoap</con:interface>
+          <con:operation>GetWeather</con:operation>
+          <con:request name="GetWeather Step">
+            <con:endpoint>http://acme.test/weather</con:endpoint>
+            <con:request><![CDATA[<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><GetWeather><City>${#Project#defaultCity}</City></GetWeather></soapenv:Body></soapenv:Envelope>]]></con:request>
+            <con:assertion type="SOAP Response" name="SOAP Response"/>
+            <con:assertion type="Valid HTTP Status Codes" name="Status OK">
+              <con:configuration>
+                <codes>200, 201</codes>
+              </con:configuration>
+            </con:assertion>
+          </con:request>
+        </con:config>
+      </con:testStep>
+    </con:testCase>
+    <con:testCase name="UsersCase">
+      <con:testStep type="restrequest" name="ListUsers Step">
+        <con:config service="AcmeRest" methodName="ListUsers" resourcePath="/users">
+          <con:restRequest name="ListUsers Step" mediaType="application/json">
+            <con:endpoint>http://acme.test/api</con:endpoint>
+            <con:request/>
+            <con:method>GET</con:method>
+            <con:parameters>
+              <con:entry key="limit" value="25"/>
+            </con:parameters>
+          </con:restRequest>
+        </con:config>
+      </con:testStep>
+    </con:testCase>
+  </con:testSuite>
+  <con:properties>
+    <con:property>
+      <con:name>defaultCity</con:name>
+      <con:value>Seattle</con:value>
+    </con:property>
+  </con:properties>
+</con:soapui-project>

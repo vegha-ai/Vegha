@@ -31,8 +31,43 @@ public static class BruEmitter
         EmitTextBlock(sb, "tests", request.Tests);
         EmitTextBlock(sb, "docs", request.Docs);
         EmitSettings(sb, request.Settings);
+        EmitSoap(sb, request.Soap);
 
         return sb.ToString();
+    }
+
+    /// <summary>Emit the <c>soap { }</c> block — SOAP WS-Security / WS-Addressing config.
+    /// Only the configured sections produce keys; a null <see cref="SoapConfig"/> emits nothing.</summary>
+    private static void EmitSoap(StringBuilder sb, SoapConfig? soap)
+    {
+        if (soap is null || (soap.Timestamp is null && soap.UsernameToken is null && soap.Addressing is null))
+            return;
+
+        sb.AppendLine("soap {");
+
+        if (soap.Timestamp is { } ts)
+            sb.Append("  wssTimestampTtl: ").AppendLine(ts.TimeToLiveSeconds.ToString());
+
+        if (soap.UsernameToken is { } ut)
+        {
+            sb.Append("  wssUsername: ").AppendLine(ut.Username);
+            sb.Append("  wssPassword: ").AppendLine(ut.Password);
+            sb.Append("  wssPasswordType: ").AppendLine(ut.PasswordType == WssPasswordType.Digest ? "digest" : "text");
+            sb.Append("  wssAddNonce: ").AppendLine(ut.AddNonce.ToString().ToLowerInvariant());
+            sb.Append("  wssAddCreated: ").AppendLine(ut.AddCreated.ToString().ToLowerInvariant());
+        }
+
+        if (soap.Addressing is { } wsa)
+        {
+            if (!string.IsNullOrEmpty(wsa.Action)) sb.Append("  wsaAction: ").AppendLine(wsa.Action);
+            if (!string.IsNullOrEmpty(wsa.To)) sb.Append("  wsaTo: ").AppendLine(wsa.To);
+            if (!string.IsNullOrEmpty(wsa.ReplyTo)) sb.Append("  wsaReplyTo: ").AppendLine(wsa.ReplyTo);
+            if (!string.IsNullOrEmpty(wsa.MessageId)) sb.Append("  wsaMessageId: ").AppendLine(wsa.MessageId);
+            sb.Append("  wsaAutoMessageId: ").AppendLine(wsa.AutoMessageId.ToString().ToLowerInvariant());
+        }
+
+        sb.AppendLine("}");
+        sb.AppendLine();
     }
 
     /// <summary>Emit only when at least one setting differs from default (keeps round-tripped files clean).</summary>
