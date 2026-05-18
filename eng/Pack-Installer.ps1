@@ -22,6 +22,12 @@ param(
     [string] $PackTitle = 'Vegha',
     [string] $PackAuthors = 'Vegha contributors',
 
+    # signtool arguments (everything except the target file) forwarded to
+    # `vpk pack --signParams`, so Velopack Authenticode-signs the app binaries
+    # AND the generated Setup.exe during packaging. Windows runtimes only;
+    # ignored for osx-*/linux-*. Empty (default) = no signing.
+    [string] $SignParams = '',
+
     [switch] $SkipRestore
 )
 
@@ -69,15 +75,26 @@ function Invoke-Pack([string] $rid) {
 
     New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
+    $packArgs = @(
+        'pack'
+        '--packId', $PackId
+        '--packTitle', $PackTitle
+        '--packVersion', $Version
+        '--packAuthors', $PackAuthors
+        '--packDir', $publishDir
+        '--mainExe', $mainExe
+        '--outputDir', $outputDir
+    )
+    if ($SignParams -and $rid.StartsWith('win-')) {
+        Write-Host "Authenticode signing enabled (vpk --signParams)."
+        $packArgs += '--signParams', $SignParams
+    }
+    elseif ($SignParams) {
+        Write-Host "Ignoring -SignParams for non-Windows runtime $rid."
+    }
+
     Write-Host "Running vpk pack..."
-    & vpk pack `
-        --packId $PackId `
-        --packTitle $PackTitle `
-        --packVersion $Version `
-        --packAuthors $PackAuthors `
-        --packDir $publishDir `
-        --mainExe $mainExe `
-        --outputDir $outputDir
+    & vpk @packArgs
     if ($LASTEXITCODE -ne 0) { throw "vpk pack failed for $rid" }
 
     Write-Host "Output:" -ForegroundColor Green
