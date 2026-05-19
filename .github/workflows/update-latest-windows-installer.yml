@@ -1,17 +1,18 @@
-name: Update Windows Installer on Latest Release
+name: Sign Windows Installer & Draft Release
 
 # When a pull request is merged into main, build an Azure Trusted Signing
-# code-signed Windows x64 Velopack installer and refresh the Windows assets
-# on the repository's current "latest" GitHub Release:
+# code-signed Windows x64 Velopack installer and publish it as a NEW DRAFT
+# GitHub Release:
 #   https://github.com/vegha-ai/Vegha/releases
 #
-# Each merge gets a UNIQUE version — <major>.<minor>.<run_number> — so the
-# Velopack auto-update feed (RELEASES / releases.win.json / *-full.nupkg)
-# advances every time and installed clients actually pick the build up.
+# Each run gets a UNIQUE version — <major>.<minor>.<run_number> — tagged
+# v<version>, so the Velopack auto-update feed (RELEASES / releases.win.json
+# / *-full.nupkg) advances every time.
 #
-# This does NOT create a new release or tag — it updates assets on whatever
-# release is currently marked "Latest". Cutting a brand-new versioned release
-# is still done through release.yml (push a v*.*.* tag).
+# The release is created as a DRAFT: no git tag is created and nothing is
+# public until someone reviews and publishes it. Existing releases are never
+# modified. release.yml (push a v*.*.* tag) still owns multi-platform
+# releases.
 #
 # === Signing: Azure Trusted Signing ===
 # Trusted Signing certificates are HSM-backed and cannot be downloaded. The
@@ -192,7 +193,7 @@ jobs:
           path: staged/*
           if-no-files-found: error
 
-      - name: Update latest GitHub Release
+      - name: Create draft GitHub Release
         # Real merges always publish; a manual dispatch publishes only when
         # dry_run was unchecked.
         if: github.event_name == 'pull_request' || github.event.inputs.dry_run == 'false'
@@ -201,26 +202,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # `gh release view` with no tag resolves to the repo's latest release.
-          tag="$(gh release view --json tagName --jq .tagName 2>/dev/null || true)"
-          if [ -z "$tag" ]; then
-            echo "::error::No published GitHub Release found to update. Cut one first via release.yml (push a v*.*.* tag)."
-            exit 1
+          version="${{ steps.ver.outputs.version }}"
+          tag="v${version}"
+          target="${{ github.event.pull_request.base.ref || github.ref_name }}"
+
+          # A workflow re-run reuses the run number — and therefore the version
+          # and tag — so clear a prior release at this tag before recreating.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists — deleting it before recreating."
+            gh release delete "$tag" --yes --cleanup-tag
           fi
-          echo "Updating Windows assets on release: $tag"
 
-          # Drop stale Velopack packages first — every build emits a uniquely
-          # named *-full.nupkg, so without cleanup they would accumulate. The
-          # refreshed RELEASES/releases.win.json index references only the new
-          # one, so older packages are dead weight.
-          gh release view "$tag" --json assets --jq '.assets[].name' \
-            | { grep -E '\.nupkg$' || true; } \
-            | while read -r old; do
-                echo "  removing stale package: $old"
-                gh release delete-asset "$tag" "$old" -y
-              done
-
-          # --clobber replaces same-named assets in place; the release, its tag
-          # and its notes are left untouched.
-          gh release upload "$tag" staged/* --clobber
-          echo "Release '$tag' now carries signed Windows build v${{ steps.ver.outputs.version }}."
+          # Draft: no git tag is created and nothing is public until someone
+          # reviews and publishes the release. Each run produces its own
+          # release; existing releases are never touched.
+          echo "Creating draft release $tag (target $target)"
+          gh release create "$tag" staged/* \
+            --draft \
+            --title "Vegha v${version}" \
+            --notes "Automated signed Windows x64 build v${version} from commit ${GITHUB_SHA}." \
+            --target "$target"
+          echo "Draft release $tag created with the signed Windows build."
