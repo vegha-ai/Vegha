@@ -2,6 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- TestFlight + App Store require these to match what the provisioning profile
+         contains. The application-identifier is TEAMID + "." + bundle ID. -->
+    <key>com.apple.application-identifier</key>
+    <string>2RAQC96997.com.vegha.vegha</string>
+    <key>com.apple.developer.team-identifier</key>
+    <string>2RAQC96997</string>
+
     <!-- App Sandbox: required for Mac App Store. -->
     <key>com.apple.security.app-sandbox</key>
     <true/>

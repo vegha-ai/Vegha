@@ -46,3 +46,4 @@ node_modules/
 # Velopack
 Releases/
 releases/
+build/
