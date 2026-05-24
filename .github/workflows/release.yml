@@ -214,8 +214,8 @@ jobs:
 
           stage "artifacts/vegha-*-windows-x64/*Setup.exe"   "Vegha-win-x64-Setup.exe"
           stage "artifacts/vegha-*-windows-arm64/*Setup.exe" "Vegha-win-arm64-Setup.exe"
-          stage "artifacts/vegha-*-macos-arm64/"*.pkg        "Vegha-osx-arm64.pkg"
-          stage "artifacts/vegha-*-linux-x64/"*.AppImage     "Vegha-linux-x64.AppImage"
+          stage "artifacts/vegha-*-macos-arm64/*.pkg"        "Vegha-osx-arm64.pkg"
+          stage "artifacts/vegha-*-linux-x64/*.AppImage"     "Vegha-linux-x64.AppImage"
 
           ( cd release && sha256sum * > SHA256SUMS.txt )
           echo "Release assets:"
