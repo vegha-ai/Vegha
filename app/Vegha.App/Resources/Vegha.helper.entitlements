@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Applied to nested Mach-O executables shipped by the .NET runtime
+         (e.g. createdump). The Mac App Store requires every nested
+         executable to carry com.apple.security.app-sandbox = true, but
+         loose binaries cannot have application-identifier (those need
+         a provisioning profile, which only .app bundles can host).
+
+         com.apple.security.inherit tells the kernel that this helper
+         inherits the sandbox container of whichever app launches it,
+         which is what we want for runtime helpers spawned by Vegha.App. -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.inherit</key>
+    <true/>
+</dict>
+</plist>
