@@ -120,7 +120,17 @@ public static class BruParser
                 var text = s.Substring(start, s.Position - start);
                 s.Advance();   // consume '\n'
                 s.Expect('}', "internal: expected '}' after newline terminator");
-                return text;
+                // Normalize line endings in text-block content (bodies, scripts, tests, docs).
+                // A CRLF-saved .bru leaves stray real '\r'; SoapUI bodies imported by older
+                // builds embed the carriage return *literalized* as the two-character text
+                // "\r" at each line end. Both collapse to '\n' so they don't show as glyphs.
+                // The literal form is only stripped when it sits immediately before a real
+                // newline — that is the line-ending artifact. Genuine JSON/JS "\r" escapes
+                // are followed by a literal "\n" (not a real newline), so they are untouched.
+                return text
+                    .Replace("\\r\n", "\n")
+                    .Replace("\r\n", "\n")
+                    .Replace("\r", "\n");
             }
             s.Advance();
         }

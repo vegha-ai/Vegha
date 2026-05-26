@@ -426,6 +426,17 @@ internal static class Program
         if (ext is ".yaml" or ".yml")
             return OpenApiImporter.ImportFromString(content);
 
+        // XML formats — SoapUI projects are checked before WSDL because they embed cached WSDL.
+        if (ext is ".xml" or ".wsdl" || LooksLikeXml(content))
+        {
+            if (LooksLikeSoapUiProject(content))
+                return SoapUiImporter.ImportFromString(content);
+            if (LooksLikeWsdl(content))
+                return WsdlImporter.ImportFromString(content);
+            if (ext is ".xml" or ".wsdl")
+                throw new NotSupportedException("XML source is neither a SoapUI project nor a WSDL.");
+        }
+
         JsonDocument? doc = null;
         try { doc = JsonDocument.Parse(content); }
         catch (JsonException)
@@ -458,6 +469,30 @@ internal static class Program
     {
         var head = content.Length > 4096 ? content[..4096] : content;
         return s_openApiYamlHead.IsMatch(head);
+    }
+
+    private static bool LooksLikeXml(string content)
+    {
+        foreach (var ch in content)
+        {
+            if (ch is ' ' or '\t' or '\r' or '\n' or '﻿') continue;
+            return ch == '<';
+        }
+        return false;
+    }
+
+    private static bool LooksLikeSoapUiProject(string content)
+    {
+        var head = content.Length > 4096 ? content[..4096] : content;
+        return head.Contains("eviware.com/soapui/config", StringComparison.Ordinal)
+            || head.Contains("soapui-project", StringComparison.Ordinal);
+    }
+
+    private static bool LooksLikeWsdl(string content)
+    {
+        var head = content.Length > 4096 ? content[..4096] : content;
+        return head.Contains("http://schemas.xmlsoap.org/wsdl/", StringComparison.Ordinal)
+            && head.Contains("definitions", StringComparison.Ordinal);
     }
 
     /// <summary>Flattens the collection into (request, folder-chain) pairs. The chain runs

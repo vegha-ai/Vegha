@@ -55,6 +55,7 @@ public static class BruToRequestConverter
         var tests = FindText(doc, "tests");
         var docs = FindText(doc, "docs");
         var settings = BuildSettings(FindDict(doc, "settings"));
+        var soap = BuildSoap(FindDict(doc, "soap"));
 
         return new RequestItem
         {
@@ -76,6 +77,67 @@ public static class BruToRequestConverter
             Tests = tests,
             Docs = docs,
             Settings = settings,
+            Soap = soap,
+        };
+    }
+
+    /// <summary>Reads the optional <c>soap { }</c> block (SOAP WS-Security / WS-Addressing).
+    /// A section is materialized only when at least one of its keys is present.</summary>
+    private static SoapConfig? BuildSoap(DictBlock? block)
+    {
+        if (block is null) return null;
+
+        string? Read(string key) =>
+            block.Pairs.FirstOrDefault(p => p.Name == key)?.Value is StringValue s ? s.Text.Trim() : null;
+        bool ReadBool(string key, bool dflt) =>
+            bool.TryParse(Read(key), out var b) ? b : dflt;
+
+        WssTimestampConfig? timestamp = null;
+        if (int.TryParse(Read("wssTimestampTtl"), out var ttl))
+            timestamp = new WssTimestampConfig { TimeToLiveSeconds = ttl };
+
+        WssUsernameTokenConfig? usernameToken = null;
+        var wssUser = Read("wssUsername");
+        if (wssUser is not null)
+        {
+            usernameToken = new WssUsernameTokenConfig
+            {
+                Username = wssUser,
+                Password = Read("wssPassword") ?? string.Empty,
+                PasswordType = string.Equals(Read("wssPasswordType"), "digest", StringComparison.OrdinalIgnoreCase)
+                    ? WssPasswordType.Digest
+                    : WssPasswordType.Text,
+                AddNonce = ReadBool("wssAddNonce", true),
+                AddCreated = ReadBool("wssAddCreated", true),
+            };
+        }
+
+        WsAddressingConfig? addressing = null;
+        var wsaAction = Read("wsaAction");
+        var wsaTo = Read("wsaTo");
+        var wsaReplyTo = Read("wsaReplyTo");
+        var wsaMessageId = Read("wsaMessageId");
+        if (wsaAction is not null || wsaTo is not null || wsaReplyTo is not null
+            || wsaMessageId is not null || Read("wsaAutoMessageId") is not null)
+        {
+            addressing = new WsAddressingConfig
+            {
+                Action = wsaAction,
+                To = wsaTo,
+                ReplyTo = wsaReplyTo,
+                MessageId = wsaMessageId,
+                AutoMessageId = ReadBool("wsaAutoMessageId", true),
+            };
+        }
+
+        if (timestamp is null && usernameToken is null && addressing is null)
+            return null;
+
+        return new SoapConfig
+        {
+            Timestamp = timestamp,
+            UsernameToken = usernameToken,
+            Addressing = addressing,
         };
     }
 

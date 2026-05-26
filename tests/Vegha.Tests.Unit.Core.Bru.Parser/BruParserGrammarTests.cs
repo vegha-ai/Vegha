@@ -22,6 +22,31 @@ public class BruParserGrammarTests
     }
 
     [Fact]
+    public void TextBlock_NormalizesLiteralCarriageReturnArtifact()
+    {
+        // Each line ends with the literal two-character text "\r" before a real newline —
+        // the artifact older SoapUI imports baked into .bru bodies. Constructed as a plain
+        // string so the test is independent of the source file's own line endings.
+        var bru = "body:xml {\n<a>\\r\n  <b/>\\r\n</a>\n}\n";
+        var block = (TextBlock)BruParser.Parse(bru).Blocks[0];
+
+        block.Text.Should().NotContain("\\r"); // literal backslash-r text
+        block.Text.Should().NotContain("\r");  // real carriage return
+        block.Text.Should().Contain("<b/>");
+    }
+
+    [Fact]
+    public void TextBlock_PreservesEscapedCarriageReturnNotAtLineEnd()
+    {
+        // A genuine JSON "\r\n" escape (backslash-r followed by backslash-n, no real
+        // newline) must survive — only the line-ending artifact is stripped.
+        var bru = "body:json {\n{\"s\": \"a\\r\\nb\"}\n}\n";
+        var block = (TextBlock)BruParser.Parse(bru).Blocks[0];
+
+        block.Text.Should().Contain("a\\r\\nb");
+    }
+
+    [Fact]
     public void QuotedKey_WithColon()
     {
         const string bru = """

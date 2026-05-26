@@ -70,6 +70,18 @@ public static class ImportPipeline
 
     private static ImportResult DetectAndImportText(string content, string? hintFilename, PostmanImportOptions? postmanOptions = null)
     {
+        // SoapUI project files embed cached WSDL inside <con:definitionCache>, so they would
+        // otherwise falsely match LooksLikeWsdl — this sniff MUST run before the WSDL check.
+        if (LooksLikeSoapUiProject(content))
+        {
+            try
+            {
+                var col = SoapUiImporter.ImportFromString(content);
+                return new ImportResult(col, null, "SoapUI project", SummarizeCollection(col));
+            }
+            catch (Exception ex) { return ImportResult.Failure($"SoapUI parse failed: {ex.Message}"); }
+        }
+
         // WSDL detection beats JSON parsing (the file is XML, not JSON).
         if (LooksLikeWsdl(content)
             || (hintFilename?.EndsWith(".wsdl", StringComparison.OrdinalIgnoreCase) ?? false))
@@ -158,7 +170,7 @@ public static class ImportPipeline
         }
 
         return ImportResult.Failure(
-            "Content doesn't match any supported format (Bruno folder, Postman v2.1, Postman env, Insomnia v4/v5, OpenAPI, WSDL, ZIP).");
+            "Content doesn't match any supported format (Bruno folder, Postman v2.1, Postman env, Insomnia v4/v5, OpenAPI, WSDL, SoapUI, ZIP).");
     }
 
     private static ImportResult ImportZipPayload(byte[] payload, string? hintFilename, PostmanImportOptions? postmanOptions = null)
@@ -261,6 +273,13 @@ public static class ImportPipeline
         var head = content.Length > 4096 ? content[..4096] : content;
         return head.Contains("http://schemas.xmlsoap.org/wsdl/", StringComparison.Ordinal)
             && head.Contains("definitions", StringComparison.Ordinal);
+    }
+
+    private static bool LooksLikeSoapUiProject(string content)
+    {
+        var head = content.Length > 4096 ? content[..4096] : content;
+        return head.Contains("eviware.com/soapui/config", StringComparison.Ordinal)
+            || head.Contains("soapui-project", StringComparison.Ordinal);
     }
 
     // Top-level YAML key match: `openapi: 3.x` or `swagger: "2.0"` at column 0

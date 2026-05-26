@@ -253,6 +253,83 @@ public partial class RequestEditorViewModel : ObservableObject
     [ObservableProperty] private bool _settingSaveCookies     = true;
     [ObservableProperty] private bool _settingHttp2           = false;
 
+    // ---- SOAP WS-Security / WS-Addressing (SOAP requests only) ----
+    /// <summary>True when this request was loaded as SOAP (<c>meta.type: soap</c>) — drives
+    /// the SOAP tab's visibility in the request editor.</summary>
+    public bool IsSoapRequest =>
+        string.Equals(_loadedItem?.MetaType, "soap", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Options for the WSS UsernameToken password-type picker.</summary>
+    public IReadOnlyList<string> SoapPasswordTypes { get; } = new[] { "text", "digest" };
+
+    [ObservableProperty] private bool _soapTimestampEnabled;
+    [ObservableProperty] private int _soapTimestampTtl = 60;
+    [ObservableProperty] private bool _soapUsernameTokenEnabled;
+    [ObservableProperty] private string _soapWssUsername = string.Empty;
+    [ObservableProperty] private string _soapWssPassword = string.Empty;
+    [ObservableProperty] private string _soapWssPasswordType = "text";
+    [ObservableProperty] private bool _soapWssAddNonce = true;
+    [ObservableProperty] private bool _soapWssAddCreated = true;
+    [ObservableProperty] private bool _soapAddressingEnabled;
+    [ObservableProperty] private string _soapWsaAction = string.Empty;
+    [ObservableProperty] private string _soapWsaTo = string.Empty;
+    [ObservableProperty] private string _soapWsaReplyTo = string.Empty;
+    [ObservableProperty] private string _soapWsaMessageId = string.Empty;
+    [ObservableProperty] private bool _soapWsaAutoMessageId = true;
+
+    partial void OnSoapTimestampEnabledChanged(bool value)      { if (!_loading) IsDirty = true; }
+    partial void OnSoapTimestampTtlChanged(int value)           { if (!_loading) IsDirty = true; }
+    partial void OnSoapUsernameTokenEnabledChanged(bool value)  { if (!_loading) IsDirty = true; }
+    partial void OnSoapWssUsernameChanged(string value)         { if (!_loading) IsDirty = true; }
+    partial void OnSoapWssPasswordChanged(string value)         { if (!_loading) IsDirty = true; }
+    partial void OnSoapWssPasswordTypeChanged(string value)     { if (!_loading) IsDirty = true; }
+    partial void OnSoapWssAddNonceChanged(bool value)           { if (!_loading) IsDirty = true; }
+    partial void OnSoapWssAddCreatedChanged(bool value)         { if (!_loading) IsDirty = true; }
+    partial void OnSoapAddressingEnabledChanged(bool value)     { if (!_loading) IsDirty = true; }
+    partial void OnSoapWsaActionChanged(string value)           { if (!_loading) IsDirty = true; }
+    partial void OnSoapWsaToChanged(string value)               { if (!_loading) IsDirty = true; }
+    partial void OnSoapWsaReplyToChanged(string value)          { if (!_loading) IsDirty = true; }
+    partial void OnSoapWsaMessageIdChanged(string value)        { if (!_loading) IsDirty = true; }
+    partial void OnSoapWsaAutoMessageIdChanged(bool value)      { if (!_loading) IsDirty = true; }
+
+    /// <summary>Builds a <see cref="SoapConfig"/> from the SOAP tab fields. Returns null when
+    /// no section is enabled — keeps non-SOAP requests and unconfigured SOAP requests clean.</summary>
+    private SoapConfig? BuildSoapConfig()
+    {
+        var timestamp = SoapTimestampEnabled
+            ? new WssTimestampConfig { TimeToLiveSeconds = Math.Max(1, SoapTimestampTtl) }
+            : null;
+
+        var usernameToken = SoapUsernameTokenEnabled
+            ? new WssUsernameTokenConfig
+            {
+                Username = SoapWssUsername,
+                Password = SoapWssPassword,
+                PasswordType = string.Equals(SoapWssPasswordType, "digest", StringComparison.OrdinalIgnoreCase)
+                    ? WssPasswordType.Digest
+                    : WssPasswordType.Text,
+                AddNonce = SoapWssAddNonce,
+                AddCreated = SoapWssAddCreated,
+            }
+            : null;
+
+        var addressing = SoapAddressingEnabled
+            ? new WsAddressingConfig
+            {
+                Action = NullIfBlank(SoapWsaAction),
+                To = NullIfBlank(SoapWsaTo),
+                ReplyTo = NullIfBlank(SoapWsaReplyTo),
+                MessageId = NullIfBlank(SoapWsaMessageId),
+                AutoMessageId = SoapWsaAutoMessageId,
+            }
+            : null;
+
+        if (timestamp is null && usernameToken is null && addressing is null) return null;
+        return new SoapConfig { Timestamp = timestamp, UsernameToken = usernameToken, Addressing = addressing };
+
+        static string? NullIfBlank(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
+    }
+
     public ObservableCollection<TestResultRow> TestResults { get; } = new();
 
     [ObservableProperty]
@@ -1273,6 +1350,15 @@ public partial class RequestEditorViewModel : ObservableObject
                 ? ComposeGraphQLBody(GraphQLQuery, GraphQLVariables, vars)
                 : ComposeBody(BodyType, BodyContent, vars);
 
+            // SOAP WS-Security / WS-Addressing — inject the configured headers (a fresh
+            // Timestamp / nonce each send) into the envelope before it goes on the wire.
+            var soapConfig = BuildSoapConfig();
+            if (body is not null && Vegha.Core.Requests.SoapSecurityProcessor.HasOutgoing(soapConfig))
+            {
+                body = Vegha.Core.Requests.SoapSecurityProcessor.Apply(
+                    body, soapConfig, v => Interpolator.Resolve(v, vars));
+            }
+
             // Headers: composed inheritance view (collection ⊕ folders ⊕ request, last-wins)
             // already merged by RequestComposition. Run them through the same {{var}}
             // interpolation step the legacy ComposeHeaders did.
@@ -1964,9 +2050,26 @@ public partial class RequestEditorViewModel : ObservableObject
             SettingSaveCookies     = item.Settings.SaveCookies;
             SettingHttp2           = item.Settings.EnableHttp2;
 
+            var soap = item.Soap;
+            SoapTimestampEnabled     = soap?.Timestamp is not null;
+            SoapTimestampTtl         = soap?.Timestamp?.TimeToLiveSeconds ?? 60;
+            SoapUsernameTokenEnabled = soap?.UsernameToken is not null;
+            SoapWssUsername          = soap?.UsernameToken?.Username ?? string.Empty;
+            SoapWssPassword          = soap?.UsernameToken?.Password ?? string.Empty;
+            SoapWssPasswordType      = soap?.UsernameToken?.PasswordType == WssPasswordType.Digest ? "digest" : "text";
+            SoapWssAddNonce          = soap?.UsernameToken?.AddNonce ?? true;
+            SoapWssAddCreated        = soap?.UsernameToken?.AddCreated ?? true;
+            SoapAddressingEnabled    = soap?.Addressing is not null;
+            SoapWsaAction            = soap?.Addressing?.Action ?? string.Empty;
+            SoapWsaTo                = soap?.Addressing?.To ?? string.Empty;
+            SoapWsaReplyTo           = soap?.Addressing?.ReplyTo ?? string.Empty;
+            SoapWsaMessageId         = soap?.Addressing?.MessageId ?? string.Empty;
+            SoapWsaAutoMessageId     = soap?.Addressing?.AutoMessageId ?? true;
+
             _loadedItem = item;
             SourcePath = sourcePath;
             IsDirty = false;
+            OnPropertyChanged(nameof(IsSoapRequest));
         }
         finally
         {
@@ -2029,7 +2132,8 @@ public partial class RequestEditorViewModel : ObservableObject
                 SendCookies     = SettingSendCookies,
                 SaveCookies     = SettingSaveCookies,
                 EnableHttp2     = SettingHttp2,
-            }
+            },
+            Soap = BuildSoapConfig(),
         };
     }
 

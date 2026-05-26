@@ -6,13 +6,13 @@
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap uap10 rescap">
 
-  <Identity Name="Vegha"
-            Publisher="CN=Vegha"
-            Version="0.1.0.0" />
+  <Identity Name="VAMCConsultingLLC.vegha"
+            Publisher="CN=366CAB54-5973-4620-BC10-FC2235E7BE4C"
+            Version="1.0.1.0" />
 
   <Properties>
     <DisplayName>Vegha</DisplayName>
-    <PublisherDisplayName>Vegha contributors</PublisherDisplayName>
+    <PublisherDisplayName>VAMC Consulting LLC</PublisherDisplayName>
     <Logo>Assets\logo.png</Logo>
   </Properties>
 

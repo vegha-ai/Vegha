@@ -155,7 +155,7 @@
                                 BorderBrush="{DynamicResource Border1Brush}"
                                 Foreground="{DynamicResource Text0Brush}"
                                 Padding="14,6" CornerRadius="3" HorizontalAlignment="Center" />
-                        <TextBlock Text="Supports Bruno, OpenCollection, Postman, Insomnia, OpenAPI 3.x / Swagger 2.0, WSDL, and ZIP formats"
+                        <TextBlock Text="Supports Bruno, OpenCollection, Postman, Insomnia, OpenAPI 3.x / Swagger 2.0, WSDL, SoapUI project, and ZIP formats"
                                    FontSize="11" Foreground="{DynamicResource Text3Brush}"
                                    TextAlignment="Center" TextWrapping="Wrap" MaxWidth="440" />
                         <Button Content="Pick a folder instead (Bruno collection)"
@@ -193,7 +193,7 @@
                                     Foreground="{DynamicResource Text0Brush}"
                                     Padding="14,6" Margin="6,0,0,0" CornerRadius="3" />
                         </Grid>
-                        <TextBlock Text="Vegha fetches the URL and auto-detects the format. Supports raw Postman/Insomnia/OpenAPI/WSDL files served over HTTP."
+                        <TextBlock Text="Vegha fetches the URL and auto-detects the format. Supports raw Postman/Insomnia/OpenAPI/WSDL/SoapUI files served over HTTP."
                                    FontSize="11" Foreground="{DynamicResource Text3Brush}"
                                    TextWrapping="Wrap" />
                     </StackPanel>
