@@ -1097,11 +1097,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnMenuAbout_Click(object? sender, RoutedEventArgs e)
+    private async void OnMenuAbout_Click(object? sender, RoutedEventArgs e)
     {
-        var collections = App.Services.GetService<CollectionsViewModel>();
-        if (collections is not null)
-            collections.StatusMessage = "Vegha — native API testing for Windows + macOS · MIT licensed";
+        var dlg = new AboutDialog();
+        await dlg.ShowDialog(this);
     }
 
     private bool _confirmedClose;
