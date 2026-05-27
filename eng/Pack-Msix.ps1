@@ -30,17 +30,18 @@ $stageDir = Join-Path $repoRoot 'stage-msix'
 if (-not (Test-Path $projectPath))  { throw "Project not found: $projectPath" }
 if (-not (Test-Path $manifestPath)) { throw "Manifest not found: $manifestPath" }
 
-function Find-MakeAppx {
+function Find-SdkTool {
+    param([Parameter(Mandatory)][string] $Name)
     $sdkRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
     if (-not (Test-Path $sdkRoot)) {
         throw "Windows 10 SDK not found at $sdkRoot. Install via Visual Studio Installer or https://aka.ms/windowssdk."
     }
     $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
-    $candidate = Get-ChildItem $sdkRoot -Recurse -Filter makeappx.exe -ErrorAction SilentlyContinue |
+    $candidate = Get-ChildItem $sdkRoot -Recurse -Filter $Name -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -match "\\$arch\\" } |
         Sort-Object FullName -Descending |
         Select-Object -First 1
-    if (-not $candidate) { throw "$arch makeappx.exe not found under $sdkRoot" }
+    if (-not $candidate) { throw "$arch $Name not found under $sdkRoot" }
     $candidate.FullName
 }
 
@@ -77,8 +78,24 @@ $assetsDst = Join-Path $stageDir 'Assets'
 New-Item -ItemType Directory -Force $assetsDst | Out-Null
 Copy-Item (Join-Path $assetsSrc '*') $assetsDst -Force
 
-$makeappx = Find-MakeAppx
-Write-Host "==> Using $makeappx"
+$makeappx = Find-SdkTool 'makeappx.exe'
+$makepri  = Find-SdkTool 'makepri.exe'
+Write-Host "==> makeappx: $makeappx"
+Write-Host "==> makepri:  $makepri"
+
+# Generate resources.pri so MRT honors qualifiers on logo assets (targetsize-*,
+# scale-*, _altform-unplated). Without this file, Windows falls back to plain
+# filename lookup which does NOT honor altform-unplated — the taskbar then
+# renders Square44x44Logo on a BackgroundColor plate even when an unplated
+# variant is present in the package.
+Write-Host "==> Generating priconfig.xml + resources.pri"
+$priConfig = Join-Path $stageDir 'priconfig.xml'
+& $makepri createconfig /cf $priConfig /dq en-US /o
+if ($LASTEXITCODE -ne 0) { throw "makepri createconfig failed with exit code $LASTEXITCODE" }
+$priOut = Join-Path $stageDir 'resources.pri'
+& $makepri new /pr $stageDir /cf $priConfig /of $priOut /mn (Join-Path $stageDir 'AppxManifest.xml') /o
+if ($LASTEXITCODE -ne 0) { throw "makepri new failed with exit code $LASTEXITCODE" }
+Remove-Item $priConfig -Force  # build-time only; don't ship in the package
 
 New-Item -ItemType Directory -Force $OutputDir | Out-Null
 $msixPath = Join-Path (Resolve-Path $OutputDir) "Vegha-$Version.msix"
