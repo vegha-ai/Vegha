@@ -30,9 +30,12 @@
         </Style>
     </Window.Styles>
 
-    <DockPanel>
+    <!-- Three explicit rows so the ScrollViewer's bottom edge can never overlap
+         the footer (the Bottom dock in a DockPanel was bleeding the last card
+         underneath the close button band). -->
+    <Grid RowDefinitions="Auto,*,Auto">
         <!-- Header -->
-        <Border DockPanel.Dock="Top"
+        <Border Grid.Row="0"
                 Background="{DynamicResource Bg2Brush}"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,0,0,1"
@@ -61,8 +64,16 @@
             </Grid>
         </Border>
 
+        <!-- Body -->
+        <ScrollViewer Grid.Row="1"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto"
+                      Padding="24,16">
+            <StackPanel x:Name="BodyHost" Spacing="20" />
+        </ScrollViewer>
+
         <!-- Footer -->
-        <Border DockPanel.Dock="Bottom"
+        <Border Grid.Row="2"
                 Background="{DynamicResource Bg2Brush}"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,1,0,0"
@@ -85,10 +96,5 @@
                         Padding="18,6" CornerRadius="3" FontWeight="SemiBold" />
             </Grid>
         </Border>
-
-        <!-- Body -->
-        <ScrollViewer Padding="24,16">
-            <StackPanel x:Name="BodyHost" Spacing="20" />
-        </ScrollViewer>
-    </DockPanel>
+    </Grid>
 </Window>
