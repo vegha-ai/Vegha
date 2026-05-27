@@ -1,7 +1,15 @@
 name: Release
 
-# Triggered manually or by pushing a v* tag. Builds Velopack installers for
-# Windows, macOS, and Linux and uploads them as workflow artifacts.
+# Stable release pipeline. NOT auto-fired on merges to main — nightly.yml
+# handles those. This workflow fires only on:
+#   1. Manual `workflow_dispatch` (you pass the version), OR
+#   2. Pushing a `v*.*.*` tag — typically via `./eng/Publish-Release.ps1
+#      -Version X.Y.Z`, which also bumps Directory.Build.props in lockstep.
+#
+# Produces signed Velopack installers (when signing secrets exist) AND
+# publishes a non-prerelease GitHub Release marked "Latest". The same
+# v*.*.* tag also fires msix.yml, so the Microsoft Store-bound MSIX is
+# built at the matching version.
 #
 # Optional code signing & notarization:
 #   - Windows: provide WIN_SIGN_PFX_BASE64 (a base64-encoded .pfx) and
