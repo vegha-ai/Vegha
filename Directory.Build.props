@@ -12,9 +12,12 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
     <RootNamespace>Vegha</RootNamespace>
-    <!-- Release version. Bumped by eng/Publish-Release.ps1 and used as the
-         vpk pack version when -Version is not passed explicitly. -->
-    <Version>1.0.0</Version>
+    <!-- SINGLE SOURCE OF TRUTH for app version. Bumped by eng/Publish-Release.ps1
+         (which also creates the git tag that fires the release + msix workflows).
+         Drives: AssemblyInformationalVersion (shown in Help -> About), Velopack vpk
+         pack version, and the MSIX Identity/@Version (Pack-Msix.ps1 reads this
+         and appends ".0" for the MSIX 4-part revision requirement). -->
+    <Version>1.0.2</Version>
     <Authors>Vamsi Maddirala</Authors>
     <Company>Vegha</Company>
     <Copyright>Copyright (c) 2026 Vamsi Maddirala</Copyright>

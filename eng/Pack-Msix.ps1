@@ -1,16 +1,20 @@
 # Builds an MSIX bundle for Vegha.App (Microsoft Store path).
 #
 # Examples:
-#   ./eng/Pack-Msix.ps1 -Version 0.1.0.0
-#   ./eng/Pack-Msix.ps1 -Version 0.1.0.0 -OutputDir releases/msix
+#   ./eng/Pack-Msix.ps1                          # derive version from Directory.Build.props
+#   ./eng/Pack-Msix.ps1 -Version 1.0.2           # 3-part: auto-extends to 1.0.2.0
+#   ./eng/Pack-Msix.ps1 -Version 1.0.2.0         # 4-part: used as-is (revision must be 0)
 #
 # Output: <OutputDir>/Vegha-<Version>.msix (unsigned).
 # This is the single source of truth used by .github/workflows/msix.yml — keep them in sync.
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)]
-    [ValidatePattern('^\d+\.\d+\.\d+\.\d+$')]
+    # Optional. When omitted, the version is read from Directory.Build.props's
+    # <Version>. Accepts a 3-part SemVer (e.g. 1.0.2) which gets extended to
+    # 1.0.2.0, or a 4-part MSIX version (e.g. 1.0.2.0). Store rejects any
+    # revision (4th component) other than 0.
+    [ValidatePattern('^\d+\.\d+\.\d+(\.\d+)?$')]
     [string] $Version,
 
     [string] $Configuration = 'Release',
@@ -24,11 +28,28 @@ Set-StrictMode -Version Latest
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $projectPath = Join-Path $repoRoot 'app/Vegha.App/Vegha.App.csproj'
 $manifestPath = Join-Path $repoRoot 'app/Vegha.App/Package.appxmanifest'
+$propsPath = Join-Path $repoRoot 'Directory.Build.props'
 $publishDir = Join-Path $repoRoot 'publish/win-x64-msix'
 $stageDir = Join-Path $repoRoot 'stage-msix'
 
 if (-not (Test-Path $projectPath))  { throw "Project not found: $projectPath" }
 if (-not (Test-Path $manifestPath)) { throw "Manifest not found: $manifestPath" }
+
+# Resolve version: explicit param > Directory.Build.props. Normalize to 4-part.
+if (-not $Version) {
+    $propsText = Get-Content $propsPath -Raw
+    if ($propsText -notmatch '<Version>([^<]+)</Version>') {
+        throw "Directory.Build.props does not contain <Version>; pass -Version explicitly."
+    }
+    $Version = $Matches[1].Trim()
+    Write-Host "==> Using version from Directory.Build.props: $Version"
+}
+if ($Version -match '^\d+\.\d+\.\d+$') {
+    $Version = "$Version.0"   # extend SemVer to MSIX 4-part with revision=0
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+\.0$') {
+    throw "MSIX rejects non-zero revision: got $Version. Use major.minor.build form (revision must be 0)."
+}
 
 function Find-SdkTool {
     param([Parameter(Mandatory)][string] $Name)
