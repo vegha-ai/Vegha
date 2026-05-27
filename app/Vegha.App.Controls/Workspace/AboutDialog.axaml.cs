@@ -24,7 +24,7 @@ public partial class AboutDialog : Window
         DistributionText.Text = ResolveDistribution();
         RuntimeText.Text = $".NET {Environment.Version} · {RuntimeInformation.OSArchitecture} · {RuntimeInformation.OSDescription.Trim()}";
         CopyrightText.Text = asm.GetCustomAttribute<AssemblyCopyrightAttribute>()?.Copyright
-            ?? "Copyright (c) Vamsi Maddirala";
+            ?? "Copyright (c) VAMC Consulting LLC";
     }
 
     private static string ResolveVersion(Assembly asm)

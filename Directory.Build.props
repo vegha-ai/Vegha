@@ -18,9 +18,9 @@
          pack version, and the MSIX Identity/@Version (Pack-Msix.ps1 reads this
          and appends ".0" for the MSIX 4-part revision requirement). -->
     <Version>1.0.2</Version>
-    <Authors>Vamsi Maddirala</Authors>
+    <Authors>VAMC Consulting LLC</Authors>
     <Company>Vegha</Company>
-    <Copyright>Copyright (c) 2026 Vamsi Maddirala</Copyright>
+    <Copyright>Copyright (c) 2026 VAMC Consulting LLC</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
