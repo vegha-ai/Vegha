@@ -64,12 +64,15 @@
             </Grid>
         </Border>
 
-        <!-- Body -->
+        <!-- Body. Edge spacing lives on the inner StackPanel as Margin, NOT on
+             the ScrollViewer as Padding. Padding on the ScrollViewer subtracts
+             from the scrollable extent so a max-scroll stops short of the
+             last card; Margin on the content keeps the extent honest. Same
+             fix used in SettingsWindow.axaml. -->
         <ScrollViewer Grid.Row="1"
                       HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto"
-                      Padding="24,16">
-            <StackPanel x:Name="BodyHost" Spacing="20" />
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="BodyHost" Spacing="20" Margin="24,16" />
         </ScrollViewer>
 
         <!-- Footer -->
