@@ -1083,19 +1083,10 @@ public partial class MainWindow : Window
         SaveCurrentLayout();
     }
 
-    private void OnMenuDocs_Click(object? sender, RoutedEventArgs e) => ShowHelp();
+    private void OnMenuDocs_Click(object? sender, RoutedEventArgs e)
+        => HelpDialog.OpenUrl(HelpDialog.DocsUrl);
 
-    private void OnMenuShortcuts_Click(object? sender, RoutedEventArgs e)
-    {
-        var collections = App.Services.GetService<CollectionsViewModel>();
-        if (collections is not null)
-        {
-            static string F(string g) => ShortcutFormatter.Format(g);
-            collections.StatusMessage =
-                $"{F("Ctrl+T")} new tab · {F("Ctrl+O")} open · {F("Ctrl+I")} import · " +
-                $"{F("Ctrl+,")} settings · {F("Ctrl+K")} search";
-        }
-    }
+    private void OnMenuShortcuts_Click(object? sender, RoutedEventArgs e) => ShowHelp();
 
     private async void OnMenuAbout_Click(object? sender, RoutedEventArgs e)
     {
@@ -1541,54 +1532,8 @@ public partial class MainWindow : Window
 
     private void ShowHelp()
     {
-        // Inline help — a quick-reference window. The full, always-current shortcut list
-        // lives on Settings → Shortcuts (see KeyboardShortcutsCatalog).
-        // G renders each gesture for the host OS — ⌘ on macOS, Ctrl on Windows / Linux.
-        static string G(string g) => ShortcutFormatter.Format(g);
-        var help = new Window
-        {
-            Title = "Vegha — Help",
-            Width = 520, Height = 440,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new ScrollViewer
-            {
-                Content = new TextBlock
-                {
-                    Margin = new Thickness(20),
-                    TextWrapping = global::Avalonia.Media.TextWrapping.Wrap,
-                    FontSize = 12,
-                    Text =
-                        "Vegha — keyboard shortcuts and tips\n\n" +
-                        "Requests\n" +
-                        $"  {G("Ctrl+T"),-16}New request\n" +
-                        $"  {G("Ctrl+S"),-16}Save the active request\n" +
-                        $"  {G("Ctrl+Enter"),-16}Send the active request\n" +
-                        $"  {G("Ctrl+Tab"),-16}Next tab  ({G("Ctrl+Shift+Tab")}: previous)\n" +
-                        $"  {G("Ctrl+W"),-16}Close the active tab\n\n" +
-                        "Workspace\n" +
-                        $"  {G("Ctrl+O"),-16}Open a collection folder\n" +
-                        $"  {G("Ctrl+I"),-16}Import a collection\n" +
-                        $"  {G("Ctrl+K"),-16}Find a request\n" +
-                        $"  {G("Ctrl+,"),-16}Settings\n" +
-                        $"  {G("Ctrl+=")} / {G("Ctrl+-")} Zoom in / out   ({G("Ctrl+0")}: reset)\n\n" +
-                        "Activity rail (left edge)\n" +
-                        "  Collections · Environments · History\n" +
-                        "  Source Control · OpenAPI · Runner\n" +
-                        "  Settings · Help\n\n" +
-                        "Workspace tabs (above the editor)\n" +
-                        "  REST · GraphQL · WebSocket · gRPC · SOAP\n\n" +
-                        "Import button (top bar)\n" +
-                        "  Postman v2.1 collection / Postman environment\n" +
-                        "  Insomnia v4 / v5 export\n" +
-                        "  OpenAPI 3.x / Swagger 2.0 spec\n" +
-                        "  Bruno collection folder\n\n" +
-                        "Privacy\n" +
-                        "  Zero telemetry. The only outgoing traffic is the\n" +
-                        "  requests you fire and the auth flows you start."
-                }
-            }
-        };
-        help.ShowDialog(this);
+        var dlg = new HelpDialog { FormatGesture = ShortcutFormatter.Format };
+        dlg.ShowDialog(this);
     }
 
     private void ApplyLayout(LayoutSettings settings)
