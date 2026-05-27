@@ -1,0 +1,172 @@
+name: Nightly
+
+# Auto-fires on every push to main. Builds Velopack installers for all
+# platforms and publishes them as a single rolling prerelease tagged
+# `nightly` — each run replaces the prior nightly's assets so the
+# Releases page stays clean.
+#
+# Versioning: <Directory.Build.props base>-nightly.<YYYYMMDD>+<shortsha>
+# (SemVer 2.0 pre-release suffix; vpk pack accepts this verbatim).
+#
+# What's NOT here:
+#   - MSIX: nightlies don't go to the Microsoft Store. Only release.yml
+#     publishes MSIX-bound artifacts via the matching v*.*.* tag.
+#   - Code signing / notarization: skipped to keep nightly cost down.
+#     Users running nightlies acknowledge the "unverified developer"
+#     warning. Stable releases (release.yml) DO sign when secrets exist.
+#
+# To trigger a stable release instead, use:
+#   ./eng/Publish-Release.ps1 -Version X.Y.Z
+# or the "Release" workflow's "Run workflow" button.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+# Avoid stacking up nightly runs if main gets several pushes in quick
+# succession — the latest push wins and earlier runs are cancelled.
+concurrency:
+  group: nightly
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compose.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose nightly version
+        id: compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Pull the base SemVer from Directory.Build.props (single source of truth).
+          base=$(grep -oP '(?<=<Version>)[^<]+(?=</Version>)' Directory.Build.props | head -n1 | tr -d ' ')
+          if [ -z "$base" ]; then
+            echo "::error::<Version> not found in Directory.Build.props"
+            exit 1
+          fi
+          stamp=$(date -u +'%Y%m%d')
+          short="${GITHUB_SHA:0:7}"
+          version="${base}-nightly.${stamp}+${short}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Resolved nightly version: $version"
+
+  package:
+    needs: resolve
+    name: package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            artifact-suffix: windows-x64
+          - os: windows-latest
+            rid: win-arm64
+            artifact-suffix: windows-arm64
+          - os: macos-14
+            rid: osx-arm64
+            artifact-suffix: macos-arm64
+          - os: ubuntu-latest
+            rid: linux-x64
+            artifact-suffix: linux-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk
+
+      - name: Build Velopack installer (unsigned, nightly)
+        shell: pwsh
+        run: |
+          ./eng/Pack-Installer.ps1 `
+            -Runtime ${{ matrix.rid }} `
+            -Version ${{ needs.resolve.outputs.version }}
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vegha-nightly-${{ matrix.artifact-suffix }}
+          path: releases/${{ matrix.rid }}/*
+          if-no-files-found: error
+
+  publish:
+    needs: [resolve, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all installer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage assets with stable filenames
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p release
+
+          stage() {
+            local matches=( $1 )
+            if [ ${#matches[@]} -eq 0 ]; then
+              echo "::error::No installer matched '$1'"
+              exit 1
+            fi
+            cp "${matches[0]}" "release/$2"
+            echo "  staged $2  <-  ${matches[0]}"
+          }
+
+          stage "artifacts/vegha-nightly-windows-x64/*Setup.exe"   "Vegha-win-x64-Setup.exe"
+          stage "artifacts/vegha-nightly-windows-arm64/*Setup.exe" "Vegha-win-arm64-Setup.exe"
+          stage "artifacts/vegha-nightly-macos-arm64/*.pkg"        "Vegha-osx-arm64.pkg"
+          stage "artifacts/vegha-nightly-linux-x64/*.AppImage"     "Vegha-linux-x64.AppImage"
+
+          ( cd release && sha256sum * > SHA256SUMS.txt )
+          ls -la release
+
+      # Replace the prior nightly release + tag so we don't pile up entries
+      # on the Releases page. `--cleanup-tag` also drops the underlying tag
+      # so action-gh-release can recreate it pointing at the new commit.
+      - name: Delete previous nightly release (if any)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+
+      - name: Publish rolling nightly prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: "Nightly (${{ needs.resolve.outputs.version }})"
+          body: |
+            **Rolling nightly build from `main`.**
+
+            - Version: `${{ needs.resolve.outputs.version }}`
+            - Commit: ${{ github.sha }}
+            - Built: ${{ github.run_id }} on ${{ github.event.head_commit.timestamp }}
+
+            These builds are **unsigned** — Windows SmartScreen and macOS Gatekeeper will
+            warn on launch. For verified, code-signed installs use the latest
+            [Stable release](../../releases?q=prerelease%3Afalse).
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: release/*

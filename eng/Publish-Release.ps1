@@ -6,11 +6,14 @@
 #
 # Default flow:
 #   1. Validate the version and that the git tree is clean.
-#   2. Bump <Version> in Directory.Build.props.
+#   2. Bump <Version> in Directory.Build.props (the single source of truth —
+#      drives About dialog, Velopack pack version, AND MSIX Identity/@Version
+#      via Pack-Msix.ps1 which appends ".0" for the Store's revision rule).
 #   3. Commit, create annotated tag vX.Y.Z, and push --follow-tags.
-#   4. The pushed tag triggers .github/workflows/release.yml, which builds
-#      all five platforms and publishes a GitHub Release with stable asset
-#      names (Vegha-win-x64-Setup.exe, Vegha-osx-arm64.pkg, ...).
+#   4. The pushed tag triggers BOTH .github/workflows/release.yml (Velopack
+#      installers for win/mac/linux, published as a GitHub Release) AND
+#      .github/workflows/msix.yml (unsigned MSIX uploaded as a workflow
+#      artifact for manual Partner Center submission). Same version everywhere.
 #
 # With -BuildLocal it ALSO builds the Windows installers on this machine and
 # uploads them to the release via `gh` — useful for a Windows-only hotfix or

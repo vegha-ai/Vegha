@@ -8,7 +8,7 @@
 
   <Identity Name="VAMCConsultingLLC.vegha"
             Publisher="CN=366CAB54-5973-4620-BC10-FC2235E7BE4C"
-            Version="1.0.1.0" />
+            Version="1.0.2.0" />
 
   <Properties>
     <DisplayName>Vegha</DisplayName>

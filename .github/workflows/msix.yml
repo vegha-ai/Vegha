@@ -1,15 +1,25 @@
 name: MSIX
 
-# Builds an MSIX bundle for the Microsoft Store. Triggers manually so the maintainer
-# decides when to cut a Store release; signing happens in this workflow with a cert
-# stored as a GitHub secret (PFX_BASE64 + PFX_PASSWORD). For the no-cert path the
-# unsigned .msix is uploaded as a workflow artifact and the maintainer signs locally.
+# Builds an MSIX bundle for the Microsoft Store.
+#
+# Triggers:
+#   - Pushing a v*.*.* tag (the same trigger as release.yml). Tag drives the
+#     version: v1.0.2 -> MSIX 1.0.2.0. This keeps the MSIX in lockstep with
+#     the GitHub Release + Velopack installers.
+#   - workflow_dispatch (optional version input). With no input, the script
+#     reads the version from Directory.Build.props.
+#
+# Signing: the .msix is uploaded UNSIGNED as a workflow artifact. The
+# maintainer downloads it and uploads to Partner Center, which signs on ingest.
 on:
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'MSIX version (e.g., 0.1.0.0)'
-        required: true
+        description: 'MSIX version (e.g. 1.0.2 or 1.0.2.0). Leave blank to use Directory.Build.props.'
+        required: false
         type: string
 
 env:
@@ -28,13 +38,31 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          # Tag push -> strip leading "v". Manual dispatch -> use input or blank.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            v="${GITHUB_REF#refs/tags/v}"
+          else
+            v="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Resolved MSIX version: '$v' (blank = Pack-Msix.ps1 reads Directory.Build.props)"
+
       - name: Pack MSIX
         shell: pwsh
-        run: ./eng/Pack-Msix.ps1 -Version ${{ github.event.inputs.version }}
+        run: |
+          if ('${{ steps.ver.outputs.version }}') {
+            ./eng/Pack-Msix.ps1 -Version '${{ steps.ver.outputs.version }}'
+          } else {
+            ./eng/Pack-Msix.ps1
+          }
 
       - name: Upload MSIX artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vegha-msix-${{ github.event.inputs.version }}
+          name: vegha-msix
           path: 'Vegha-*.msix'
           if-no-files-found: error
