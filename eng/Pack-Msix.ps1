@@ -52,10 +52,10 @@ $patched = [regex]::Replace($manifestXml, $pattern, "`${1}$Version`${2}")
 Set-Content -Path $manifestPath -Value $patched -NoNewline
 
 if (-not $SkipPublish) {
-    Write-Host "==> dotnet publish ($Configuration, win-x64, self-contained, MSIX define)"
+    Write-Host "==> dotnet publish ($Configuration, win-x64, self-contained, MSIX flavor)"
     & dotnet publish $projectPath `
         -c $Configuration -r win-x64 --self-contained true `
-        -p:DefineConstants=Vegha_MSIX `
+        -p:VeghaFlavor=MSIX `
         -o $publishDir
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE" }
 } else {
