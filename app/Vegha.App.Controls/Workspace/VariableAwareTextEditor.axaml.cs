@@ -4,8 +4,10 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Media.TextFormatting;
 using Avalonia.Threading;
 using AvaloniaEdit;
 using AvaloniaEdit.CodeCompletion;
@@ -13,6 +15,7 @@ using AvaloniaEdit.Document;
 using AvaloniaEdit.Editing;
 using AvaloniaEdit.Highlighting;
 using AvaloniaEdit.Rendering;
+using Vegha.App.Controls.Icons;
 
 namespace Vegha.App.Controls.Workspace;
 
@@ -94,6 +97,27 @@ public partial class VariableAwareTextEditor : UserControl
     public static readonly StyledProperty<bool> WordWrapProperty =
         AvaloniaProperty.Register<VariableAwareTextEditor, bool>(nameof(WordWrap), defaultValue: true);
 
+    /// <summary>Renders non-<c>{{var}}</c> characters as bullet glyphs so the field behaves like a
+    /// password input, while leaving <c>{{var}}</c> placeholders visible so the user can see which
+    /// variable will be substituted. The underlying document keeps the real text intact for binding;
+    /// only the rendering is masked. When <see cref="IsRevealed"/> is true the mask is bypassed.</summary>
+    public static readonly StyledProperty<bool> IsPasswordProperty =
+        AvaloniaProperty.Register<VariableAwareTextEditor, bool>(nameof(IsPassword), defaultValue: false);
+
+    /// <summary>Toggles the password mask off so the plaintext is shown. Driven by the inline eye
+    /// toggle that appears when <see cref="IsPassword"/> is true; can also be bound externally to
+    /// share reveal state across multiple editors.</summary>
+    public static readonly StyledProperty<bool> IsRevealedProperty =
+        AvaloniaProperty.Register<VariableAwareTextEditor, bool>(
+            nameof(IsRevealed), defaultValue: false,
+            defaultBindingMode: global::Avalonia.Data.BindingMode.TwoWay);
+
+    /// <summary>Optional advisory shown as a hover tooltip on an inline warning glyph next to the
+    /// reveal eye. Set to a non-empty string to surface a passive note (e.g. "Stored as plaintext
+    /// on disk — consider <c>{{vault:…}}</c> references."). Null/empty hides the warning glyph.</summary>
+    public static readonly StyledProperty<string?> WarningTipProperty =
+        AvaloniaProperty.Register<VariableAwareTextEditor, string?>(nameof(WarningTip));
+
     public string Text
     {
         get => GetValue(TextProperty);
@@ -142,10 +166,31 @@ public partial class VariableAwareTextEditor : UserControl
         set => SetValue(WordWrapProperty, value);
     }
 
+    public bool IsPassword
+    {
+        get => GetValue(IsPasswordProperty);
+        set => SetValue(IsPasswordProperty, value);
+    }
+
+    public bool IsRevealed
+    {
+        get => GetValue(IsRevealedProperty);
+        set => SetValue(IsRevealedProperty, value);
+    }
+
+    public string? WarningTip
+    {
+        get => GetValue(WarningTipProperty);
+        set => SetValue(WarningTipProperty, value);
+    }
+
     private TextEditor _editor = null!;
     private CompletionWindow? _completionWindow;
     private bool _suppressTextSync;
     private TextBlock? _watermarkBlock;
+    private ToggleButton? _eyeToggle;
+    private Border? _warningGlyph;
+    private StackPanel? _trailingGroup;
 
     public VariableAwareTextEditor()
     {
@@ -164,6 +209,10 @@ public partial class VariableAwareTextEditor : UserControl
         _editor.Options.EnableEmailHyperlinks = false;
 
         _editor.TextArea.TextView.LineTransformers.Add(new VariableColorizer(this));
+        // Mask non-{{var}} runs with bullet glyphs when IsPassword=true && !IsRevealed.
+        // {{var}} placeholders pass through unmasked so the user can identify which variable
+        // is wired up (and hover to see its resolved value).
+        _editor.TextArea.TextView.ElementGenerators.Add(new PasswordMaskGenerator(this));
 
         // Re-colorize whenever the active theme variant flips, so the static
         // VariableBrush / UnresolvedBrush picks up the new palette and the
@@ -198,12 +247,61 @@ public partial class VariableAwareTextEditor : UserControl
             Margin = new Thickness(8, 0, 0, 0),
             IsHitTestVisible = false,
         };
+        // Inline eye + warning glyphs. Both are stacked together on the right edge so the
+        // layout stays stable as IsPassword / WarningTip flip at runtime. The eye drives
+        // IsRevealed two-way so the property and the toggle stay in sync.
+        _eyeToggle = new ToggleButton
+        {
+            IsVisible = false,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Padding = new Thickness(4),
+            MinWidth = 0,
+            MinHeight = 0,
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Content = new Icon
+            {
+                Kind = IconKind.Eye,
+                Size = 14,
+                Foreground = this.TryFindResource("Text2Brush", out var iconBrushObj) && iconBrushObj is IBrush iconBrush
+                    ? iconBrush : Brushes.Gray,
+            },
+        };
+        ToolTip.SetTip(_eyeToggle, "Show / hide");
+        _eyeToggle.IsCheckedChanged += (_, _) =>
+        {
+            IsRevealed = _eyeToggle!.IsChecked == true;
+        };
+        _warningGlyph = new Border
+        {
+            IsVisible = false,
+            Padding = new Thickness(4),
+            Child = new Icon
+            {
+                Kind = IconKind.Warning,
+                Size = 14,
+                Foreground = this.TryFindResource("StatusWarnBrush", out var warnBrushObj) && warnBrushObj is IBrush warnBrush
+                    ? warnBrush : Brushes.Goldenrod,
+            },
+        };
+        _trailingGroup = new StackPanel
+        {
+            Orientation = global::Avalonia.Layout.Orientation.Horizontal,
+            Spacing = 2,
+            HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Right,
+            VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+            IsHitTestVisible = true,
+        };
+        _trailingGroup.Children.Add(_eyeToggle);
+        _trailingGroup.Children.Add(_warningGlyph);
         var grid = new Grid();
         var oldChild = host.Child!;
         host.Child = grid;
         grid.Children.Add(oldChild);
         grid.Children.Add(_watermarkBlock);
+        grid.Children.Add(_trailingGroup);
         UpdateWatermark();
+        UpdatePasswordChrome();
 
         // Apply line-mode preferences NOW so callers that default-construct the editor
         // with SingleLine=true (URL / KV fields) and callers that set SingleLine="False"
@@ -291,6 +389,41 @@ public partial class VariableAwareTextEditor : UserControl
             if (_editor is not null) _editor.FontSize = size;
             if (_watermarkBlock is not null) _watermarkBlock.FontSize = size;
         }
+        else if (change.Property == IsPasswordProperty || change.Property == IsRevealedProperty)
+        {
+            UpdatePasswordChrome();
+            // The mask generator decides per-line whether to bullet a run; force a redraw so
+            // the new IsPassword / IsRevealed state actually paints to screen.
+            _editor.TextArea.TextView.Redraw();
+        }
+        else if (change.Property == WarningTipProperty)
+        {
+            UpdatePasswordChrome();
+        }
+    }
+
+    private void UpdatePasswordChrome()
+    {
+        if (_eyeToggle is null || _warningGlyph is null) return;
+        _eyeToggle.IsVisible = IsPassword;
+        if (_eyeToggle.IsChecked != IsRevealed)
+            _eyeToggle.IsChecked = IsRevealed;
+
+        var warn = WarningTip;
+        var showWarn = !string.IsNullOrEmpty(warn);
+        _warningGlyph.IsVisible = showWarn;
+        if (showWarn) ToolTip.SetTip(_warningGlyph, warn);
+
+        // Reserve room on the right side of the input so the editor's trailing text doesn't
+        // slide under the inline glyphs. One glyph ≈ 22px; two glyphs ≈ 44px.
+        var reserved = (IsPassword ? 22 : 0) + (showWarn ? 22 : 0);
+        if (this.FindControl<Border>("HostBorder") is { } host)
+        {
+            var basePad = host.Padding;
+            host.Padding = reserved > 0
+                ? new Thickness(basePad.Left, basePad.Top, Math.Max(basePad.Right, reserved), basePad.Bottom)
+                : new Thickness(basePad.Left, basePad.Top, basePad.Right >= 22 ? 6 : basePad.Right, basePad.Bottom);
+        }
     }
 
     private void ApplyBordered()
@@ -320,6 +453,9 @@ public partial class VariableAwareTextEditor : UserControl
             host.Padding = new Thickness(0);
             host.VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Stretch;
         }
+        // Padding may need to grow to reserve room for the eye toggle — re-apply here so
+        // a Bordered/SingleLine change after construction picks up the password chrome too.
+        UpdatePasswordChrome();
     }
 
     private void ApplySyntaxHighlighting()
@@ -589,5 +725,94 @@ public partial class VariableAwareTextEditor : UserControl
             // Insert "name}}" — the leading "{{" is already in the document.
             textArea.Document.Replace(completionSegment, _name + "}}");
         }
+    }
+
+    /// <summary>Emits <see cref="MaskedVisualLineText"/> elements over any run of characters
+    /// that lies OUTSIDE a <c>{{name}}</c> placeholder when the editor is in password mode and
+    /// not currently revealed. Variable tokens fall through to the default colorizer (amber /
+    /// red) so the user can still tell at a glance which placeholder is wired up.</summary>
+    private sealed class PasswordMaskGenerator : VisualLineElementGenerator
+    {
+        private readonly VariableAwareTextEditor _owner;
+        public PasswordMaskGenerator(VariableAwareTextEditor owner) { _owner = owner; }
+
+        private bool Active => _owner.IsPassword && !_owner.IsRevealed;
+
+        public override int GetFirstInterestedOffset(int startOffset)
+        {
+            if (!Active) return -1;
+            var ctx = CurrentContext;
+            if (ctx is null) return -1;
+            var firstLine = ctx.VisualLine.FirstDocumentLine;
+            var lastLine = ctx.VisualLine.LastDocumentLine;
+            var rangeStart = firstLine.Offset;
+            var rangeEnd = lastLine.EndOffset;
+            if (startOffset >= rangeEnd) return -1;
+
+            var rangeText = ctx.Document.GetText(rangeStart, rangeEnd - rangeStart);
+            var rel = Math.Max(0, startOffset - rangeStart);
+
+            // Skip past any {{var}} the caret happens to start inside; pick the first
+            // non-variable position at or after that.
+            foreach (Match m in VarRegex.Matches(rangeText))
+            {
+                if (rel < m.Index) break;
+                if (rel >= m.Index && rel < m.Index + m.Length)
+                    rel = m.Index + m.Length;
+            }
+            return rel >= rangeText.Length ? -1 : rangeStart + rel;
+        }
+
+        public override VisualLineElement? ConstructElement(int offset)
+        {
+            if (!Active) return null;
+            var ctx = CurrentContext;
+            if (ctx is null) return null;
+            var visualLine = ctx.VisualLine;
+            var firstLine = visualLine.FirstDocumentLine;
+            var lastLine = visualLine.LastDocumentLine;
+            var rangeStart = firstLine.Offset;
+            var rangeEnd = lastLine.EndOffset;
+
+            var rangeText = ctx.Document.GetText(rangeStart, rangeEnd - rangeStart);
+            var rel = offset - rangeStart;
+            if (rel < 0 || rel >= rangeText.Length) return null;
+
+            // Run length: from rel to the next {{var}} start (or end of the line).
+            var end = rangeText.Length;
+            foreach (Match m in VarRegex.Matches(rangeText))
+            {
+                if (m.Index > rel && m.Index < end)
+                {
+                    end = m.Index;
+                    break;
+                }
+            }
+            var length = end - rel;
+            if (length <= 0) return null;
+            return new MaskedVisualLineText(visualLine, length);
+        }
+    }
+
+    /// <summary>A drop-in <see cref="VisualLineText"/> that paints bullet glyphs instead of the
+    /// underlying document characters. Used by <see cref="PasswordMaskGenerator"/> to render
+    /// password-style masking without altering the document Text — bindings still see real
+    /// characters; only what's painted on screen is replaced.</summary>
+    private sealed class MaskedVisualLineText : VisualLineText
+    {
+        private const char Bullet = '•';
+
+        public MaskedVisualLineText(VisualLine parent, int length) : base(parent, length) { }
+
+        public override TextRun CreateTextRun(int startVisualColumn, ITextRunConstructionContext context)
+        {
+            var relativeOffset = startVisualColumn - VisualColumn;
+            var length = DocumentLength - relativeOffset;
+            if (length <= 0) length = 1;
+            return new TextCharacters(new string(Bullet, length).AsMemory(), TextRunProperties);
+        }
+
+        protected override VisualLineText CreateInstance(int length)
+            => new MaskedVisualLineText(ParentVisualLine, length);
     }
 }
