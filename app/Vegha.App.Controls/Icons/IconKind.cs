@@ -66,4 +66,7 @@ public enum IconKind
     // Form inputs
     Eye,
     Warning,
+
+    // Drop zones
+    DropFile,
 }

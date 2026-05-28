@@ -21,6 +21,27 @@
         <Style Selector="Button.envPickerRow:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
         </Style>
+        <!-- Collection picker filter pill — same rounded chrome as CollectionsPanel's search. -->
+        <Style Selector="Border.filterPill TextBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+        <Style Selector="Border.filterPill TextBox:focus /template/ Border">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.filterPill TextBox:pointerover /template/ Border">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.filterPill">
+            <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
     </UserControl.Styles>
 
     <Border Background="{DynamicResource Bg2Brush}"
@@ -55,8 +76,71 @@
                                    Foreground="{DynamicResource Text2Brush}"
                                    VerticalAlignment="Center" />
                     </StackPanel>
+                    <!-- Custom flyout: filterable list + per-row actions + "Manage collections..." footer.
+                         Rows are rebuilt in code-behind (RebuildCollectionPickerList) so the active row,
+                         filtering, and per-row "..." menu stay in sync with VM state. -->
                     <Button.Flyout>
-                        <MenuFlyout Placement="BottomEdgeAlignedLeft" />
+                        <Flyout Placement="BottomEdgeAlignedLeft">
+                            <Border Width="320" MinHeight="160"
+                                    Background="{DynamicResource Bg1Brush}">
+                                <DockPanel>
+                                    <!-- Search box pinned at top -->
+                                    <Border DockPanel.Dock="Top" Padding="10,10,10,6">
+                                        <Border Classes="filterPill" Height="28" Padding="8,0,4,0">
+                                            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                                <icons:Icon Grid.Column="0" Kind="Search" Size="13"
+                                                            Foreground="{DynamicResource Text2Brush}"
+                                                            VerticalAlignment="Center" />
+                                                <TextBox Grid.Column="1"
+                                                         x:Name="CollectionPickerFilterBox"
+                                                         Watermark="Search collections…"
+                                                         FontSize="12"
+                                                         Foreground="{DynamicResource Text0Brush}"
+                                                         VerticalAlignment="Center"
+                                                         VerticalContentAlignment="Center"
+                                                         Margin="8,0,0,0" />
+                                                <Button Grid.Column="2"
+                                                        x:Name="CollectionPickerClearFilter"
+                                                        Background="Transparent" BorderThickness="0"
+                                                        Padding="0" Width="20" Height="20"
+                                                        Margin="4,0,2,0"
+                                                        CornerRadius="3"
+                                                        Cursor="Hand"
+                                                        ToolTip.Tip="Clear filter"
+                                                        IsVisible="False">
+                                                    <icons:Icon Kind="Close" Size="10"
+                                                                Foreground="{DynamicResource Text2Brush}" />
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </Border>
+
+                                    <!-- Footer: "Manage collections..." opens the workspace-scoped dialog. -->
+                                    <Border DockPanel.Dock="Bottom"
+                                            BorderBrush="{DynamicResource Border0Brush}"
+                                            BorderThickness="0,1,0,0">
+                                        <Button Click="OnManageCollections_Click"
+                                                HorizontalAlignment="Stretch"
+                                                HorizontalContentAlignment="Center"
+                                                Background="Transparent" BorderThickness="0"
+                                                Foreground="{DynamicResource Text1Brush}"
+                                                Padding="8,8">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <icons:Icon Kind="Settings" Size="13" />
+                                                <TextBlock Text="Manage collections…" FontSize="12" />
+                                            </StackPanel>
+                                        </Button>
+                                    </Border>
+
+                                    <!-- Scrollable, filtered list of collections. Rows are built in code-behind. -->
+                                    <ScrollViewer MaxHeight="360"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <StackPanel x:Name="CollectionPickerList" Margin="0,4,0,8" />
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </Flyout>
                     </Button.Flyout>
                 </Button>
 

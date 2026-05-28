@@ -3,56 +3,46 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Vegha.App.ViewModels"
+        xmlns:icons="using:Vegha.App.Controls.Icons"
         mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="520"
         x:Class="Vegha.App.Controls.Workspace.ImportWizardDialog"
         x:DataType="vm:ImportWizardViewModel"
         Title="Import Collection"
-        Width="720" Height="560"
+        Width="760" Height="640"
+        MinWidth="560" MinHeight="480"
         Background="{DynamicResource Bg1Brush}"
         FontSize="{DynamicResource AppFontSize}"
         WindowStartupLocation="CenterOwner"
-        CanResize="False">
+        CanResize="True">
+    <Grid>
     <DockPanel Margin="0">
-        <!-- Title bar -->
-        <Border DockPanel.Dock="Top"
-                Background="{DynamicResource Bg2Brush}"
-                BorderBrush="{DynamicResource Border0Brush}"
-                BorderThickness="0,0,0,1"
-                Padding="20,12">
-            <TextBlock Text="Import Collection" FontWeight="SemiBold" FontSize="14"
-                       Foreground="{DynamicResource Text0Brush}" />
-        </Border>
-
-        <!-- Footer buttons -->
-        <Border DockPanel.Dock="Bottom"
-                Background="{DynamicResource Bg2Brush}"
-                BorderBrush="{DynamicResource Border0Brush}"
-                BorderThickness="0,1,0,0"
-                Padding="20,12">
-            <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Grid.Column="0" Orientation="Vertical" Spacing="2"
-                            VerticalAlignment="Center">
-                    <TextBlock Text="{Binding DetectedFormat}" FontSize="11" FontWeight="SemiBold"
-                               Foreground="{DynamicResource Text1Brush}" />
-                    <TextBlock Text="{Binding PreviewSummary}" FontSize="11"
-                               Foreground="{DynamicResource Text2Brush}"
-                               TextTrimming="CharacterEllipsis"
-                               IsVisible="{Binding PreviewSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                    <Button Content="Cancel" Click="OnCancel_Click"
-                            Background="Transparent"
-                            Foreground="{DynamicResource Text1Brush}"
-                            BorderThickness="0" Padding="14,6" />
-                    <Button Content="Import" Click="OnImport_Click"
-                            Command="{Binding ImportCommand}"
-                            IsDefault="True"
-                            Background="{DynamicResource AccentBrush}"
-                            Foreground="White" BorderThickness="0"
-                            Padding="18,6" CornerRadius="3" FontWeight="SemiBold" />
-                </StackPanel>
-            </Grid>
-        </Border>
+        <!-- Footer: detection status (left), Cancel / Import (right). Margins (not a
+             contrasting Border band) match the plain content layout of ManageWorkspacesDialog
+             + ManageCollectionsDialog so the dialog feels consistent with the rest. -->
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="16,12,16,16">
+            <StackPanel Grid.Column="0" Orientation="Vertical" Spacing="2"
+                        VerticalAlignment="Center">
+                <TextBlock Text="{Binding DetectedFormat}" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <TextBlock Text="{Binding PreviewSummary}" FontSize="11"
+                           Foreground="{DynamicResource Text2Brush}"
+                           TextTrimming="CharacterEllipsis"
+                           IsVisible="{Binding PreviewSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Content="Cancel" Click="OnCancel_Click"
+                        IsEnabled="{Binding !IsImporting}"
+                        Background="Transparent"
+                        Foreground="{DynamicResource Text1Brush}"
+                        BorderThickness="0" Padding="14,6" />
+                <Button Content="Import" Click="OnImport_Click"
+                        Command="{Binding ImportCommand}"
+                        IsDefault="True"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="White" BorderThickness="0"
+                        Padding="18,6" CornerRadius="3" FontWeight="SemiBold" />
+            </StackPanel>
+        </Grid>
 
         <!-- Error strip -->
         <Border DockPanel.Dock="Top"
@@ -117,8 +107,85 @@
             </StackPanel>
         </Border>
 
-        <!-- Tab content -->
-        <TabControl Margin="20,12,20,0">
+        <!-- Body slot: holds the bulk-import panel OR the file/url/git tabs, toggled by
+             ShowSelectionList. Wrapped in a single Grid so the DockPanel sees ONE last child
+             and lets that child fill the remaining horizontal+vertical space (unmarked
+             DockPanel children default to Dock=Left otherwise, which produced a dead band on
+             the right of the staged list). -->
+        <Grid>
+            <!-- Bulk-import selection panel — visible only when more than one collection was
+                 staged (multi-file pick, ZIP with siblings, etc.). -->
+            <Border IsVisible="{Binding ShowSelectionList}"
+                    Background="{DynamicResource Bg2Brush}"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="20,12">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
+                                    VerticalAlignment="Center">
+                            <TextBlock Text="Collections" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text0Brush}"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding StagedItems.Count, StringFormat='({0})'}"
+                                       FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14"
+                                    VerticalAlignment="Center">
+                            <!-- Re-stage entry point: clears the current batch + opens the file
+                                 picker again. Without this the user has no way to change their
+                                 selection now that the TabControl is hidden. -->
+                            <Button Click="OnPickDifferentFiles_Click"
+                                    Background="Transparent" BorderThickness="0"
+                                    Foreground="{DynamicResource AccentBrush}"
+                                    Padding="0" FontSize="12"
+                                    Cursor="Hand">
+                                <TextBlock Text="Pick different files…"
+                                           TextDecorations="Underline" />
+                            </Button>
+                            <CheckBox Content="Select All"
+                                      IsChecked="{Binding AllSelected, Mode=TwoWay}"
+                                      Foreground="{DynamicResource Text0Brush}"
+                                      FontSize="12"
+                                      VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+                    <Border Background="{DynamicResource Bg1Brush}"
+                            BorderBrush="{DynamicResource Border1Brush}"
+                            BorderThickness="1" CornerRadius="6"
+                            Padding="10,8"
+                            HorizontalAlignment="Stretch">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding StagedItems}"
+                                          HorizontalAlignment="Stretch">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ImportItemViewModel">
+                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                  Foreground="{DynamicResource Text0Brush}"
+                                                  FontSize="12"
+                                                  Margin="0,2"
+                                                  HorizontalAlignment="Stretch">
+                                            <TextBlock Text="{Binding DisplayName}"
+                                                       FontSize="12"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </CheckBox>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </DockPanel>
+            </Border>
+
+            <!-- Tab content — hidden once a batch is staged so the file picker doesn't compete
+                 with the staged-list for vertical space (38 rows used to push the picker off
+                 the bottom). "Pick different files…" above clears the batch and brings these
+                 tabs back. -->
+            <TabControl Margin="20,12,20,0"
+                        IsVisible="{Binding !ShowSelectionList}">
             <TabControl.Styles>
                 <Style Selector="TabItem">
                     <Setter Property="FontSize" Value="13" />
@@ -141,15 +208,12 @@
                         </Style>
                     </Border.Styles>
                     <StackPanel Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="📥" FontSize="40" HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource Text2Brush}" />
-                        <TextBlock HorizontalAlignment="Center" FontSize="13"
-                                   Foreground="{DynamicResource Text1Brush}">
-                            <Run Text="Drop file(s) to import or " />
-                            <Run Text="choose file(s)"
-                                 Foreground="{DynamicResource AccentBrush}"
-                                 TextDecorations="Underline" />
-                        </TextBlock>
+                        <icons:Icon Kind="DropFile" Size="56"
+                                    Foreground="{DynamicResource Text2Brush}"
+                                    HorizontalAlignment="Center" />
+                        <TextBlock Text="Drop file(s) here to import"
+                                   HorizontalAlignment="Center" FontSize="13"
+                                   Foreground="{DynamicResource Text1Brush}" />
                         <Button Content="Choose file(s)…" Click="OnBrowseFile_Click"
                                 Background="{DynamicResource Bg3Brush}"
                                 BorderBrush="{DynamicResource Border1Brush}"
@@ -344,6 +408,45 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
-        </TabControl>
+            </TabControl>
+        </Grid>
     </DockPanel>
+
+    <!-- Progress overlay — visible only while ImportAsync is iterating the staged batch.
+         Semi-opaque panel covers the whole window so the user can't tab through to other
+         tabs / change selections mid-run. The spinner + text live in a centered card so the
+         user has a clear focal point during the (potentially multi-second) import. -->
+    <Border IsVisible="{Binding IsImporting}"
+            Background="#A0000000"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch">
+        <Border Background="{DynamicResource Bg1Brush}"
+                BorderBrush="{DynamicResource AccentBrush}"
+                BorderThickness="1" CornerRadius="8"
+                Padding="28,22"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MinWidth="320">
+            <StackPanel Spacing="14" HorizontalAlignment="Center">
+                <!-- Avalonia's indeterminate ProgressBar acts as our spinner. -->
+                <ProgressBar IsIndeterminate="True"
+                             Width="240" Height="6"
+                             Background="{DynamicResource Bg3Brush}"
+                             Foreground="{DynamicResource AccentBrush}" />
+                <TextBlock Text="{Binding ProgressMessage, FallbackValue='Importing…', TargetNullValue='Importing…'}"
+                           FontSize="12" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text0Brush}"
+                           TextWrapping="Wrap"
+                           MaxWidth="380"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="Please wait — this can take a moment for large batches."
+                           FontSize="11"
+                           Foreground="{DynamicResource Text2Brush}"
+                           TextAlignment="Center"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </Border>
+    </Border>
+    </Grid>
 </Window>

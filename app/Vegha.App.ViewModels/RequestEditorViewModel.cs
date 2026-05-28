@@ -349,7 +349,25 @@ public partial class RequestEditorViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelSendCommand))]
     private bool _isSending;
+
+    /// <summary>Seconds elapsed since the in-flight request began. Drives the live timer
+    /// in the response panel's busy overlay; updated ~10× per second while
+    /// <see cref="IsSending"/> is true and pinned to 0 otherwise.</summary>
+    [ObservableProperty]
+    private double _sendingElapsedSeconds;
+
+    /// <summary>"0.6s" style formatted view of <see cref="SendingElapsedSeconds"/>. Static
+    /// computed property so the overlay's XAML stays a single binding without converters.</summary>
+    public string SendingElapsedDisplay => $"{SendingElapsedSeconds:F1}s";
+
+    partial void OnSendingElapsedSecondsChanged(double value) => OnPropertyChanged(nameof(SendingElapsedDisplay));
+
+    /// <summary>CTS for the in-flight request. Linked to the command's own token so external
+    /// cancellation (window close, command re-execution) still flows through. Replaced on
+    /// every SendAsync, cancelled by <see cref="CancelSend"/>.</summary>
+    private CancellationTokenSource? _sendCts;
 
     // Default to Body (index 4 — Params/Auth/Headers/Vars/Body/...) — that's where the
     // user usually starts editing a new request. Without this the editor opens on Params,
@@ -726,8 +744,11 @@ public partial class RequestEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(ResponseIsTextual));
         OnPropertyChanged(nameof(ResponseIsJson));
         OnPropertyChanged(nameof(ResponseIsXml));
-        OnPropertyChanged(nameof(DisplayedBody));
         OnPropertyChanged(nameof(ResponseSyntaxHighlightingName));
+        OnPropertyChanged(nameof(ResponseCanvasSyntaxKind));
+        OnPropertyChanged(nameof(UseRichResponseViewer));
+        OnPropertyChanged(nameof(UseLargeResponseViewer));
+        RecomputeDisplayedBody();
     }
 
     /// <summary>JSONPath expression filter applied to the body when the response is JSON.
@@ -751,12 +772,41 @@ public partial class RequestEditorViewModel : ObservableObject
     [ObservableProperty]
     private string _responseFormat = "Auto";
 
+    /// <summary>Body-size cutoff (chars) above which the response viewer drops every
+    /// per-character UI feature that scales poorly with document size — pretty-printing
+    /// is skipped, JSONPath filtering is skipped, and AvaloniaEdit syntax highlighting is
+    /// disabled. Without this, a multi-MB body locks the UI for several seconds on the
+    /// first click because the JSON colorizer + word-wrap recompute run across the whole
+    /// document. 1 MB is conservative — the user can still inspect the raw text.</summary>
+    public const int LargeBodyCharThreshold = 1_000_000;
+
+    /// <summary>True when the response body crosses <see cref="LargeBodyCharThreshold"/>
+    /// — drives the "skip every expensive transform" branches below and is exposed so
+    /// the response panel can show a hint that pretty-printing was skipped.</summary>
+    public bool IsResponseTooLargeToPrettify =>
+        (ResponseBody?.Length ?? 0) > LargeBodyCharThreshold;
+
+    /// <summary>True when the rich AvaloniaEdit-based viewer should render the body.
+    /// False for image / PDF responses (rendered separately) and for huge bodies — those
+    /// route to <see cref="UseLargeResponseViewer"/> instead.</summary>
+    public bool UseRichResponseViewer =>
+        ResponseIsTextual && !IsResponseTooLargeToPrettify;
+
+    /// <summary>True when the virtualized list-of-lines viewer should render the body.
+    /// Triggers for textual responses past <see cref="LargeBodyCharThreshold"/>, where
+    /// AvaloniaEdit's per-visual-line measurement locks the UI on every click.</summary>
+    public bool UseLargeResponseViewer =>
+        ResponseIsTextual && IsResponseTooLargeToPrettify;
+
     /// <summary>AvaloniaEdit syntax-highlighting name for the response body view, derived from
-    /// <see cref="ResponseFormat"/> + (in Auto mode) the response Content-Type.</summary>
+    /// <see cref="ResponseFormat"/> + (in Auto mode) the response Content-Type. Returns null
+    /// for bodies above <see cref="LargeBodyCharThreshold"/> — AvaloniaEdit's colorizer runs
+    /// line-by-line on every redraw and was the dominant click-time hang on multi-MB responses.</summary>
     public string? ResponseSyntaxHighlightingName
     {
         get
         {
+            if (IsResponseTooLargeToPrettify) return null;
             var fmt = ResolveEffectiveResponseFormat();
             return fmt switch
             {
@@ -764,6 +814,23 @@ public partial class RequestEditorViewModel : ObservableObject
                 "XML"  => "XML",
                 "HTML" => "HTML",
                 _      => null,
+            };
+        }
+    }
+
+    /// <summary>Canvas-viewer syntax token: "json" / "xml" / "none". The canvas-based
+    /// large-body viewer reads this to pick its per-line tokenizer (it has its own
+    /// JSON + XML highlighters, decoupled from AvaloniaEdit's).</summary>
+    public string ResponseCanvasSyntaxKind
+    {
+        get
+        {
+            var fmt = ResolveEffectiveResponseFormat();
+            return fmt switch
+            {
+                "JSON" => "json",
+                "XML"  => "xml",
+                _      => "none",
             };
         }
     }
@@ -779,25 +846,173 @@ public partial class RequestEditorViewModel : ObservableObject
     }
 
     /// <summary>The body text shown in the textual Body view, after applying the chosen
-    /// <see cref="ResponseFormat"/> and any JSONPath filter.</summary>
-    public string DisplayedBody
+    /// <see cref="ResponseFormat"/> and any JSONPath filter. Backed by a cached field
+    /// (<see cref="_displayedBodyCache"/>) populated by <see cref="RecomputeDisplayedBody"/>
+    /// so the getter is O(1) — without caching the bound editor re-prettified the body on
+    /// every binding evaluation, locking the UI on every click for multi-MB responses.</summary>
+    public string DisplayedBody => _displayedBodyCache;
+    private string _displayedBodyCache = string.Empty;
+
+    /// <summary>Cancels in-flight background prettify so a freshly arrived response
+    /// supersedes any pending JSON/XML formatting from the previous response.</summary>
+    private CancellationTokenSource? _prettifyCts;
+
+    /// <summary>True while a background pretty-print pass is running for a large body —
+    /// the response toolbar shows a "Formatting…" hint so the user knows the verbatim
+    /// view they're seeing will swap to a formatted version shortly.</summary>
+    [ObservableProperty]
+    private bool _isPrettifying;
+
+    /// <summary>Recomputes <see cref="DisplayedBody"/> from the current
+    /// (ResponseBody, ResponseFormat, JsonPathFilter, ContentType) tuple and fires
+    /// PropertyChanged. Above <see cref="LargeBodyCharThreshold"/> chars the body is
+    /// first published verbatim — so the viewer comes up immediately — then a background
+    /// task pretty-prints JSON/XML (or evaluates a JSONPath filter and prettifies the
+    /// result) and swaps in the formatted version when ready.</summary>
+    private void RecomputeDisplayedBody()
     {
-        get
+        // Cancel any background prettify / filter from a previous response.
+        _prettifyCts?.Cancel();
+        _prettifyCts = null;
+        IsPrettifying = false;
+
+        var body = ResponseBody;
+        string next;
+        var bgKind = LargeBodyBgKind.None;
+
+        if (string.IsNullOrEmpty(body))
         {
-            if (string.IsNullOrEmpty(ResponseBody)) return string.Empty;
+            next = string.Empty;
+        }
+        else if (string.Equals(ResponseFormat, "Raw", StringComparison.OrdinalIgnoreCase))
+        {
+            next = body;
+        }
+        else if (IsResponseTooLargeToPrettify)
+        {
+            // Publish raw immediately so the viewer renders without delay, then upgrade
+            // to formatted output (or filtered output) once the background pass finishes.
+            next = body;
+            var fmt = ResolveEffectiveResponseFormat();
+            if (fmt == "JSON" && !string.IsNullOrWhiteSpace(JsonPathFilter))
+                bgKind = LargeBodyBgKind.FilterPrettify;
+            else if (fmt is "JSON" or "XML")
+                bgKind = LargeBodyBgKind.Prettify;
+        }
+        else if (ResponseIsJson && !string.IsNullOrWhiteSpace(JsonPathFilter))
+        {
+            var filtered = TryApplyJsonPath(body, JsonPathFilter);
+            next = filtered is not null ? PrettyByFormat(filtered) : PrettyByFormat(body);
+        }
+        else
+        {
+            next = PrettyByFormat(body);
+        }
 
-            // Raw format: skip every transformation, even JSONPath.
-            if (string.Equals(ResponseFormat, "Raw", StringComparison.OrdinalIgnoreCase))
-                return ResponseBody;
+        if (!ReferenceEquals(_displayedBodyCache, next))
+        {
+            _displayedBodyCache = next;
+            OnPropertyChanged(nameof(DisplayedBody));
+        }
 
-            // JSONPath filter: applies when content is JSON-ish and the user typed a path.
-            if (ResponseIsJson && !string.IsNullOrWhiteSpace(JsonPathFilter))
+        switch (bgKind)
+        {
+            case LargeBodyBgKind.Prettify:
+                StartBackgroundPrettify(body, ResolveEffectiveResponseFormat());
+                break;
+            case LargeBodyBgKind.FilterPrettify:
+                StartBackgroundJsonPathFilter(body, JsonPathFilter);
+                break;
+        }
+    }
+
+    private enum LargeBodyBgKind { None, Prettify, FilterPrettify }
+
+    /// <summary>Kicks off a background <see cref="Task.Run"/> that pretty-prints
+    /// <paramref name="body"/> for the given <paramref name="format"/>, then marshals
+    /// the formatted string back to the UI sync context and republishes
+    /// <see cref="DisplayedBody"/>. Token-scoped so a newer response cancels the older
+    /// pass before it overwrites the cache.</summary>
+    private void StartBackgroundPrettify(string body, string format)
+    {
+        _prettifyCts = new CancellationTokenSource();
+        var token = _prettifyCts.Token;
+        var uiScheduler = TaskScheduler.FromCurrentSynchronizationContext();
+        IsPrettifying = true;
+
+        Task.Run(() => PrettyOffThread(body, format, token), token)
+            .ContinueWith(t =>
             {
-                var filtered = TryApplyJsonPath(ResponseBody, JsonPathFilter);
-                if (filtered is not null) return PrettyByFormat(filtered);
-            }
+                // Drop silently if a newer response superseded us mid-flight.
+                if (token.IsCancellationRequested) return;
+                if (!t.IsCompletedSuccessfully) { IsPrettifying = false; return; }
+                var pretty = t.Result;
+                if (pretty is null) { IsPrettifying = false; return; }
+                if (!ReferenceEquals(_displayedBodyCache, pretty))
+                {
+                    _displayedBodyCache = pretty;
+                    OnPropertyChanged(nameof(DisplayedBody));
+                }
+                IsPrettifying = false;
+            }, uiScheduler);
+    }
 
-            return PrettyByFormat(ResponseBody);
+    /// <summary>Background JSONPath evaluation — parses <paramref name="body"/> into a
+    /// <c>JsonNode</c>, runs <paramref name="path"/>, prettifies the result, marshals
+    /// to UI thread, publishes via <see cref="DisplayedBody"/>. Same cancellation +
+    /// IsPrettifying signaling as <see cref="StartBackgroundPrettify"/>.</summary>
+    private void StartBackgroundJsonPathFilter(string body, string path)
+    {
+        _prettifyCts = new CancellationTokenSource();
+        var token = _prettifyCts.Token;
+        var uiScheduler = TaskScheduler.FromCurrentSynchronizationContext();
+        IsPrettifying = true;
+
+        Task.Run(() => TryApplyJsonPath(body, path), token)
+            .ContinueWith(t =>
+            {
+                if (token.IsCancellationRequested) return;
+                if (!t.IsCompletedSuccessfully) { IsPrettifying = false; return; }
+                var filtered = t.Result;
+                // TryApplyJsonPath already returns a pretty-printed JSON string (or
+                // "// no matches" / "// JSONPath error: …"); use it as-is.
+                if (filtered is null) { IsPrettifying = false; return; }
+                if (!ReferenceEquals(_displayedBodyCache, filtered))
+                {
+                    _displayedBodyCache = filtered;
+                    OnPropertyChanged(nameof(DisplayedBody));
+                }
+                IsPrettifying = false;
+            }, uiScheduler);
+    }
+
+    private static string? PrettyOffThread(string body, string format, CancellationToken token)
+    {
+        try
+        {
+            switch (format)
+            {
+                case "JSON":
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(body);
+                    token.ThrowIfCancellationRequested();
+                    return System.Text.Json.JsonSerializer.Serialize(doc.RootElement,
+                        new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                }
+                case "XML":
+                {
+                    var pretty = TryPrettyPrintXml(body);
+                    token.ThrowIfCancellationRequested();
+                    return pretty;
+                }
+                default:
+                    return null;
+            }
+        }
+        catch
+        {
+            // Malformed payload — keep the raw text in place rather than crashing the UI.
+            return null;
         }
     }
 
@@ -835,13 +1050,51 @@ public partial class RequestEditorViewModel : ObservableObject
         }
     }
 
-    partial void OnResponseBodyChanged(string value) => OnPropertyChanged(nameof(DisplayedBody));
-    partial void OnJsonPathFilterChanged(string value) => OnPropertyChanged(nameof(DisplayedBody));
-    partial void OnXmlPrettyPrintChanged(bool value) => OnPropertyChanged(nameof(DisplayedBody));
+    partial void OnResponseBodyChanged(string value)
+    {
+        // Body size flips IsResponseTooLargeToPrettify which gates syntax highlighting,
+        // the prettify path, and which viewer renders the response — refresh them all
+        // alongside the cached displayed body so the response panel re-routes correctly.
+        OnPropertyChanged(nameof(IsResponseTooLargeToPrettify));
+        OnPropertyChanged(nameof(ResponseSyntaxHighlightingName));
+        OnPropertyChanged(nameof(UseRichResponseViewer));
+        OnPropertyChanged(nameof(UseLargeResponseViewer));
+        RecomputeDisplayedBody();
+    }
+    partial void OnJsonPathFilterChanged(string value)
+    {
+        // Small bodies: re-evaluate inline (cheap, immediate feedback while typing).
+        if (!IsResponseTooLargeToPrettify)
+        {
+            RecomputeDisplayedBody();
+            return;
+        }
+
+        // Large bodies: debounce 400 ms so each keystroke doesn't kick off a full
+        // JsonNode.Parse of the multi-MB body. The previous CTS cancels its Task.Delay
+        // before the recompute fires.
+        _filterDebounceCts?.Cancel();
+        _filterDebounceCts = new CancellationTokenSource();
+        var token = _filterDebounceCts.Token;
+        var ui = TaskScheduler.FromCurrentSynchronizationContext();
+
+        Task.Delay(400, token).ContinueWith(t =>
+        {
+            if (t.IsCanceled || token.IsCancellationRequested) return;
+            RecomputeDisplayedBody();
+        }, ui);
+    }
+
+    /// <summary>Cancels pending debounced JSONPath recompute. Each keystroke into the
+    /// filter cancels the previous timer so we only run the filter ~400ms after the
+    /// user stops typing.</summary>
+    private CancellationTokenSource? _filterDebounceCts;
+    partial void OnXmlPrettyPrintChanged(bool value) => RecomputeDisplayedBody();
     partial void OnResponseFormatChanged(string value)
     {
-        OnPropertyChanged(nameof(DisplayedBody));
+        RecomputeDisplayedBody();
         OnPropertyChanged(nameof(ResponseSyntaxHighlightingName));
+        OnPropertyChanged(nameof(ResponseCanvasSyntaxKind));
     }
 
     private static string? TryApplyJsonPath(string json, string path)
@@ -1341,8 +1594,22 @@ public partial class RequestEditorViewModel : ObservableObject
             return;
         }
 
+        // Link the command-supplied token so external cancellation (e.g. command re-issue)
+        // still flows through, while letting the Cancel button on the response overlay
+        // cancel via _sendCts.Cancel().
+        _sendCts?.Dispose();
+        _sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var sendToken = _sendCts.Token;
+
         IsSending = true;
+        SendingElapsedSeconds = 0;
         ErrorMessage = null;
+
+        // Live elapsed-seconds ticker for the busy overlay. Fire-and-forget; the CTS token
+        // shuts it down when the request finishes or the user cancels. Avalonia's UI sync
+        // context flows through await Task.Delay so property writes land on the UI thread.
+        var elapsedSw = System.Diagnostics.Stopwatch.StartNew();
+        _ = TickSendingElapsedAsync(elapsedSw, sendToken);
 
         try
         {
@@ -1522,7 +1789,7 @@ public partial class RequestEditorViewModel : ObservableObject
                     MultipartFields: multipartFields,
                     FilePath: filePathToSend,
                     Options: options),
-                cancellationToken).ConfigureAwait(true);
+                sendToken).ConfigureAwait(true);
 
             // Digest auth: 401 → parse WWW-Authenticate challenge → resend with response header.
             // The first leg is the deliberate "ping" that surfaces realm + nonce; final timing
@@ -1541,7 +1808,7 @@ public partial class RequestEditorViewModel : ObservableObject
                             Body: body,
                             ContentType: contentType,
                             Options: options),
-                        cancellationToken).ConfigureAwait(true);
+                        sendToken).ConfigureAwait(true);
                 }
             }
 
@@ -1587,7 +1854,7 @@ public partial class RequestEditorViewModel : ObservableObject
                         result.ElapsedMilliseconds,
                         result.Body,
                         result.ErrorMessage,
-                        cancellationToken,
+                        sendToken,
                         requestBlob).ConfigureAwait(true);
                 }
                 catch (Exception histEx)
@@ -1614,7 +1881,7 @@ public partial class RequestEditorViewModel : ObservableObject
                     response: resApi,
                     envVars: EnvironmentVariables,
                     requestVars: vars,
-                    cancellationToken: cancellationToken);
+                    cancellationToken: sendToken);
 
                 foreach (var t in post.TestOutcomes)
                     TestResults.Add(new TestResultRow(t.Name, t.Passed, t.FailureMessage, t.DurationMs));
@@ -1637,7 +1904,42 @@ public partial class RequestEditorViewModel : ObservableObject
         finally
         {
             IsSending = false;
+            elapsedSw.Stop();
+            // Cancel + dispose the linked CTS so the ticker loop exits cleanly. Null-out
+            // the field so CanCancelSend stops finding a live source after IsSending flips.
+            try { _sendCts?.Cancel(); } catch { /* best-effort */ }
+            _sendCts?.Dispose();
+            _sendCts = null;
         }
+    }
+
+    /// <summary>Cancels the in-flight request. Bound to the "Cancel Request" button in the
+    /// response panel's busy overlay. CanExecute mirrors <see cref="IsSending"/> so the
+    /// button only lights up while a request is actually outstanding.</summary>
+    [RelayCommand(CanExecute = nameof(CanCancelSend))]
+    private void CancelSend()
+    {
+        try { _sendCts?.Cancel(); } catch { /* best-effort */ }
+    }
+
+    private bool CanCancelSend() => IsSending;
+
+    /// <summary>Pumps <see cref="SendingElapsedSeconds"/> ~10×/s for the busy overlay.
+    /// Exits when the linked token cancels (request finished or user clicked Cancel).
+    /// Continuations land on the UI thread courtesy of the captured Avalonia sync context,
+    /// so the OnPropertyChanged fire is safe without explicit dispatcher posts.</summary>
+    private async Task TickSendingElapsedAsync(System.Diagnostics.Stopwatch sw, CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                SendingElapsedSeconds = sw.Elapsed.TotalSeconds;
+                await Task.Delay(100, token).ConfigureAwait(true);
+            }
+        }
+        catch (OperationCanceledException) { /* expected on cancel/finish */ }
+        catch { /* swallow — ticker is best-effort UI candy */ }
     }
 
     /// <summary>Saves the current request as .bru text to <see cref="SourcePath"/>.</summary>
@@ -1881,6 +2183,36 @@ public partial class RequestEditorViewModel : ObservableObject
     {
         SendCommand.NotifyCanExecuteChanged();
         if (!_loading) IsDirty = true;
+
+        // Paste-as-curl: when the URL field receives a string that starts with "curl ",
+        // parse it and apply (method, headers, cookies, body, auth) instead of treating
+        // the whole curl invocation as a URL. Reentrancy guard on _loading prevents
+        // the apply-time Url=cleanUrl assignment from re-triggering.
+        if (!_loading && !_applyingCurl && CurlImporter.LooksLikeCurl(value))
+        {
+            TryApplyPastedCurl(value);
+        }
+    }
+
+    private bool _applyingCurl;
+
+    private void TryApplyPastedCurl(string text)
+    {
+        if (!CurlImporter.TryParse(text, out var item) || item is null) return;
+        _applyingCurl = true;
+        try
+        {
+            // Preserve any existing SourcePath so the imported request can be saved over
+            // the current file. LoadFromRequestItem clears IsDirty; we re-arm it after
+            // since the pasted curl is unsaved by definition.
+            var path = SourcePath;
+            LoadFromRequestItem(item, path);
+            IsDirty = true;
+        }
+        finally
+        {
+            _applyingCurl = false;
+        }
     }
 
     partial void OnMethodChanged(string value) { if (!_loading) IsDirty = true; }

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Vegha.Core.Domain;
@@ -136,6 +137,36 @@ public partial class ImportWizardViewModel : ObservableObject
     /// in order when the user clicks Import.</summary>
     private readonly List<ImportResult> _staged = new();
 
+    /// <summary>UI-facing mirror of <see cref="_staged"/> — wraps each result with an
+    /// IsSelected flag so the bulk-import panel can render a checkbox list. Rebuilt on every
+    /// stage operation so external add/remove doesn't drift.</summary>
+    public ObservableCollection<ImportItemViewModel> StagedItems { get; } = new();
+
+    /// <summary>True when more than one importable item is staged. Drives the bulk-import
+    /// panel's visibility — single-source imports keep the original streamlined UX.</summary>
+    [ObservableProperty]
+    private bool _showSelectionList;
+
+    /// <summary>Number of currently-checked rows that contribute a collection. Drives both
+    /// the "Collections (N)" header and the disabled-state of the Import button when the
+    /// user un-checks everything.</summary>
+    public int SelectedCount => StagedItems.Count(i => i.IsSelected && i.IsCollection);
+
+    /// <summary>Two-state Select All. Setter toggles every row to match. Getter is true only
+    /// when every staged item is checked (matches the mock's checkmark behavior).</summary>
+    public bool AllSelected
+    {
+        get => StagedItems.Count > 0 && StagedItems.All(i => i.IsSelected);
+        set
+        {
+            foreach (var item in StagedItems)
+                item.IsSelected = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SelectedCount));
+            ImportCommand.NotifyCanExecuteChanged();
+        }
+    }
+
     /// <summary>Wired by the host: called once per imported collection. The second arg is
     /// the staged folder path (when the import is a Bruno tree / extracted ZIP / Git clone)
     /// so the host can fold-copy rather than re-serialize; null for parsed-only sources
@@ -144,6 +175,30 @@ public partial class ImportWizardViewModel : ObservableObject
 
     /// <summary>Wired by the host: called once per imported environment.</summary>
     public Action<Vegha.Core.Domain.Environment>? OnEnvironmentConfirmed { get; set; }
+
+    /// <summary>Wired by the host: fired exactly once after <see cref="ImportAsync"/> finishes
+    /// the batch. Carries (importedCount, totalRecognized) so the host can surface a "N of M
+    /// collections imported" status on the workspace summary page.</summary>
+    public Action<int, int>? OnBatchImported { get; set; }
+
+    /// <summary>Wired by the dialog: fires after <see cref="ImportAsync"/> finishes (success
+    /// or partial) so the dialog can call <c>Close(true)</c>. Keeping the close out of the VM
+    /// keeps the VM testable without an Avalonia <c>Window</c> dependency.</summary>
+    public Action? OnFinished { get; set; }
+
+    /// <summary>True while <see cref="ImportAsync"/> is iterating the staged batch. Drives the
+    /// progress overlay in the dialog + disables Cancel/Import buttons so the user can't
+    /// dismiss mid-run (the I/O work would still complete in the background and a closed
+    /// dialog couldn't surface errors).</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
+    private bool _isImporting;
+
+    /// <summary>Live message shown by the dialog's progress overlay
+    /// ("Importing 5 of 38: Foo"). Updated between each item in the batch — with a
+    /// <c>Task.Yield</c> after the update so the UI thread gets to repaint.</summary>
+    [ObservableProperty]
+    private string? _progressMessage;
 
     public ImportWizardViewModel(ILogger<ImportWizardViewModel> logger)
     {
@@ -386,11 +441,42 @@ public partial class ImportWizardViewModel : ObservableObject
         UpdatePreview(failures: null);
     }
 
+    /// <summary>Rebuilds <see cref="StagedItems"/> from <see cref="_staged"/> after every
+    /// staging change. Subscribes to each item's IsSelected so the wizard's CanImport +
+    /// "Select All" tri-state recompute as the user toggles individual rows.</summary>
+    private void SyncStagedItems()
+    {
+        foreach (var existing in StagedItems)
+            existing.PropertyChanged -= OnStagedItemPropertyChanged;
+        StagedItems.Clear();
+        foreach (var result in _staged.Where(r => r.Success))
+        {
+            var item = new ImportItemViewModel(result);
+            item.PropertyChanged += OnStagedItemPropertyChanged;
+            StagedItems.Add(item);
+        }
+        // Selection panel surfaces only when there's a real choice to make. Single-result
+        // imports keep the streamlined preview-only UX they had before.
+        ShowSelectionList = StagedItems.Count > 1;
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(AllSelected));
+        ImportCommand.NotifyCanExecuteChanged();
+    }
+
+    private void OnStagedItemPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ImportItemViewModel.IsSelected)) return;
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(AllSelected));
+        ImportCommand.NotifyCanExecuteChanged();
+    }
+
     /// <summary>Recomputes the displayed format + summary based on the current batch.
     /// Per-file detect failures from <see cref="StageFiles"/> appear in the summary so the
     /// user can see what was skipped without losing the recognized files.</summary>
     private void UpdatePreview(IReadOnlyList<string>? failures)
     {
+        SyncStagedItems();
         var successes = _staged.Where(r => r.Success).ToList();
         var failed = _staged.Count - successes.Count;
         var total = _staged.Count + (failures?.Count ?? 0);
@@ -457,6 +543,12 @@ public partial class ImportWizardViewModel : ObservableObject
     {
         ErrorMessage = null;
         _staged.Clear();
+        foreach (var item in StagedItems)
+            item.PropertyChanged -= OnStagedItemPropertyChanged;
+        StagedItems.Clear();
+        ShowSelectionList = false;
+        OnPropertyChanged(nameof(SelectedCount));
+        OnPropertyChanged(nameof(AllSelected));
         TranslationDiagnostics.Clear();
         OnPropertyChanged(nameof(HasTranslationDiagnostics));
         IsPostmanFormatDetected = false;
@@ -465,20 +557,65 @@ public partial class ImportWizardViewModel : ObservableObject
         ImportCommand.NotifyCanExecuteChanged();
     }
 
+    /// <summary>Import is allowed when at least one staged-and-recognized item is currently
+    /// selected. For single-source imports the user has no per-item checkbox, so an
+    /// implicitly-selected single result still passes. Disabled while a previous run is
+    /// still executing so the user can't double-trigger.</summary>
     private bool CanImport() =>
-        _staged.Any(r => r.Success && (AcceptEnvironments || r.Collection is not null));
+        !IsImporting &&
+        StagedItems.Any(i => i.IsSelected && i.Result.Success && (AcceptEnvironments || i.IsCollection));
 
+    /// <summary>Async because large batches (50+ collections) freeze the UI when run
+    /// inline — each item does file I/O + LoadFromDirectory and the UI thread never gets a
+    /// repaint window. We explicitly yield via <c>Dispatcher.UIThread.InvokeAsync(...,
+    /// DispatcherPriority.Background)</c> instead of <c>Task.Yield()</c> — the latter's
+    /// continuation comes back at a priority that preempts Avalonia's Render pass, so the
+    /// progress overlay never actually paints. Background priority is below Render, so the
+    /// dispatcher gets a full layout + render pass between items.</summary>
     [RelayCommand(CanExecute = nameof(CanImport))]
-    private void Import()
+    private async Task ImportAsync()
     {
-        foreach (var result in _staged.Where(r => r.Success))
+        IsImporting = true;
+        ProgressMessage = "Preparing import…";
+        // Force one render pass before doing any file I/O so the overlay is on screen
+        // before the per-item loop starts blocking the UI thread.
+        await YieldForRenderAsync();
+        try
         {
-            if (result.Collection is not null)
-                OnCollectionConfirmed?.Invoke(result.Collection, result.FolderPath);
-            if (result.Environment is not null && AcceptEnvironments)
-                OnEnvironmentConfirmed?.Invoke(result.Environment);
+            var selected = StagedItems.Where(i => i.IsSelected && i.Result.Success).ToList();
+            var totalRecognized = StagedItems.Count(i => i.IsCollection);
+            var imported = 0;
+            for (var i = 0; i < selected.Count; i++)
+            {
+                var item = selected[i];
+                ProgressMessage = $"Importing {i + 1} of {selected.Count}: {item.DisplayName}";
+                // Yield so the dispatcher gets a layout + render pass before the next item.
+                await YieldForRenderAsync();
+                var result = item.Result;
+                if (result.Collection is not null)
+                {
+                    OnCollectionConfirmed?.Invoke(result.Collection, result.FolderPath);
+                    imported++;
+                }
+                if (result.Environment is not null && AcceptEnvironments)
+                    OnEnvironmentConfirmed?.Invoke(result.Environment);
+            }
+            OnBatchImported?.Invoke(imported, totalRecognized);
+        }
+        finally
+        {
+            IsImporting = false;
+            ProgressMessage = null;
+            OnFinished?.Invoke();
         }
     }
+
+    /// <summary>Yields the UI thread for long enough to guarantee a Layout + Render pass
+    /// happens. Posts a no-op at Background priority (lower than Render) so the dispatcher
+    /// processes higher-priority work — including rendering the overlay's freshly-changed
+    /// IsVisible / ProgressMessage bindings — before returning here.</summary>
+    private static async Task YieldForRenderAsync() =>
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
     public static string SanitizeFolderName(string name)
     {

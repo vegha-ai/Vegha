@@ -21,6 +21,15 @@ public partial class ImportWizardDialog : Window
         FileDropArea.AddHandler(DragDrop.DragEnterEvent, OnDragEnter);
         FileDropArea.AddHandler(DragDrop.DragLeaveEvent, OnDragLeave);
         FileDropArea.AddHandler(DragDrop.DropEvent, OnDrop);
+
+        // The Import command is async — when it finishes, the VM raises OnFinished and we
+        // close the dialog. We can't close inline from the Click handler anymore because the
+        // command runs concurrently and would still be writing files after the close.
+        DataContextChanged += (_, _) =>
+        {
+            if (DataContext is ImportWizardViewModel vm)
+                vm.OnFinished = () => Close(true);
+        };
     }
 
     private async void OnBrowseFile_Click(object? sender, RoutedEventArgs e)
@@ -108,11 +117,31 @@ public partial class ImportWizardDialog : Window
         e.Handled = true;
     }
 
-    private void OnImport_Click(object? sender, RoutedEventArgs e)
+    /// <summary>"Pick different files…" link in the staged-list header. Resets the batch by
+    /// clearing the staged path (the VM's OnSelectedPathChanged then calls ResetState) so the
+    /// TabControl reappears, then re-opens the file picker for convenience.</summary>
+    private void OnPickDifferentFiles_Click(object? sender, RoutedEventArgs e)
     {
-        // The Import command runs first via binding; we just close after.
-        Close(true);
+        if (DataContext is not ImportWizardViewModel vm) return;
+        // Setting SelectedPath to null clears the staged batch via the VM's change handler.
+        vm.SelectedPath = null;
+        OnBrowseFile_Click(sender, e);
     }
 
-    private void OnCancel_Click(object? sender, RoutedEventArgs e) => Close(false);
+    /// <summary>Click handler is now a no-op — the Command binding runs <see
+    /// cref="ImportWizardViewModel.ImportAsync"/> which fires <c>OnFinished</c> on
+    /// completion, and our constructor wires that to <c>Close(true)</c>. Closing inline here
+    /// would dismiss the dialog while the async loop is still writing files.</summary>
+    private void OnImport_Click(object? sender, RoutedEventArgs e)
+    {
+        // intentionally empty — see method summary.
+    }
+
+    private void OnCancel_Click(object? sender, RoutedEventArgs e)
+    {
+        // Don't let the user cancel mid-import — the I/O loop would still complete in the
+        // background but the user wouldn't see the result.
+        if (DataContext is ImportWizardViewModel vm && vm.IsImporting) return;
+        Close(false);
+    }
 }

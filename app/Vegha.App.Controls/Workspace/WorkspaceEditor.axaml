@@ -67,6 +67,38 @@
             <ScrollViewer
                 IsVisible="{Binding ActiveSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=overview}">
                 <StackPanel Margin="20,16" Spacing="20">
+                    <!-- Post-import summary banner — visible only when the host set
+                         OverviewMessage after an import completes. Dismissible via X. -->
+                    <Border IsVisible="{Binding OverviewMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                            Background="{DynamicResource Bg2Brush}"
+                            BorderBrush="{DynamicResource AccentBrush}"
+                            BorderThickness="1" CornerRadius="4"
+                            Padding="12,8">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0" Text="✓"
+                                       FontSize="14" FontWeight="Bold"
+                                       Foreground="{DynamicResource AccentBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,10,0" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding OverviewMessage}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Text0Brush}"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap" />
+                            <Button Grid.Column="2"
+                                    Click="OnDismissOverviewMessage_Click"
+                                    Background="Transparent" BorderThickness="0"
+                                    Foreground="{DynamicResource Text2Brush}"
+                                    Width="24" Height="24" Padding="0"
+                                    CornerRadius="3"
+                                    Cursor="Hand"
+                                    ToolTip.Tip="Dismiss">
+                                <icons:Icon Kind="Close" Size="11" />
+                            </Button>
+                        </Grid>
+                    </Border>
+
                     <!-- Stats row -->
                     <StackPanel Orientation="Horizontal" Spacing="40">
                         <StackPanel>

@@ -1268,25 +1268,41 @@ public partial class MainWindow : Window
             vm.ActiveWorkspaceCollectionsRoot = collectionsRoot;
         }
 
+        // We capture freshly-imported roots HERE (inside the OnCollectionConfirmed handler)
+        // rather than diffing AvailableCollections after the wizard closes. The diff approach
+        // was fragile — LoadFromDirectory has early-return branches (e.g. "path is already
+        // under an existing root") that don't add a new entry, and there's no reliable way
+        // to tell those apart from the success path by looking at AvailableCollections.
+        var importedRoots = new List<CollectionRootViewModel>();
         vm.OnCollectionConfirmed = (c, stagedFolder) =>
         {
             if (string.IsNullOrEmpty(vm.ActiveWorkspaceCollectionsRoot)) return;
 
+            string dest;
             // If the importer staged a folder (Bruno tree from disk / extracted zip / git
             // clone), copy the tree into the workspace's collections/ folder rather than
             // re-serializing the parsed Collection.
             if (!string.IsNullOrEmpty(stagedFolder) && Directory.Exists(stagedFolder))
             {
-                var dest = ResolveImportFolder(vm.ActiveWorkspaceCollectionsRoot, c.Name, stagedFolder);
+                dest = ResolveImportFolder(vm.ActiveWorkspaceCollectionsRoot, c.Name, stagedFolder);
                 CopyImportTree(stagedFolder, dest);
-                collections?.LoadFromDirectory(dest);
-                return;
             }
+            else
+            {
+                // Otherwise serialize the parsed Collection out as a fresh Bruno tree.
+                dest = ResolveImportFolder(vm.ActiveWorkspaceCollectionsRoot, c.Name, c.Name);
+                Core.Importers.BruCollectionWriter.Write(dest, c);
+            }
+            collections?.LoadFromDirectory(dest);
 
-            // Otherwise serialize the parsed Collection out as a fresh Bruno tree.
-            var dir = ResolveImportFolder(vm.ActiveWorkspaceCollectionsRoot, c.Name, c.Name);
-            Core.Importers.BruCollectionWriter.Write(dir, c);
-            collections?.LoadFromDirectory(dir);
+            // Look up the newly-loaded root by destination path so the summary dialog can
+            // operate on it. Falls back to the active collection (LoadFromDirectory
+            // auto-activates new roots) if the path lookup misses for any reason.
+            var newRoot = collections?.AvailableCollections.FirstOrDefault(r =>
+                string.Equals(r.SourcePath, dest, StringComparison.OrdinalIgnoreCase));
+            newRoot ??= collections?.ActiveCollection;
+            if (newRoot is not null && !importedRoots.Contains(newRoot))
+                importedRoots.Add(newRoot);
         };
 
         vm.OnEnvironmentConfirmed = env =>
@@ -1298,8 +1314,44 @@ public partial class MainWindow : Window
             collections?.AddEnvironment(env);
         };
 
+        // Post-batch summary: surface "Imported X of Y collections" on the workspace
+        // editor's Overview tab (the "Collection summary page" the user sees when a
+        // WorkspaceTabViewModel happens to be open) and on the shared CollectionsViewModel
+        // status channel so the status-bar toast picks it up too. The dedicated summary
+        // dialog (opened below, after the wizard closes) is what the user actually sees in
+        // the common case; this hook keeps the lightweight surfaces in sync for follow-up
+        // glances.
+        vm.OnBatchImported = (importedCount, totalRecognized) =>
+        {
+            if (importedCount <= 0) return;
+            var message = totalRecognized > 0 && importedCount != totalRecognized
+                ? $"Imported {importedCount} of {totalRecognized} collections."
+                : $"Imported {importedCount} collection{(importedCount == 1 ? "" : "s")}.";
+            if (collections is not null) collections.StatusMessage = message;
+            var openTabs = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
+            if (openTabs is null) return;
+            foreach (var tab in openTabs.Tabs.OfType<Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel>())
+            {
+                if (workspaces?.ActiveWorkspace is { } ws &&
+                    !string.Equals(tab.WorkspaceItem.FolderPath, ws.FolderPath,
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+                tab.OverviewMessage = message;
+                tab.ActiveSection = "overview";
+            }
+        };
+
         var dlg = new ImportWizardDialog { DataContext = vm };
         await dlg.ShowDialog(this);
+
+        // After the wizard returns, surface the post-import summary dialog showing just the
+        // freshly-imported collections (collected directly inside OnCollectionConfirmed
+        // above, not derived from a diff). Skipped silently when the user cancelled the
+        // wizard or no collections landed.
+        if (collections is null || workspaces is null || importedRoots.Count == 0) return;
+
+        var summary = new ImportSummaryDialog(importedRoots, collections, workspaces);
+        await summary.ShowDialog(this);
     }
 
     /// <summary>Recursively copies <paramref name="src"/> to <paramref name="dest"/>. Used

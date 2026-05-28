@@ -34,6 +34,11 @@ public sealed partial class WorkspaceTabViewModel : RequestTabViewModel
 
     [ObservableProperty] private string? _statusMessage;
 
+    /// <summary>Transient banner shown above the Overview stats — set by the host after an
+    /// import batch completes (e.g. "Imported 5 of 5 collections"). Cleared when the user
+    /// dismisses it or when the next import overwrites it.</summary>
+    [ObservableProperty] private string? _overviewMessage;
+
     /// <summary>"overview" or "environments" — the sub-tab selection (TabControl SelectedIndex
     /// could be used too, but a string switch is friendlier to bind across multiple controls).</summary>
     [ObservableProperty]

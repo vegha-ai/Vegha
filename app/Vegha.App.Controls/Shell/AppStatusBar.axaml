@@ -105,6 +105,30 @@
                        VerticalAlignment="Center" Margin="6,0,14,0"
                        IsVisible="{Binding Collections.ActiveEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}" />
 
+            <!-- Center: transient status text (set by import / load / failure paths via
+                 CollectionsViewModel.StatusMessage). Accent-tinted pill so it stands out
+                 against the dim status-bar bg; auto-cleared after ~10s by AppStatusBar's
+                 code-behind so it reads as a toast rather than a sticky banner. -->
+            <Border Grid.Column="3"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Padding="12,3"
+                    CornerRadius="10"
+                    Background="{DynamicResource AccentBrush}"
+                    IsVisible="{Binding Collections.StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="✓" FontSize="11" FontWeight="Bold"
+                               Foreground="White" VerticalAlignment="Center" />
+                    <TextBlock x:Name="StatusToast"
+                               Text="{Binding Collections.StatusMessage}"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="White"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               MaxWidth="500" />
+                </StackPanel>
+            </Border>
+
             <!-- Cookies button (bottom-right). Opens a modal cookie manager dialog
                  (Bruno-style: list + add/edit/delete). The activity-rail no longer
                  hosts a Cookies entry — the status-bar corner is the single entry point. -->
