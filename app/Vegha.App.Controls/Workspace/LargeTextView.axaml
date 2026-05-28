@@ -1,0 +1,74 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             x:Name="Root"
+             x:Class="Vegha.App.Controls.Workspace.LargeTextView">
+    <Border Name="HostBorder" Background="{DynamicResource CodeBgBrush}">
+        <Grid>
+            <!-- Loading indicator while a multi-MB body is being chunked off-thread. -->
+            <TextBlock IsVisible="{Binding #Root.IsBuilding}"
+                       Text="Preparing large response…"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       FontSize="12" FontStyle="Italic"
+                       Foreground="{DynamicResource Text3Brush}" />
+
+            <!-- Virtualized list of lines via ListBox (ListBox is the only built-in
+                 control in Avalonia 11 that virtualizes out of the box). SelectionMode
+                 stays at the default Single, but the item container theme erases all
+                 selection / hover visuals so the row doesn't paint a highlight when
+                 clicked. The actual text selection is owned by the per-row
+                 SelectableTextBlock, which gets the pointer first via Avalonia's
+                 bubbling routing and marks the event handled. Net effect: the user
+                 clicks-and-drags inside a line, selection is text-only, Ctrl+C copies
+                 that selection — no "whole line highlighted" behavior. -->
+            <ListBox Name="LineList"
+                     IsVisible="{Binding !#Root.IsBuilding}"
+                     Background="Transparent"
+                     Foreground="{DynamicResource Text0Brush}"
+                     BorderThickness="0"
+                     FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                     FontSize="{DynamicResource EditorFontSize}"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox.ItemContainerTheme>
+                    <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="MinHeight" Value="0" />
+                        <Setter Property="Focusable" Value="False" />
+                        <Setter Property="Background" Value="Transparent" />
+                        <Style Selector="^:selected /template/ ContentPresenter#PART_ContentPresenter">
+                            <Setter Property="Background" Value="Transparent" />
+                        </Style>
+                        <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                            <Setter Property="Background" Value="Transparent" />
+                        </Style>
+                        <Style Selector="^:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                            <Setter Property="Background" Value="Transparent" />
+                        </Style>
+                    </ControlTheme>
+                </ListBox.ItemContainerTheme>
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="ws:LineRow">
+                        <Grid ColumnDefinitions="56,*">
+                            <TextBlock Grid.Column="0"
+                                       Text="{Binding Display}"
+                                       Foreground="{DynamicResource Text3Brush}"
+                                       FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                       FontSize="{DynamicResource EditorFontSize}"
+                                       HorizontalAlignment="Right"
+                                       Padding="0,0,8,0"
+                                       IsHitTestVisible="False" />
+                            <SelectableTextBlock Grid.Column="1"
+                                                 Text="{Binding Text}"
+                                                 FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                                 FontSize="{DynamicResource EditorFontSize}"
+                                                 Foreground="{DynamicResource Text0Brush}"
+                                                 TextWrapping="NoWrap" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Border>
+</UserControl>

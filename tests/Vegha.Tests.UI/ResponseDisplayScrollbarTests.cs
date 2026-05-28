@@ -79,18 +79,18 @@ public class ResponseDisplayScrollbarTests
             $"V-scrollbar right edge ({beforeBarRight:F1}) must align with the outer " +
             $"ScrollViewer's right edge ({outerRight:F1}) — that's the viewport edge");
 
-        // Now push the INNER (horizontally-scrolling) ScrollViewer's offset right and verify
-        // the outer V-scrollbar didn't drift. This simulates the user dragging the H-scrollbar.
-        var rawInner = display.FindControl<ScrollViewer>("RawInnerScroll");
-        rawInner.Should().NotBeNull();
-        var startX = rawInner!.Offset.X;
-        rawInner.Offset = new Vector(Math.Max(300, startX + 300), rawInner.Offset.Y);
+        // The Raw tab is now backed by a CanvasTextView (ILogicalScrollable) inside a
+        // single ScrollViewer. Push the outer ScrollViewer's horizontal offset right
+        // and verify the vertical scrollbar didn't drift. Units are logical (chars)
+        // because the child reports an ILogicalScrollable extent.
+        var startX = rawOuter.Offset.X;
+        rawOuter.Offset = new Vector(startX + 30, rawOuter.Offset.Y);
         window.UpdateLayout();
 
         var afterBarX = verticalBars[0].TranslatePoint(default, window)!.Value.X;
         afterBarX.Should().BeApproximately(beforeBarX, 0.5,
             $"V-scrollbar must stay anchored — drifted from X={beforeBarX:F1} to " +
-            $"X={afterBarX:F1} after pushing horizontal offset by 300px");
+            $"X={afterBarX:F1} after pushing horizontal offset");
     }
 
     [AvaloniaFact]

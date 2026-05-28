@@ -4,10 +4,12 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:ws="using:Vegha.App.Controls.Workspace"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="360"
              x:Class="Vegha.App.Controls.Workspace.ResponseDisplay"
              x:DataType="vm:RequestEditorViewModel">
     <Border Background="{DynamicResource Bg2Brush}">
+      <Grid>
         <DockPanel>
             <!-- Status line -->
             <Border DockPanel.Dock="Top" Padding="12,8" Height="36"
@@ -119,14 +121,23 @@
                                            FontFamily="{StaticResource MonoFont}" FontSize="10"
                                            Foreground="{DynamicResource Text3Brush}"
                                            VerticalAlignment="Center" />
-                                <ComboBox Grid.Column="1"
-                                          ItemsSource="{Binding AvailableResponseFormats}"
-                                          SelectedItem="{Binding ResponseFormat}"
-                                          MinWidth="80" Height="22"
-                                          FontSize="11"
-                                          Margin="6,0,0,0"
-                                          VerticalAlignment="Center"
-                                          ToolTip.Tip="Pick the display format. Auto picks based on Content-Type; Raw shows bytes verbatim." />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
+                                            VerticalAlignment="Center" Margin="6,0,0,0">
+                                    <!-- "Formatting…" hint during background pretty-print of multi-MB
+                                         JSON/XML. The viewer shows the raw body immediately and
+                                         swaps to formatted output when this flips off. -->
+                                    <TextBlock Text="Formatting…"
+                                               IsVisible="{Binding IsPrettifying}"
+                                               FontSize="11" FontStyle="Italic"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               VerticalAlignment="Center" />
+                                    <ComboBox ItemsSource="{Binding AvailableResponseFormats}"
+                                              SelectedItem="{Binding ResponseFormat}"
+                                              MinWidth="80" Height="22"
+                                              FontSize="11"
+                                              VerticalAlignment="Center"
+                                              ToolTip.Tip="Pick the display format. Auto picks based on Content-Type; Raw shows bytes verbatim." />
+                                </StackPanel>
                                 <Button Grid.Column="2"
                                         Name="SaveResponseButton"
                                         Click="OnSaveResponse_Click"
@@ -149,12 +160,30 @@
                         <!-- Text view (default for non-binary) — AvaloniaEdit-based read-only editor
                              gives line numbers + syntax highlighting + selection. WordWrap is bound
                              to ResponseWordWrap (default true) so long lines don't cause horizontal
-                             scrolling — which avoids AvaloniaEdit's V-scrollbar drift bug. -->
+                             scrolling — which avoids AvaloniaEdit's V-scrollbar drift bug.
+                             Hidden for multi-MB bodies: AvaloniaEdit's TextView re-measures every
+                             visible visual-line on each click/keystroke, which locks the UI on
+                             huge documents even when highlighting is off. -->
                         <ws:ReadOnlyCodeView Grid.Row="1"
-                                             IsVisible="{Binding ResponseIsTextual}"
+                                             IsVisible="{Binding UseRichResponseViewer}"
                                              Text="{Binding DisplayedBody}"
                                              SyntaxHighlightingName="{Binding ResponseSyntaxHighlightingName}"
                                              WordWrap="{Binding ResponseWordWrap}" />
+
+                        <!-- Canvas-painted viewer for large bodies. Owns multi-line drag selection,
+                             Ctrl+A / Ctrl+C clipboard, and per-line JSON/XML token highlighting.
+                             Lives inside a ScrollViewer with logical scrolling — the canvas
+                             implements ILogicalScrollable in lines/chars units. -->
+                        <ScrollViewer Grid.Row="1"
+                                      IsVisible="{Binding UseLargeResponseViewer}"
+                                      HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Auto"
+                                      Background="{DynamicResource CodeBgBrush}">
+                            <ws:CanvasTextView Text="{Binding DisplayedBody}"
+                                               SyntaxKind="{Binding ResponseCanvasSyntaxKind, Converter={x:Static ws:CanvasSyntaxConverter.Instance}}"
+                                               FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                               FontSize="{DynamicResource EditorFontSize}" />
+                        </ScrollViewer>
 
                         <!-- Image preview for image/* responses. -->
                         <ScrollViewer Grid.Row="1"
@@ -435,35 +464,87 @@
                 <!-- (Sent tab moved into the request pane — it shows the *outgoing* payload,
                      conceptually a request-side concern, not a response-side one.) -->
 
-                <!-- Raw -->
-                <!--
-                    Nested ScrollViewer pattern so the V-scrollbar stays anchored at the
-                    viewport's right edge, never drifting with horizontal scroll. Outer
-                    ScrollViewer does only vertical scrolling — its V-scrollbar lives in
-                    a fixed Grid column. Inner ScrollViewer does only horizontal scrolling
-                    of the long lines. AllowAutoHide=False keeps the V-scrollbar in a
-                    dedicated column rather than rendering as an overlay over the content,
-                    which avoids the Avalonia 11 overlay-vs-overflow rendering quirk.
-                -->
+                <!-- Raw — canvas-painted viewer (same control the Body tab uses for large
+                     bodies) so a multi-MB raw response renders fluidly. The canvas
+                     implements ILogicalScrollable, so a single ScrollViewer drives both
+                     axes; the V-scrollbar sits at the viewport's right edge naturally
+                     (no need for the old nested-ScrollViewer workaround that fixed
+                     SelectableTextBlock's scrollbar drift). AllowAutoHide=False kept
+                     so the bar lives in a dedicated chrome column. -->
                 <TabItem Header="Raw">
                     <ScrollViewer Name="RawOuterScroll"
                                   Background="{DynamicResource CodeBgBrush}"
+                                  HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Disabled"
                                   AllowAutoHide="False">
-                        <ScrollViewer Name="RawInnerScroll"
-                                      HorizontalScrollBarVisibility="Auto"
-                                      VerticalScrollBarVisibility="Disabled"
-                                      AllowAutoHide="False">
-                            <SelectableTextBlock Text="{Binding RawResponseText}"
-                                                 FontFamily="{StaticResource MonoFont}"
-                                                 FontSize="12"
-                                                 Foreground="{DynamicResource Text0Brush}"
-                                                 Padding="14,12" />
-                        </ScrollViewer>
+                        <ws:CanvasTextView Text="{Binding RawResponseText}"
+                                           SyntaxKind="None"
+                                           FontFamily="Cascadia Mono, Consolas, Menlo, monospace"
+                                           FontSize="{DynamicResource EditorFontSize}" />
                     </ScrollViewer>
                 </TabItem>
             </TabControl>
         </DockPanel>
+
+        <!-- Busy overlay — covers the entire response panel while a request is in flight.
+             Shows a live elapsed timer, a slowly-spinning indicator, and a Cancel button
+             bound to CancelSendCommand. IsHitTestVisible swallows clicks so the underlying
+             tab buttons don't fire mid-request. -->
+        <Border IsVisible="{Binding IsSending}"
+                Background="#CC1A1B26"
+                IsHitTestVisible="True">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="14">
+                <TextBlock Text="{Binding SendingElapsedDisplay}"
+                           FontSize="32"
+                           FontWeight="Light"
+                           Foreground="{DynamicResource Text0Brush}"
+                           HorizontalAlignment="Center" />
+
+                <!-- Wrap the icon in a Border whose RenderTransform we animate. Animating
+                     the icon directly fights the Viewbox/Canvas the Icon control builds
+                     internally, and Avalonia 11 has no default animator for RenderTransform
+                     as a whole — you must give the element a RotateTransform up front and
+                     animate its Angle. -->
+                <Border HorizontalAlignment="Center"
+                        Width="22" Height="22"
+                        RenderTransformOrigin="50%,50%">
+                    <Border.RenderTransform>
+                        <RotateTransform Angle="0" />
+                    </Border.RenderTransform>
+                    <Border.Styles>
+                        <Style Selector="Border">
+                            <Style.Animations>
+                                <Animation Duration="0:0:1.2" IterationCount="INFINITE">
+                                    <KeyFrame Cue="0%">
+                                        <Setter Property="RotateTransform.Angle" Value="0.0" />
+                                    </KeyFrame>
+                                    <KeyFrame Cue="100%">
+                                        <Setter Property="RotateTransform.Angle" Value="360.0" />
+                                    </KeyFrame>
+                                </Animation>
+                            </Style.Animations>
+                        </Style>
+                    </Border.Styles>
+                    <icons:Icon Kind="Refresh"
+                                Size="22"
+                                Foreground="{DynamicResource Text2Brush}" />
+                </Border>
+
+                <Button Content="Cancel Request"
+                        Command="{Binding CancelSendCommand}"
+                        HorizontalAlignment="Center"
+                        Padding="18,8"
+                        Background="{DynamicResource Bg3Brush}"
+                        Foreground="{DynamicResource Text0Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        FontSize="12"
+                        Cursor="Hand" />
+            </StackPanel>
+        </Border>
+      </Grid>
     </Border>
 </UserControl>

@@ -206,6 +206,9 @@ public sealed class HttpExecutor
                 Credentials = ntlm,
                 PreAuthenticate = false, // let server challenge first
                 ServerCertificateCustomValidationCallback = verifySsl ? null : (_, _, _, _) => true,
+                // Same parity as the SocketsHttpHandler path — NTLM endpoints often return
+                // gzipped responses too and the user expects Postman-like wire sizes.
+                AutomaticDecompression = System.Net.DecompressionMethods.All,
             };
             if (clientCert is not null)
             {
@@ -239,6 +242,12 @@ public sealed class HttpExecutor
             CookieContainer = useCookies ? cookieJar : new System.Net.CookieContainer(),
             ConnectCallback = ConnectAsync,
             PlaintextStreamFilter = PlaintextStreamFilter,
+            // Match Postman / browsers / curl --compressed: advertise gzip+deflate+brotli
+            // in Accept-Encoding and transparently decompress the response. Without this,
+            // servers that would have returned a 1 MB gzipped body instead return the
+            // full 15 MB uncompressed payload (some users saw exactly this with their
+            // notification-tree endpoint).
+            AutomaticDecompression = System.Net.DecompressionMethods.All,
         };
         if (_proxy is not null)
         {
