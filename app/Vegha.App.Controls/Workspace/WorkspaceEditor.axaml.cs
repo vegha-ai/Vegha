@@ -26,6 +26,12 @@ public partial class WorkspaceEditor : UserControl
         if (Vm is not null) Vm.ActiveSection = "environments";
     }
 
+    // ---- Overview post-import banner ----
+    private void OnDismissOverviewMessage_Click(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is not null) Vm.OverviewMessage = null;
+    }
+
     // ---- Overview quick actions ----
     private void OnCreateCollection_Click(object? sender, RoutedEventArgs e)
         => Vm?.RequestCreateCollection?.Invoke();

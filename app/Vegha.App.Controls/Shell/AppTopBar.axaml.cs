@@ -29,10 +29,39 @@ public partial class AppTopBar : UserControl
         {
             DetachCollectionListeners();
             AttachCollectionListeners();
-            RebuildCollectionPickerMenu();
+            RebuildCollectionPickerList();
         };
-        if (CollectionPickerButton?.Flyout is MenuFlyout mf)
-            mf.Opening += (_, _) => RebuildCollectionPickerMenu();
+        if (CollectionPickerButton?.Flyout is Flyout flyout)
+            flyout.Opened += OnCollectionPickerFlyoutOpened;
+    }
+
+    /// <summary>Flyout content is loaded eagerly enough that x:Name fields populate, but
+    /// wiring the TextChanged / Click handlers here (lazily, once) is the safe pattern —
+    /// it avoids the constructor running before the named controls are attached.</summary>
+    private bool _pickerFlyoutWired;
+    private void OnCollectionPickerFlyoutOpened(object? sender, EventArgs e)
+    {
+        if (!_pickerFlyoutWired)
+        {
+            _pickerFlyoutWired = true;
+            if (CollectionPickerFilterBox is not null)
+                CollectionPickerFilterBox.TextChanged += (_, _) => RebuildCollectionPickerList();
+            if (CollectionPickerClearFilter is not null)
+                CollectionPickerClearFilter.Click += (_, _) =>
+                {
+                    if (CollectionPickerFilterBox is not null)
+                        CollectionPickerFilterBox.Text = string.Empty;
+                };
+        }
+        // Reset + focus the search box every time the flyout opens. Without the reset a
+        // stale filter from the previous open hides rows on second open; without the focus
+        // the user has to click into the box before typing.
+        if (CollectionPickerFilterBox is not null)
+        {
+            CollectionPickerFilterBox.Text = string.Empty;
+            CollectionPickerFilterBox.Focus();
+        }
+        RebuildCollectionPickerList();
     }
 
     private CollectionsViewModel? _attachedCollections;
@@ -60,45 +89,199 @@ public partial class AppTopBar : UserControl
     private void OnCollectionsPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(CollectionsViewModel.ActiveCollection))
-            RebuildCollectionPickerMenu();
+            RebuildCollectionPickerList();
     }
 
     private void OnAvailableCollectionsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) =>
-        RebuildCollectionPickerMenu();
+        RebuildCollectionPickerList();
 
-    /// <summary>Builds one MenuItem per workspace collection. The active row is bolded +
-    /// ✓-prefixed. Clicking flips <c>Collections.ActiveCollection</c>.</summary>
-    private void RebuildCollectionPickerMenu()
+    /// <summary>Builds one row per workspace collection in the picker flyout, filtered by the
+    /// search box. Each row carries a click-to-activate handler, a "..." menu, and a right-click
+    /// context flyout that surfaces the same per-row actions. Replaces the old MenuFlyout —
+    /// MenuItem doesn't support inline trailing buttons + a stable search box at the top, so we
+    /// build a regular Flyout with custom row controls.</summary>
+    private void RebuildCollectionPickerList()
     {
-        if (CollectionPickerButton?.Flyout is not MenuFlyout flyout) return;
-        flyout.Items.Clear();
+        if (CollectionPickerList is null) return;
+        CollectionPickerList.Children.Clear();
         if (DataContext is not MainWindowViewModel vm) return;
         var collections = vm.Collections;
+
+        var filter = CollectionPickerFilterBox?.Text ?? string.Empty;
+        if (CollectionPickerClearFilter is not null)
+            CollectionPickerClearFilter.IsVisible = !string.IsNullOrEmpty(filter);
+
+        var any = false;
         foreach (var c in collections.AvailableCollections)
         {
-            var item = new MenuItem { Header = c.Name, Tag = c };
-            if (ReferenceEquals(c, collections.ActiveCollection))
+            if (!MatchesFilter(c.Name, filter)) continue;
+            any = true;
+            CollectionPickerList.Children.Add(
+                BuildCollectionPickerRow(c, isActive: ReferenceEquals(c, collections.ActiveCollection)));
+        }
+
+        if (!any)
+        {
+            CollectionPickerList.Children.Add(new TextBlock
             {
-                item.Icon = new TextBlock
-                {
-                    Text = "✓",
-                    FontWeight = FontWeight.Bold,
-                    Foreground = new SolidColorBrush(Color.Parse("#7C3AED")),
-                };
-                item.Foreground = new SolidColorBrush(Color.Parse("#7C3AED"));
-                item.FontWeight = FontWeight.SemiBold;
-            }
-            item.Click += OnPickCollection_Click;
-            flyout.Items.Add(item);
+                Text = string.IsNullOrEmpty(filter) ? "No collections" : "No matches",
+                FontSize = 11,
+                FontStyle = FontStyle.Italic,
+                Foreground = ResolveBrush("Text3Brush", Brushes.Gray),
+                HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Center,
+                Margin = new Thickness(0, 12, 0, 12),
+            });
         }
     }
 
-    private void OnPickCollection_Click(object? sender, RoutedEventArgs e)
+    private static bool MatchesFilter(string? name, string filter) =>
+        string.IsNullOrEmpty(filter) ||
+        (name is not null && name.Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Builds a single picker row: [✓ marker][name][...]. Clicking the row body
+    /// switches the active collection; the trailing "..." button and right-click open the
+    /// same per-row action menu (rename / reveal / settings / remove).</summary>
+    private Control BuildCollectionPickerRow(CollectionRootViewModel collection, bool isActive)
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+        };
+
+        var check = new TextBlock
+        {
+            Text = "✓",
+            FontSize = 12,
+            FontWeight = FontWeight.Bold,
+            Foreground = new SolidColorBrush(Color.Parse("#7C3AED")),
+            VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0),
+            Width = 12,
+            TextAlignment = TextAlignment.Center,
+            IsVisible = isActive,
+        };
+        Grid.SetColumn(check, 0);
+        grid.Children.Add(check);
+
+        var name = new TextBlock
+        {
+            Text = collection.Name,
+            FontSize = 12,
+            FontWeight = isActive ? FontWeight.SemiBold : FontWeight.Normal,
+            Foreground = isActive
+                ? new SolidColorBrush(Color.Parse("#7C3AED"))
+                : ResolveBrush("Text0Brush", Brushes.Black),
+            VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        Grid.SetColumn(name, 1);
+        grid.Children.Add(name);
+
+        // Trailing "..." opens the per-row action menu. We stop event propagation so the
+        // row's click handler doesn't ALSO fire and switch the active collection.
+        var more = new Button
+        {
+            Content = new TextBlock { Text = "⋯", FontSize = 14 },
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Foreground = ResolveBrush("Text2Brush", Brushes.Gray),
+            Width = 24,
+            Height = 24,
+            Padding = new Thickness(0),
+            Cursor = new global::Avalonia.Input.Cursor(global::Avalonia.Input.StandardCursorType.Hand),
+        };
+        ToolTip.SetTip(more, "Collection actions");
+        more.Click += (sender, e) =>
+        {
+            e.Handled = true;
+            ShowCollectionRowActions(collection, more);
+        };
+        Grid.SetColumn(more, 2);
+        grid.Children.Add(more);
+
+        var rowButton = new Button { Content = grid };
+        rowButton.Classes.Add("envPickerRow");
+        rowButton.Padding = new Thickness(12, 6, 8, 6);
+        rowButton.Click += (_, _) =>
+        {
+            if (DataContext is MainWindowViewModel mvm)
+                mvm.Collections.ActiveCollection = collection;
+            CollectionPickerButton?.Flyout?.Hide();
+        };
+        // Right-click surfaces the same per-row actions as the "..." button. Wired on the
+        // row button (not the inner TextBlock) so any pointer in the row triggers it.
+        rowButton.ContextFlyout = BuildCollectionRowMenu(collection);
+        return rowButton;
+    }
+
+    /// <summary>Builds the rename/reveal/settings/remove menu used by both the row's "..."
+    /// button and its right-click context flyout. Built fresh each time so callbacks capture
+    /// the current VM reference.</summary>
+    private MenuFlyout BuildCollectionRowMenu(CollectionRootViewModel collection)
+    {
+        var flyout = new MenuFlyout();
+        flyout.Items.Add(MenuItemFor("Rename", () => InvokeRowRename(collection)));
+        flyout.Items.Add(MenuItemFor("Reveal in File Explorer", () => InvokeRowReveal(collection)));
+        flyout.Items.Add(MenuItemFor("Settings", () => InvokeRowSettings(collection)));
+        flyout.Items.Add(new Separator());
+        flyout.Items.Add(MenuItemFor("Remove", () => InvokeRowRemove(collection)));
+        return flyout;
+    }
+
+    private static MenuItem MenuItemFor(string header, Action onClick)
+    {
+        var mi = new MenuItem { Header = header };
+        mi.Click += (_, _) => onClick();
+        return mi;
+    }
+
+    private void ShowCollectionRowActions(CollectionRootViewModel collection, Control anchor)
+    {
+        var menu = BuildCollectionRowMenu(collection);
+        menu.ShowAt(anchor);
+    }
+
+    private async void InvokeRowRename(CollectionRootViewModel collection)
     {
         if (DataContext is not MainWindowViewModel vm) return;
-        if (sender is not MenuItem mi || mi.Tag is not CollectionRootViewModel item) return;
-        vm.Collections.ActiveCollection = item;
+        var owner = TopLevel.GetTopLevel(this) as Window;
+        if (owner is null) return;
         CollectionPickerButton?.Flyout?.Hide();
+        await CollectionDialogActions.PromptAndRenameAsync(owner, vm.Collections, collection);
+    }
+
+    private void InvokeRowReveal(CollectionRootViewModel collection)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        CollectionPickerButton?.Flyout?.Hide();
+        CollectionDialogActions.Reveal(vm.Collections, collection);
+    }
+
+    private void InvokeRowSettings(CollectionRootViewModel collection)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        CollectionPickerButton?.Flyout?.Hide();
+        CollectionDialogActions.OpenSettings(vm.Collections, collection);
+    }
+
+    private async void InvokeRowRemove(CollectionRootViewModel collection)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        var owner = TopLevel.GetTopLevel(this) as Window;
+        if (owner is null) return;
+        CollectionPickerButton?.Flyout?.Hide();
+        await CollectionDialogActions.ConfirmAndRemoveAsync(owner, vm.Collections, collection);
+    }
+
+    private async void OnManageCollections_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        var owner = TopLevel.GetTopLevel(this) as Window;
+        if (owner is null) return;
+        CollectionPickerButton?.Flyout?.Hide();
+        var dlg = new ManageCollectionsDialog(vm.Collections, vm.Workspaces);
+        dlg.ImportRequested += (_, _) => ImportRequested?.Invoke(this, EventArgs.Empty);
+        await dlg.ShowDialog<bool>(owner);
     }
 
     private async void OnCreateCollection_Click(object? sender, RoutedEventArgs e)

@@ -129,28 +129,14 @@ public partial class CollectionsPanel : UserControl
         await PromptAndRenameAsync(vm, node);
     }
 
-    /// <summary>Shared rename flow: pop a name-input dialog, write the new name onto the
-    /// node so <c>RenameNodeAsync</c> picks it up (the command persists the rename and
-    /// reloads the parent root). Without this the command silently no-ops because the
-    /// node's name hasn't changed.</summary>
+    /// <summary>Shared rename flow lives in <see cref="CollectionDialogActions"/> so the
+    /// top-bar picker and Manage Collections dialog run the same code. This wrapper just
+    /// resolves the owning window before delegating.</summary>
     private async Task PromptAndRenameAsync(CollectionsViewModel vm, CollectionNodeViewModel node)
     {
         var owner = TopLevel.GetTopLevel(this) as global::Avalonia.Controls.Window;
         if (owner is null) return;
-        var label = node switch
-        {
-            CollectionRootViewModel => "Collection name",
-            CollectionFolderViewModel => "Folder name",
-            _ => "Name",
-        };
-        var dlg = new Vegha.App.Controls.Workspace.RenameDialog("Rename", label, node.Name);
-        var ok = await dlg.ShowDialog<bool>(owner);
-        if (!ok || string.IsNullOrWhiteSpace(dlg.ResultName)) return;
-        var newName = dlg.ResultName.Trim();
-        if (string.Equals(newName, node.Name, StringComparison.Ordinal)) return;
-        node.Name = newName;
-        if (vm.RenameNodeCommand.CanExecute(node))
-            vm.RenameNodeCommand.Execute(node);
+        await CollectionDialogActions.PromptAndRenameAsync(owner, vm, node);
     }
     private void OnHeaderReveal_Click(object? sender, RoutedEventArgs e) =>
         InvokeActive(vm => vm.RevealInFileExplorerCommand);
@@ -180,18 +166,13 @@ public partial class CollectionsPanel : UserControl
         await ConfirmAndRemoveAsync(vm, root);
     }
 
-    /// <summary>Pops the warning dialog; on confirm, runs the destructive RemoveCollection
-    /// command. The dialog surfaces the on-disk path so users can verify what's being
-    /// detached — files on disk are not touched, only the in-app reference is dropped.</summary>
+    /// <summary>Shared remove flow lives in <see cref="CollectionDialogActions"/>. This wrapper
+    /// resolves the owning window before delegating.</summary>
     private async Task ConfirmAndRemoveAsync(CollectionsViewModel vm, CollectionRootViewModel root)
     {
         var owner = TopLevel.GetTopLevel(this) as Window;
         if (owner is null) return;
-        var dlg = new RemoveCollectionDialog(root.Name, root.SourcePath);
-        var ok = await dlg.ShowDialog<bool>(owner);
-        if (!ok) return;
-        if (vm.RemoveCollectionCommand.CanExecute(root))
-            vm.RemoveCollectionCommand.Execute(root);
+        await CollectionDialogActions.ConfirmAndRemoveAsync(owner, vm, root);
     }
 
     private async void OnNodePropertiesRequested(object? sender, NodePropertiesRequest req)
