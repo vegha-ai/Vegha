@@ -54,6 +54,9 @@ internal static class IconLibrary
             case IconKind.Warning:
                 foreach (var s in SvgIconRenderer.Build("warning.svg", stroke)) yield return s;
                 break;
+            case IconKind.DropFile:
+                foreach (var s in SvgIconRenderer.Build("DropFile.svg", stroke)) yield return s;
+                break;
 
             // --- Inline geometry (no SVG asset) ---
             case IconKind.Swagger:

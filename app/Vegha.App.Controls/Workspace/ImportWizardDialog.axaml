@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:Vegha.App.ViewModels"
+        xmlns:icons="using:Vegha.App.Controls.Icons"
         mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="520"
         x:Class="Vegha.App.Controls.Workspace.ImportWizardDialog"
         x:DataType="vm:ImportWizardViewModel"
@@ -207,8 +208,9 @@
                         </Style>
                     </Border.Styles>
                     <StackPanel Spacing="14" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="📥" FontSize="40" HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource Text2Brush}" />
+                        <icons:Icon Kind="DropFile" Size="56"
+                                    Foreground="{DynamicResource Text2Brush}"
+                                    HorizontalAlignment="Center" />
                         <TextBlock Text="Drop file(s) here to import"
                                    HorizontalAlignment="Center" FontSize="13"
                                    Foreground="{DynamicResource Text1Brush}" />
