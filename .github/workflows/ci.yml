@@ -1,10 +1,8 @@
 name: CI
 
 on:
-  # No push trigger: CI must not auto-run on merge to main. It still validates
-  # open PRs (pre-merge) and can be kicked off by hand.
-  pull_request:
-    branches: [main]
+  # Manual-only: CI must not auto-run on merge to main OR on pull requests.
+  # Kick it off from the Actions tab ("Run workflow") when a build/test is wanted.
   workflow_dispatch:
 
 env:
