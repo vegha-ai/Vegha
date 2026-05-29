@@ -128,6 +128,10 @@
     </Style>
     <Style Selector="Button.rail.active /template/ ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+        <!-- Accent left-indicator bar for the active section
+             (audit §07 "active = accent + indicator bar"). -->
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="BorderThickness" Value="2,0,0,0" />
     </Style>
 
     <!-- Hover "..." button on every tree row that opens the context menu. Visible only
@@ -462,17 +466,29 @@
         <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
     </Style>
 
-    <!-- Secondary: ghost text-only link. Cancel, Clear Cache, +Add Parameter. -->
+    <!-- Secondary: quiet ghost button. Actionable at rest (clear label + reserved
+         outline space) with a real ghost/outline treatment on hover, so it never
+         reads as a disabled control (audit §07.5). Low-contrast grey is reserved
+         strictly for the genuinely :disabled state. -->
     <Style Selector="Button.secondary">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="3" />
         <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
-        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="Padding" Value="12,5" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Button.secondary:pointerover">
         <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+    </Style>
+    <Style Selector="Button.secondary:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+    </Style>
+    <Style Selector="Button.secondary:disabled">
+        <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
     </Style>
 
     <!-- Tertiary: light boxed link (1px border, panel background). Sits between
@@ -542,9 +558,20 @@
         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
 
-    <!-- TextBox: same rounded look so input fields and dropdowns match height/radius. -->
+    <!-- TextBox: rounded look + vertically-centered single-line content + legible themed
+         text selection. Fluent otherwise top-aligns content (fields read off-center) and
+         selects with a saturated system-blue highlight over dark text (illegible on light
+         themes). Route selection through the per-theme translucent SelectionBrush with
+         normal Text0 text so selected text stays readable on every theme. -->
     <Style Selector="TextBox">
         <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource SelectionBrush}" />
+        <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <!-- Multi-line inputs (commit messages, notes, descriptions) keep top-aligned text. -->
+    <Style Selector="TextBox[AcceptsReturn=True]">
+        <Setter Property="VerticalContentAlignment" Value="Top" />
     </Style>
 
     <!-- Generic Button rounding so buttons have a consistent radius across dialogs. -->
@@ -723,5 +750,64 @@
     <Style Selector="RepeatButton.spinner-step:pressed /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Bg4Brush}" />
         <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+
+    <!-- ============================================================================
+         Global input focus state (audit §04 — the "#000 focused field" bug).
+         Avalonia's FluentTheme swaps a focused/hovered TextBox to
+         TextControlBackgroundFocused (near-black on our dark variants) with a
+         SystemAccentColor border — neither is a theme token. Keep the theme input
+         background and signal focus with the theme accent border (Border2 on hover).
+         Targets Border#PART_BorderElement so it also covers the TextBox inside
+         AutoCompleteBox. The .filterPill search boxes keep their own local override
+         (control-scoped styles win over these app-level ones).
+         ============================================================================ -->
+    <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border2Brush}" />
+    </Style>
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="TextBox:focus:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+
+    <!-- ============================================================================
+         Global list-row selection (audit §03 — "selected row = saturated sky blue").
+         Fluent fills the selected ListBoxItem with SystemAccentColor. Replace that
+         raw OS-list look with the designed state: accent-soft tint + a 2px accent
+         left-border + primary text. Reserve full-saturation accent for buttons only.
+         Applies to every ListBox (Environments, History, Search palette, Manage
+         Workspaces, Import summary, …).
+         ============================================================================ -->
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="BorderThickness" Value="2,0,0,0" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <Style Selector="ListBoxItem:selected:focus /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="BorderThickness" Value="2,0,0,0" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AccentSoftStrongBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="BorderThickness" Value="2,0,0,0" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <Style Selector="ListBoxItem:selected:focus:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource AccentSoftStrongBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="BorderThickness" Value="2,0,0,0" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
     </Style>
 </Styles>

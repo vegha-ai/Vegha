@@ -434,6 +434,12 @@ public partial class MainWindow : Window
         var tab = new Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel(
             ws, id: "workspace-dialog:" + ws.FolderPath);
         tab.SetCollections(collections.AvailableCollections);
+        // Reload the workspace env set from disk before binding it. ws.WorkspaceModel is
+        // otherwise only refreshed on a full workspace switch, so envs the user added /
+        // copied / saved / imported in a previous dialog session were written to disk but
+        // never made it back into this cached list — the dialog kept showing the stale
+        // snapshot, so a freshly-created env "vanished" on reopen.
+        ws.WorkspaceModel = Vegha.Core.FileFormat.WorkspaceModelLoader.Load(ws.FolderPath);
         // Pass the currently-active workspace env as the initial selection so opening the
         // dialog doesn't spuriously activate a different env. With this aligned, the
         // RequestActivateEnvironment hook below only fires when the user picks a new row.
@@ -458,8 +464,9 @@ public partial class MainWindow : Window
         tab.RequestDeleteCollection = c => _ = DeleteCollectionAsync(tab, c, collections);
 
         // ---- Per-env actions ----
+        tab.RequestAddEnvironment    = () => _ = AddWorkspaceEnvAsync(tab, ws);
         tab.RequestRenameEnvironment = env => _ = RenameWorkspaceEnvAsync(tab, env, ws);
-        tab.RequestCopyEnvironment   = env => CopyWorkspaceEnv(tab, env, ws);
+        tab.RequestCopyEnvironment   = env => _ = CopyWorkspaceEnvAsync(tab, env, ws);
         tab.RequestDeleteEnvironment = env => _ = DeleteWorkspaceEnvAsync(tab, env, ws);
         tab.RequestSetEnvColor       = env => _ = SetWorkspaceEnvColorAsync(tab, env, ws);
         tab.RequestImportEnvironment = () => _ = ImportWorkspaceEnvAsync(tab, ws);
@@ -877,21 +884,81 @@ public partial class MainWindow : Window
         return chosen;
     }
 
-    private static void CopyWorkspaceEnv(
+    /// <summary>Creates a blank workspace env from the "+" button and writes it to
+    /// <c>&lt;workspace&gt;/environments/</c> immediately, mirroring the collection-level
+    /// "new environment" flow. Persisting up-front (rather than waiting for a Save) is what
+    /// makes the env survive a dialog close/reopen.</summary>
+    private async Task AddWorkspaceEnvAsync(
+        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
+        WorkspaceItemViewModel ws)
+    {
+        var name = NextWorkspaceEnvName(tab, "Untitled");
+        var env = new Vegha.Core.Domain.Environment { Id = Guid.NewGuid().ToString("N"), Name = name };
+        await PersistNewWorkspaceEnvAsync(tab, ws, env, $"Created “{name}”.");
+    }
+
+    private async Task CopyWorkspaceEnvAsync(
         Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
         Vegha.Core.Domain.Environment env,
         WorkspaceItemViewModel ws)
     {
-        var basename = env.Name + " copy";
-        var taken = new HashSet<string>(tab.Environments.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
-        var name = basename;
-        for (var i = 2; taken.Contains(name); i++) name = basename + " " + i;
+        var name = NextWorkspaceEnvName(tab, env.Name + " copy");
+        var copy = env with
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = name,
+            Variables = env.Variables.Select(v => v with { }).ToList(),
+            SecretVariables = env.SecretVariables.ToList(),
+        };
+        await PersistNewWorkspaceEnvAsync(tab, ws, copy, $"Copied to “{name}”.");
+    }
 
-        var copy = env with { Name = name };
-        tab.Environments.Add(copy);
-        tab.SelectedEnvironment = copy;
-        tab.IsDirty = true;
-        tab.StatusMessage = $"Copied to “{name}”. Click Save to write it to disk.";
+    /// <summary>Picks the first un-taken name with <paramref name="basename"/> as the seed
+    /// (then "basename 2", "basename 3", …) against the dialog's current env list.</summary>
+    private static string NextWorkspaceEnvName(
+        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab, string basename)
+    {
+        var taken = new HashSet<string>(tab.Environments.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
+        if (!taken.Contains(basename)) return basename;
+        var n = 2;
+        while (taken.Contains(basename + " " + n)) n++;
+        return basename + " " + n;
+    }
+
+    /// <summary>Shared tail for Add / Copy: writes the env's <c>.env.json</c>, then mirrors it
+    /// into the dialog list and the shared <see cref="CollectionsViewModel"/> scope lists so
+    /// the top-bar pill / env picker pick it up immediately. Selecting it activates it via the
+    /// tab's RequestActivateEnvironment hook.</summary>
+    private async Task PersistNewWorkspaceEnvAsync(
+        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
+        WorkspaceItemViewModel ws,
+        Vegha.Core.Domain.Environment env,
+        string successMessage)
+    {
+        try
+        {
+            var dir = System.IO.Path.Combine(ws.FolderPath, Vegha.Core.FileFormat.WorkspaceModelLoader.EnvironmentsFolder);
+            System.IO.Directory.CreateDirectory(dir);
+            var path = System.IO.Path.Combine(dir, SanitizeEnvFileName(env.Name) + Vegha.Core.FileFormat.CollectionJson.EnvironmentSuffix);
+            await System.IO.File.WriteAllTextAsync(path,
+                Vegha.Core.FileFormat.CollectionJson.SerializeEnvironment(
+                    Vegha.Core.FileFormat.EnvironmentFile.FromDomain(env)));
+
+            tab.Environments.Add(env);
+            tab.SelectedEnvironment = env;
+
+            var collections = App.Services.GetService<CollectionsViewModel>();
+            if (collections is not null)
+            {
+                collections.GlobalEnvironments.Add(env);
+                if (!collections.Environments.Contains(env)) collections.Environments.Add(env);
+            }
+            tab.StatusMessage = successMessage;
+        }
+        catch (Exception ex)
+        {
+            tab.StatusMessage = $"Save failed: {ex.Message}";
+        }
     }
 
     private async Task DeleteWorkspaceEnvAsync(

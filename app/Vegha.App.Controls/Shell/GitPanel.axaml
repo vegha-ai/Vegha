@@ -101,7 +101,7 @@
 
         <!-- Status footer turns red-tinted when the last op failed. -->
         <Style Selector="Border.failed">
-            <Setter Property="Background" Value="#22DC2626" />
+            <Setter Property="Background" Value="{DynamicResource StatusErrSoftBrush}" />
         </Style>
         <Style Selector="Border.failed TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource StatusErrBrush}" />
@@ -305,7 +305,7 @@
 
                 <!-- MERGE CHANGES -->
                 <StackPanel IsVisible="{Binding MergeChanges.Count}">
-                    <Border Classes="sectionHeader" Background="#22D97706">
+                    <Border Classes="sectionHeader" Background="{DynamicResource StatusWarnSoftBrush}">
                         <Border.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Stage All" Command="{Binding StageAllCommand}" />

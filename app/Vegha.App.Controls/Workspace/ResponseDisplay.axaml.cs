@@ -17,6 +17,10 @@ public partial class ResponseDisplay : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+
+        // OS-aware Send shortcut on the empty-state chip (⌘↩ on macOS, Ctrl+Enter elsewhere).
+        if (this.FindControl<TextBlock>("SendShortcutChip") is { } chip)
+            chip.Text = System.OperatingSystem.IsMacOS() ? "⌘ ↩" : "Ctrl + Enter";
     }
 
     private void OnDataContextChanged(object? sender, System.EventArgs e)

@@ -77,34 +77,10 @@ public partial class WorkspaceEditor : UserControl
 
     // ---- Environments ----
     private void OnAddEnvironment_Click(object? sender, RoutedEventArgs e)
-    {
-        if (Vm is null) return;
-        // Quick add — insert a placeholder env in memory; user can rename + edit + save it
-        // through the right-hand editor. Disk write happens on Save.
-        var newEnv = new Vegha.Core.Domain.Environment
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            Name = NextUntitledName(Vm),
-        };
-        Vm.Environments.Add(newEnv);
-        Vm.SelectedEnvironment = newEnv;
-        Vm.IsDirty = true;
-    }
-
-    private static string NextUntitledName(WorkspaceTabViewModel vm)
-    {
-        var taken = new HashSet<string>(
-            from e in vm.Environments select e.Name,
-            StringComparer.OrdinalIgnoreCase);
-        var basename = "Untitled";
-        if (!taken.Contains(basename)) return basename;
-        for (var i = 2; i < 1000; i++)
-        {
-            var candidate = basename + " " + i;
-            if (!taken.Contains(candidate)) return candidate;
-        }
-        return basename + " " + Guid.NewGuid().ToString("N")[..4];
-    }
+        // Persisting the new env (so it survives a dialog close/reopen) needs the workspace
+        // folder + file-writing infra the host owns, so the host handles creation. Without
+        // this the env lived only in the transient in-memory list and vanished on reopen.
+        => Vm?.RequestAddEnvironment?.Invoke();
 
     private void OnRemoveVariable_Click(object? sender, RoutedEventArgs e)
     {

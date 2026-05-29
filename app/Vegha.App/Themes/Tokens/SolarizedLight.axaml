@@ -11,9 +11,10 @@
     <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#eee8d5" />
 
+    <!-- Borders stepped up for visible field edges on cream (audit §07.1). -->
     <SolidColorBrush x:Key="Border0Brush" Color="#e6dec7" />
-    <SolidColorBrush x:Key="Border1Brush" Color="#d6cfb3" />
-    <SolidColorBrush x:Key="Border2Brush" Color="#b8b294" />
+    <SolidColorBrush x:Key="Border1Brush" Color="#c8bf9c" />
+    <SolidColorBrush x:Key="Border2Brush" Color="#a89f7f" />
 
     <SolidColorBrush x:Key="Text0Brush" Color="#073642" />
     <SolidColorBrush x:Key="Text1Brush" Color="#586e75" />
@@ -26,6 +27,13 @@
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#22268bd2" />
     <SolidColorBrush x:Key="AccentSoftStrongBrush" Color="#3a268bd2" />
 
+    <!-- Fluent input-state overrides (audit §04): keep the input background on hover/focus
+         and use the accent border instead of Fluent's focused-state defaults. -->
+    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#ffffff" />
+    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#ffffff" />
+    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#a89f7f" />
+    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#268bd2" />
+
     <SolidColorBrush x:Key="MethodGetBrush" Color="#859900" />
     <SolidColorBrush x:Key="MethodPostBrush" Color="#b58900" />
     <SolidColorBrush x:Key="MethodPutBrush" Color="#268bd2" />
@@ -34,11 +42,29 @@
     <SolidColorBrush x:Key="MethodHeadBrush" Color="#2aa198" />
     <SolidColorBrush x:Key="MethodOptionsBrush" Color="#657b83" />
 
+    <!-- Status / semantic — Solarized green/yellow/red + signature blue info + soft tints. -->
     <SolidColorBrush x:Key="StatusOkBrush" Color="#859900" />
     <SolidColorBrush x:Key="StatusWarnBrush" Color="#b58900" />
     <SolidColorBrush x:Key="StatusErrBrush" Color="#dc322f" />
+    <SolidColorBrush x:Key="StatusInfoBrush" Color="#268bd2" />
+    <SolidColorBrush x:Key="StatusOkSoftBrush" Color="#26859900" />
+    <SolidColorBrush x:Key="StatusWarnSoftBrush" Color="#26b58900" />
+    <SolidColorBrush x:Key="StatusErrSoftBrush" Color="#26dc322f" />
+    <SolidColorBrush x:Key="StatusInfoSoftBrush" Color="#26268bd2" />
 
     <SolidColorBrush x:Key="CodeBgBrush" Color="#fbf7eb" />
+
+    <!-- Syntax highlighting — Solarized family. Consumed by EditorSyntaxTheme. -->
+    <SolidColorBrush x:Key="CodeCommentBrush" Color="#93a1a1" />
+    <SolidColorBrush x:Key="CodeTagBrush" Color="#268bd2" />
+    <SolidColorBrush x:Key="CodeAttrBrush" Color="#268bd2" />
+    <SolidColorBrush x:Key="CodeAttrValueBrush" Color="#859900" />
+    <SolidColorBrush x:Key="CodeStringBrush" Color="#859900" />
+    <SolidColorBrush x:Key="CodeNumberBrush" Color="#b58900" />
+    <SolidColorBrush x:Key="CodeKeywordBrush" Color="#6c71c4" />
+    <SolidColorBrush x:Key="CodeBoolBrush" Color="#2aa198" />
+    <SolidColorBrush x:Key="CodeFunctionBrush" Color="#b58900" />
+    <SolidColorBrush x:Key="CodePunctBrush" Color="#657b83" />
 
     <SolidColorBrush x:Key="SelectionBrush" Color="#33268bd2" />
 

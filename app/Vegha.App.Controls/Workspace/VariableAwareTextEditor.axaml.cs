@@ -208,6 +208,12 @@ public partial class VariableAwareTextEditor : UserControl
         _editor.Options.EnableHyperlinks = false;
         _editor.Options.EnableEmailHyperlinks = false;
 
+        // Route text selection through the same translucent, themed brush the plain
+        // TextBoxes use (Styles.axaml). AvaloniaEdit otherwise paints selection with a
+        // saturated system-blue over forced-white text — illegible on light themes and
+        // visibly inconsistent with the sibling KEY cell / URL-bar TextBoxes.
+        ApplySelectionTheme();
+
         _editor.TextArea.TextView.LineTransformers.Add(new VariableColorizer(this));
         // Mask non-{{var}} runs with bullet glyphs when IsPassword=true && !IsRevealed.
         // {{var}} placeholders pass through unmasked so the user can identify which variable
@@ -223,6 +229,9 @@ public partial class VariableAwareTextEditor : UserControl
             app.PropertyChanged += (_, e) =>
             {
                 if (e.Property == global::Avalonia.Application.ActualThemeVariantProperty)
+                    // The selection brush re-resolves itself (it's bound to the themed
+                    // resource observable); just repaint so the {{var}} token colors, which
+                    // are picked statically per render, flip to the new palette.
                     _editor.TextArea.TextView.Redraw();
             };
         }
@@ -426,6 +435,27 @@ public partial class VariableAwareTextEditor : UserControl
         }
     }
 
+    /// <summary>Points the inner AvaloniaEdit selection at the shared themed
+    /// <c>SelectionBrush</c> (a translucent accent the plain TextBoxes also use) and clears
+    /// SelectionForeground so selected text keeps its own foreground — including the
+    /// <c>{{var}}</c> amber/red token colors — instead of AvaloniaEdit's default
+    /// opaque-blue-with-forced-white, which read as illegible dark-blue blocks.</summary>
+    private void ApplySelectionTheme()
+    {
+        if (_editor is null) return;
+        // Bind (not TryFindResource) the selection brush: this method runs from the
+        // constructor before the control is attached, so a one-shot lookup resolves against
+        // the wrong/empty theme scope and silently misses — leaving AvaloniaEdit's default
+        // opaque blue. GetResourceObservable resolves lazily against the live theme variant
+        // and re-emits on theme switch, and binds at LocalValue priority so it wins over
+        // AvaloniaEdit's own default. SelectionForeground stays null so selected text keeps
+        // its own foreground (including {{var}} amber/red) instead of forced white.
+        _editor.TextArea.Bind(
+            TextArea.SelectionBrushProperty,
+            this.GetResourceObservable("SelectionBrush"));
+        _editor.TextArea.SelectionForeground = null;
+    }
+
     private void ApplyBordered()
     {
         var host = this.FindControl<global::Avalonia.Controls.Border>("HostBorder");
@@ -498,6 +528,14 @@ public partial class VariableAwareTextEditor : UserControl
         // long body lines stay un-wrapped when the user toggled it off elsewhere.
         var wordWrap = multi && WordWrap;
         _editor.WordWrap = wordWrap;
+        // Single-line fields (URL bar / KV value cell) center their one line within the host
+        // border so they line up with the sibling plain TextBoxes (KEY cell, GET dropdown),
+        // which center via VerticalContentAlignment. Letting the editor Stretch makes
+        // AvaloniaEdit top-align the text, so it floated above the centered neighbors.
+        // Multi-line editors Stretch so the document fills the pane and scrolls normally.
+        _editor.VerticalAlignment = multi
+            ? global::Avalonia.Layout.VerticalAlignment.Stretch
+            : global::Avalonia.Layout.VerticalAlignment.Center;
         _editor.HorizontalScrollBarVisibility = multi
             ? global::Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
             : global::Avalonia.Controls.Primitives.ScrollBarVisibility.Hidden;

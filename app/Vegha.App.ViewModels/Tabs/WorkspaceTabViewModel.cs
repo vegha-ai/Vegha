@@ -68,6 +68,11 @@ public sealed partial class WorkspaceTabViewModel : RequestTabViewModel
     public Action<CollectionRootViewModel>? RequestDeleteCollection { get; set; }
 
     // ---- Per-env actions (env editor header) ----
+    /// <summary>Fired by the env list's "+" button. The host creates the env, writes it to
+    /// <c>&lt;workspace&gt;/environments/</c> immediately (matching the collection-level
+    /// "new environment" flow) and selects it — so it survives a dialog close/reopen instead
+    /// of living only in the transient in-memory list.</summary>
+    public Action? RequestAddEnvironment { get; set; }
     public Action<DomainEnv>? RequestRenameEnvironment { get; set; }
     public Action<DomainEnv>? RequestCopyEnvironment { get; set; }
     public Action<DomainEnv>? RequestDeleteEnvironment { get; set; }
@@ -118,10 +123,21 @@ public sealed partial class WorkspaceTabViewModel : RequestTabViewModel
         Environments.Clear();
         foreach (var e in envs) Environments.Add(e);
 
-        if (initialSelection is not null && Environments.Contains(initialSelection))
+        if (initialSelection is not null)
         {
-            SelectedEnvironment = initialSelection;
-            return;
+            // Reference match first, then fall back to name: when the host reloads the env set
+            // from disk the freshly-deserialized instances differ by reference from the shared
+            // ActiveGlobalEnvironment, so a reference-only check would lose the alignment and
+            // open the dialog on the wrong row.
+            var match = Environments.Contains(initialSelection)
+                ? initialSelection
+                : Environments.FirstOrDefault(e =>
+                      string.Equals(e.Name, initialSelection.Name, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+            {
+                SelectedEnvironment = match;
+                return;
+            }
         }
         SelectedEnvironment = string.IsNullOrEmpty(previousName)
             ? Environments.FirstOrDefault()

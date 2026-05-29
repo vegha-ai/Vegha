@@ -337,20 +337,27 @@ public sealed class CanvasTextView : Control, ILogicalScrollable
                 _selBrush = new SolidColorBrush(Color.FromArgb(0x38, solid.Color.R, solid.Color.G, solid.Color.B));
         }
 
-        // Palette mirrors EditorSyntaxTheme so canvas + AvaloniaEdit views match.
-        _tokKey       = SolidHex(isDark ? "#9CDCFE" : "#0070C9");
-        _tokString    = SolidHex(isDark ? "#CE9178" : "#A31515");
-        _tokNumber    = SolidHex(isDark ? "#B5CEA8" : "#098658");
-        _tokBoolNull  = SolidHex(isDark ? "#569CD6" : "#0070C9");
-        _tokPunct     = SolidHex(isDark ? "#D4D4D4" : "#15181D");
-        _tokTag       = SolidHex(isDark ? "#569CD6" : "#800000");
-        _tokAttr      = SolidHex(isDark ? "#9CDCFE" : "#E50000");
-        _tokAttrVal   = SolidHex(isDark ? "#CE9178" : "#0451A5");
-        _tokComment   = SolidHex(isDark ? "#6A9955" : "#008000");
+        // Palette resolves the per-theme Code*Brush tokens (Themes/Tokens/*.axaml) so the
+        // canvas large-text view matches EditorSyntaxTheme across every variant. The hex
+        // fallback (used only if a token is missing) keeps the dark/light defaults safe.
+        _tokKey       = CodeBrush("CodeAttrBrush",      isDark ? "#9CDCFE" : "#0070C9");
+        _tokString    = CodeBrush("CodeStringBrush",    isDark ? "#CE9178" : "#A31515");
+        _tokNumber    = CodeBrush("CodeNumberBrush",    isDark ? "#B5CEA8" : "#098658");
+        _tokBoolNull  = CodeBrush("CodeBoolBrush",      isDark ? "#569CD6" : "#0070C9");
+        _tokPunct     = CodeBrush("CodePunctBrush",     isDark ? "#D4D4D4" : "#15181D");
+        _tokTag       = CodeBrush("CodeTagBrush",       isDark ? "#569CD6" : "#800000");
+        _tokAttr      = CodeBrush("CodeAttrBrush",      isDark ? "#9CDCFE" : "#0070C9");
+        _tokAttrVal   = CodeBrush("CodeAttrValueBrush", isDark ? "#CE9178" : "#0451A5");
+        _tokComment   = CodeBrush("CodeCommentBrush",   isDark ? "#6A9955" : "#008000");
     }
 
     private static IBrush SolidHex(string hex) =>
         Color.TryParse(hex, out var c) ? new SolidColorBrush(c) : Brushes.White;
+
+    /// <summary>Resolve a per-theme Code*Brush token from the control's resource scope,
+    /// falling back to a fixed hex when the key is absent.</summary>
+    private IBrush CodeBrush(string key, string fallbackHex) =>
+        this.TryFindResource(key, out var r) && r is IBrush b ? b : SolidHex(fallbackHex);
 
     private bool IsDarkTheme()
     {

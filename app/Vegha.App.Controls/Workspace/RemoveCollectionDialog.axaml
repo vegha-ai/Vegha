@@ -21,7 +21,7 @@
                 <!-- Warning glyph (orange circle with exclamation). Inline Path so the dialog
                      doesn't depend on the existing icon library having a "warning" entry. -->
                 <Border Grid.Column="0" Width="22" Height="22" CornerRadius="11"
-                        Background="#FB923C" VerticalAlignment="Center">
+                        Background="{DynamicResource StatusWarnBrush}" VerticalAlignment="Center">
                     <TextBlock Text="!" Foreground="White" FontWeight="Bold" FontSize="14"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
@@ -47,7 +47,7 @@
                     BorderThickness="0" Padding="14,6" Margin="0,0,8,0" />
             <Button Grid.Column="2" Content="Remove" Click="OnRemove_Click"
                     IsDefault="True"
-                    Background="#FB923C" Foreground="White"
+                    Background="{DynamicResource StatusWarnBrush}" Foreground="White"
                     BorderThickness="0" Padding="22,6" CornerRadius="3"
                     FontWeight="SemiBold" />
         </Grid>

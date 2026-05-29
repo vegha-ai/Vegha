@@ -11,9 +11,10 @@
     <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#dde2ec" />
 
+    <!-- Borders stepped up for visible field edges on snow-white (audit §07.1). -->
     <SolidColorBrush x:Key="Border0Brush" Color="#d8dee9" />
-    <SolidColorBrush x:Key="Border1Brush" Color="#c1c8d4" />
-    <SolidColorBrush x:Key="Border2Brush" Color="#a3aebf" />
+    <SolidColorBrush x:Key="Border1Brush" Color="#aeb7c6" />
+    <SolidColorBrush x:Key="Border2Brush" Color="#94a0b3" />
 
     <SolidColorBrush x:Key="Text0Brush" Color="#2e3440" />
     <SolidColorBrush x:Key="Text1Brush" Color="#3b4252" />
@@ -26,6 +27,13 @@
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#225e81ac" />
     <SolidColorBrush x:Key="AccentSoftStrongBrush" Color="#3a5e81ac" />
 
+    <!-- Fluent input-state overrides (audit §04): keep the input background on hover/focus
+         and use the accent border instead of Fluent's focused-state defaults. -->
+    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#ffffff" />
+    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#ffffff" />
+    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#94a0b3" />
+    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#5e81ac" />
+
     <SolidColorBrush x:Key="MethodGetBrush" Color="#5b8a3a" />
     <SolidColorBrush x:Key="MethodPostBrush" Color="#a37b0f" />
     <SolidColorBrush x:Key="MethodPutBrush" Color="#5e81ac" />
@@ -34,11 +42,29 @@
     <SolidColorBrush x:Key="MethodHeadBrush" Color="#3f7a7a" />
     <SolidColorBrush x:Key="MethodOptionsBrush" Color="#4c566a" />
 
+    <!-- Status / semantic — Nord Light muted aurora + frost blue info + soft tints. -->
     <SolidColorBrush x:Key="StatusOkBrush" Color="#5b8a3a" />
     <SolidColorBrush x:Key="StatusWarnBrush" Color="#a37b0f" />
     <SolidColorBrush x:Key="StatusErrBrush" Color="#a3404c" />
+    <SolidColorBrush x:Key="StatusInfoBrush" Color="#5e81ac" />
+    <SolidColorBrush x:Key="StatusOkSoftBrush" Color="#265b8a3a" />
+    <SolidColorBrush x:Key="StatusWarnSoftBrush" Color="#26a37b0f" />
+    <SolidColorBrush x:Key="StatusErrSoftBrush" Color="#26a3404c" />
+    <SolidColorBrush x:Key="StatusInfoSoftBrush" Color="#265e81ac" />
 
     <SolidColorBrush x:Key="CodeBgBrush" Color="#f3f5f9" />
+
+    <!-- Syntax highlighting — Nord Light family. Consumed by EditorSyntaxTheme. -->
+    <SolidColorBrush x:Key="CodeCommentBrush" Color="#7e8a9e" />
+    <SolidColorBrush x:Key="CodeTagBrush" Color="#5e81ac" />
+    <SolidColorBrush x:Key="CodeAttrBrush" Color="#5e81ac" />
+    <SolidColorBrush x:Key="CodeAttrValueBrush" Color="#5b8a3a" />
+    <SolidColorBrush x:Key="CodeStringBrush" Color="#5b8a3a" />
+    <SolidColorBrush x:Key="CodeNumberBrush" Color="#a37b0f" />
+    <SolidColorBrush x:Key="CodeKeywordBrush" Color="#8a4f80" />
+    <SolidColorBrush x:Key="CodeBoolBrush" Color="#3f7a7a" />
+    <SolidColorBrush x:Key="CodeFunctionBrush" Color="#a37b0f" />
+    <SolidColorBrush x:Key="CodePunctBrush" Color="#4c566a" />
 
     <SolidColorBrush x:Key="SelectionBrush" Color="#335e81ac" />
 
