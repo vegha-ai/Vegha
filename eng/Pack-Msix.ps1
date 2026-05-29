@@ -78,6 +78,7 @@ if (-not $SkipPublish) {
     & dotnet publish $projectPath `
         -c $Configuration -r win-x64 --self-contained true `
         -p:VeghaFlavor=MSIX `
+        -p:PublishReadyToRun=true `
         -o $publishDir
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE" }
 } else {

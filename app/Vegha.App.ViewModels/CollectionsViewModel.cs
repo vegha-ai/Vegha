@@ -48,7 +48,33 @@ public partial class CollectionsViewModel : ObservableObject
     [ObservableProperty]
     private string _filter = string.Empty;
 
-    partial void OnFilterChanged(string value) => ApplyFilter();
+    /// <summary>Debounces the filter so each keystroke doesn't re-walk the entire collection
+    /// tree (which sets IsVisibleByFilter / auto-expands matching folders on every node) — the
+    /// per-keystroke walk is what stutters on large trees. ~250 ms after the user stops typing
+    /// the filter applies once. Clearing the filter runs immediately so the tree un-folds with
+    /// no lag, and there's a no-context fallback (unit tests have no SynchronizationContext).</summary>
+    private System.Threading.CancellationTokenSource? _filterDebounceCts;
+
+    partial void OnFilterChanged(string value)
+    {
+        _filterDebounceCts?.Cancel();
+
+        // Instant on clear; inline when there's no UI sync context to post the continuation to.
+        if (string.IsNullOrEmpty(value) || System.Threading.SynchronizationContext.Current is null)
+        {
+            ApplyFilter();
+            return;
+        }
+
+        _filterDebounceCts = new System.Threading.CancellationTokenSource();
+        var token = _filterDebounceCts.Token;
+        var ui = TaskScheduler.FromCurrentSynchronizationContext();
+        Task.Delay(250, token).ContinueWith(t =>
+        {
+            if (t.IsCanceled || token.IsCancellationRequested) return;
+            ApplyFilter();
+        }, ui);
+    }
 
     [ObservableProperty]
     private CollectionItemViewModel? _selectedItem;
@@ -99,6 +125,42 @@ public partial class CollectionsViewModel : ObservableObject
     public event EventHandler<ActiveCollectionChangedEventArgs>? ActiveCollectionChanged;
 
     private bool _suppressExpansionEvents;
+
+    /// <summary>Ref-count of active <see cref="SuspendAutoSelect"/> scopes. While &gt; 0,
+    /// <see cref="OnRootsCollectionChanged"/> still mirrors roots into
+    /// <see cref="AvailableCollections"/> (the picker fills in) but leaves
+    /// <see cref="ActiveCollection"/> untouched. Set for the duration of a workspace apply so
+    /// progressively adding roots doesn't auto-select the first one — which would fire
+    /// <see cref="RebuildEnvironments"/> + <c>PushEnvironmentToOpenTabs</c> mid-load with
+    /// half-built env lists. The apply does one explicit activation at the end instead.
+    /// A counter (not a bool) so overlapping applies — a rapid workspace switch supersedes an
+    /// in-flight one whose suspend scope hasn't disposed yet — compose correctly: auto-select
+    /// resumes only once the <em>last</em> scope ends.</summary>
+    private int _suspendAutoSelectCount;
+
+    private bool AutoSelectSuspended => _suspendAutoSelectCount > 0;
+
+    /// <summary>Suspends auto-select-first for the lifetime of the returned scope. Use with
+    /// <c>using</c> around a batch of root loads (a workspace apply) so the env lists rebuild
+    /// exactly once, from the final explicit <see cref="ActiveCollection"/> assignment.</summary>
+    public IDisposable SuspendAutoSelect()
+    {
+        _suspendAutoSelectCount++;
+        return new AutoSelectScope(this);
+    }
+
+    private sealed class AutoSelectScope : IDisposable
+    {
+        private readonly CollectionsViewModel _owner;
+        private bool _disposed;
+        public AutoSelectScope(CollectionsViewModel owner) => _owner = owner;
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            if (_owner._suspendAutoSelectCount > 0) _owner._suspendAutoSelectCount--;
+        }
+    }
 
     /// <summary>Fired when any non-leaf node toggles. <c>(Path, Expanded)</c>.
     /// WorkspacesViewModel listens to this to persist the per-workspace expansion set.</summary>
@@ -178,7 +240,7 @@ public partial class CollectionsViewModel : ObservableObject
                     newActive = newRoot;
                 }
             }
-            if (activeNeedsRepoint) ActiveCollection = newActive ?? AvailableCollections.FirstOrDefault();
+            if (activeNeedsRepoint && !AutoSelectSuspended) ActiveCollection = newActive ?? AvailableCollections.FirstOrDefault();
         }
         else
         {
@@ -195,11 +257,15 @@ public partial class CollectionsViewModel : ObservableObject
             }
         }
 
-        // Auto-select first available when none active.
-        if (ActiveCollection is null) ActiveCollection = AvailableCollections.FirstOrDefault();
-        // If the active one got removed, fall back.
-        else if (!AvailableCollections.Contains(ActiveCollection))
-            ActiveCollection = AvailableCollections.FirstOrDefault();
+        // Auto-select first available when none active — suppressed during a workspace apply,
+        // which adds roots progressively and activates the persisted collection itself at the end.
+        if (!AutoSelectSuspended)
+        {
+            if (ActiveCollection is null) ActiveCollection = AvailableCollections.FirstOrDefault();
+            // If the active one got removed, fall back.
+            else if (!AvailableCollections.Contains(ActiveCollection))
+                ActiveCollection = AvailableCollections.FirstOrDefault();
+        }
     }
 
     /// <summary>Replaces the workspace-level env set. Called by <see cref="WorkspacesViewModel"/>
@@ -457,60 +523,141 @@ public partial class CollectionsViewModel : ObservableObject
     {
         try
         {
-            var normalized = NormalizePath(rootDirectory);
-
-            // Already loaded? Bail out — but reload it so the user sees fresh state if
-            // disk has changed since.
-            var existing = Roots.FirstOrDefault(r => SamePath(NormalizePath(r.Path), normalized));
-            if (existing is not null)
+            if (ShouldSkipLoad(rootDirectory, out var existing))
             {
-                ReloadRootContaining(existing);
+                if (existing is not null) ReloadRootContaining(existing);
                 return;
             }
 
-            // Under an existing root? The watcher there already covers it; adding a
-            // second root over the same files causes drag/drop and tab session bookkeeping
-            // to find two matches and pick wrong.
-            if (Roots.Any(r => IsUnderneath(normalized, NormalizePath(r.Path))))
-            {
-                StatusMessage = $"'{Path.GetFileName(rootDirectory)}' is inside an already-loaded collection — refresh handled by watcher.";
-                return;
-            }
-
-            var collection = CollectionLoader.Load(rootDirectory);
-            var node = CollectionNodeViewModel.FromCollection(collection, rootDirectory);
-            Roots.Add(node);
-            HookExpansionEvents(node);
+            var node = BuildRootNode(rootDirectory, System.Threading.CancellationToken.None);
+            AttachRootNode(node, rootDirectory);
 
             // Newly-loaded collections become active immediately so the tree switches to
             // them. Without this the user has to manually pick the new collection in the
-            // header dropdown after an Add/Open/Import.
+            // header dropdown after an Add/Open/Import. (The async path leaves activation to
+            // its orchestrator — e.g. a workspace apply restores the persisted collection.)
             if (node is CollectionRootViewModel justAdded)
                 ActiveCollection = justAdded;
-
-            // Env list is now driven by ActiveCollection (set in OnRootsCollectionChanged when
-            // the first root lands), so we no longer accumulate envs from every loaded
-            // collection. RebuildEnvironments() runs as part of OnActiveCollectionChanged.
-
-            _recentItems?.Touch(rootDirectory);
-
-            // Watch the collection folder for any .bru / folder changes so the tree
-            // refreshes automatically — same UX as Bruno's chokidar-driven sidebar.
-            // The 2 s suppression window swallows the burst of Changed events Windows
-            // emits as just-written files' metadata (LastWrite/Size) settles — without
-            // it, ReloadRootContaining fires right after import and replaces the root,
-            // which surfaces as "first click on the imported collection doesn't load."
-            _watcherSuppressUntil[NormalizePath(rootDirectory)] = DateTime.UtcNow.AddSeconds(2);
-            AttachFileSystemWatcher(rootDirectory);
-
-            StatusMessage =
-                $"Loaded '{collection.Name}' — {CountRequests(collection)} requests, {collection.Environments.Count} environments";
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to load collection from {Directory}", rootDirectory);
             StatusMessage = $"Failed: {ex.Message}";
         }
+    }
+
+    /// <summary>Loads a collection off the UI thread and attaches it without blocking.
+    /// The parse + ViewModel-tree build (<see cref="BuildRootNode"/>) runs on a worker
+    /// thread; only the cheap <see cref="AttachRootNode"/> wiring touches the UI-bound
+    /// <see cref="Roots"/>. Does <em>not</em> set <see cref="ActiveCollection"/> — the caller
+    /// (a workspace apply, Open Collection) decides when/what to activate. <paramref name="ct"/>
+    /// supersedes an in-flight load: if cancelled before the post-build re-check nothing is
+    /// added to <see cref="Roots"/>. Returns the attached root, or null when a guard rejected
+    /// the path or the load was superseded.</summary>
+    public async Task<CollectionRootViewModel?> LoadFromDirectoryAsync(string rootDirectory, System.Threading.CancellationToken ct)
+    {
+        try
+        {
+            if (ShouldSkipLoad(rootDirectory, out var existing))
+            {
+                if (existing is not null) ReloadRootContaining(existing);
+                return existing as CollectionRootViewModel;
+            }
+
+            // Heavy work (file enumeration, .bru read + parse, VM-tree construction) off the
+            // UI thread. ConfigureAwait(true) marshals the continuation back so the attach
+            // below runs on the UI thread where Roots is bound.
+            var node = await Task.Run(() => BuildRootNode(rootDirectory, ct), ct).ConfigureAwait(true);
+
+            // Superseded while we were parsing — drop the result. Attach is the only step that
+            // mutates Roots, so gating it here guarantees a stale load adds nothing.
+            if (ct.IsCancellationRequested) return null;
+
+            AttachRootNode(node, rootDirectory);
+            return node as CollectionRootViewModel;
+        }
+        catch (OperationCanceledException)
+        {
+            return null; // Superseded — expected, drop silently.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load collection from {Directory}", rootDirectory);
+            StatusMessage = $"Failed: {ex.Message}";
+            return null;
+        }
+    }
+
+    /// <summary>UI-thread pre-check shared by the sync and async load paths. Returns true when
+    /// the caller should not build+attach a fresh root: either the path is already loaded
+    /// (<paramref name="alreadyLoaded"/> set — caller should reload it) or it lives underneath
+    /// an existing root (handled here with a status message; the parent's watcher covers it).
+    /// Reads <see cref="Roots"/>, so it must run on the UI thread.</summary>
+    private bool ShouldSkipLoad(string rootDirectory, out CollectionNodeViewModel? alreadyLoaded)
+    {
+        alreadyLoaded = null;
+        var normalized = NormalizePath(rootDirectory);
+
+        // Already loaded? Reload it so the user sees fresh state if disk has changed since.
+        var existing = Roots.FirstOrDefault(r => SamePath(NormalizePath(r.Path), normalized));
+        if (existing is not null)
+        {
+            alreadyLoaded = existing;
+            return true;
+        }
+
+        // Under an existing root? The watcher there already covers it; adding a second root
+        // over the same files causes drag/drop and tab session bookkeeping to find two
+        // matches and pick wrong.
+        if (Roots.Any(r => IsUnderneath(normalized, NormalizePath(r.Path))))
+        {
+            StatusMessage = $"'{Path.GetFileName(rootDirectory)}' is inside an already-loaded collection — refresh handled by watcher.";
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>Pure load step: reads + parses the collection from disk and builds its
+    /// ViewModel tree. Safe on a worker thread — it touches no UI-bound state (no
+    /// <see cref="Roots"/>, no <see cref="ActiveCollection"/>, no event hookup). The returned
+    /// node has no subscribers until <see cref="AttachRootNode"/> wires it in on the UI thread,
+    /// so constructing the ObservableObject VMs + ObservableCollections off-thread is safe.</summary>
+    private static CollectionNodeViewModel BuildRootNode(string rootDirectory, System.Threading.CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var collection = CollectionLoader.Load(rootDirectory);
+        ct.ThrowIfCancellationRequested();
+        return CollectionNodeViewModel.FromCollection(collection, rootDirectory);
+    }
+
+    /// <summary>UI-thread wiring for a freshly-built root: adds it to <see cref="Roots"/>,
+    /// hooks expansion events, records it in recent-items, and starts the file watcher.
+    /// Must run on the UI thread. Does <em>not</em> set <see cref="ActiveCollection"/> —
+    /// expansion hookup and activation are deliberately kept off <see cref="BuildRootNode"/>
+    /// (which runs on a worker) because they raise events / touch bound state.</summary>
+    private void AttachRootNode(CollectionNodeViewModel node, string rootDirectory)
+    {
+        Roots.Add(node);
+        HookExpansionEvents(node);
+
+        // Env list is driven by ActiveCollection (set in OnRootsCollectionChanged when the
+        // first root lands, unless auto-select is suspended for a workspace apply), so we no
+        // longer accumulate envs from every loaded collection.
+
+        _recentItems?.Touch(rootDirectory);
+
+        // Watch the collection folder for any .bru / folder changes so the tree refreshes
+        // automatically — same UX as Bruno's chokidar-driven sidebar. The 2 s suppression
+        // window swallows the burst of Changed events Windows emits as just-written files'
+        // metadata (LastWrite/Size) settles — without it, ReloadRootContaining fires right
+        // after import and replaces the root, surfacing as "first click on the imported
+        // collection doesn't load."
+        _watcherSuppressUntil[NormalizePath(rootDirectory)] = DateTime.UtcNow.AddSeconds(2);
+        AttachFileSystemWatcher(rootDirectory);
+
+        if (node is CollectionRootViewModel root && root.Collection is { } col)
+            StatusMessage =
+                $"Loaded '{col.Name}' — {CountRequests(col)} requests, {col.Environments.Count} environments";
     }
 
     private static string NormalizePath(string p)
@@ -603,12 +750,14 @@ public partial class CollectionsViewModel : ObservableObject
             period: System.Threading.Timeout.Infinite);
     }
 
-    /// <summary>Finds the loaded root with the given source path and reloads it.</summary>
+    /// <summary>Finds the loaded root with the given source path and reloads it off the UI
+    /// thread. Runs on the UI thread (posted from the debounce timer); the async reload keeps
+    /// the parse off-thread so a large watched collection doesn't freeze the UI on file save.</summary>
     private void ReloadRootByPath(string rootPath)
     {
         var root = Roots.OfType<CollectionRootViewModel>().FirstOrDefault(r =>
             string.Equals(r.SourcePath, rootPath, StringComparison.OrdinalIgnoreCase));
-        if (root is not null) ReloadRootContaining(root);
+        if (root is not null) _ = ReloadRootContainingAsync(root);
     }
 
     partial void OnActiveEnvironmentChanged(DomainEnv? value) => PushEnvironmentToOpenTabs();
@@ -1552,37 +1701,91 @@ public partial class CollectionsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Synchronous reload — parses on the calling thread and swaps the root in place.
+    /// Used by the context-menu commands (move / rename / clone / delete) which run a single
+    /// user action and expect the tree to reflect it on return. The off-thread variant
+    /// <see cref="ReloadRootContainingAsync"/> backs the file-watcher path.</summary>
     private void ReloadRootContaining(CollectionNodeViewModel node)
     {
-        var root = FindRootOf(node);
-        if (root is null) return;
-        var rootPath = root.SourcePath;
-        if (string.IsNullOrEmpty(rootPath) || !Directory.Exists(rootPath)) return;
-
-        var index = Roots.IndexOf(root);
-        if (index < 0) return;
-
-        // Snapshot which folder paths the user has expanded so the reload doesn't fully
-        // collapse the tree. The Roots[index] = refreshed swap creates a fresh subtree
-        // with IsExpanded=false everywhere; we re-apply the saved set after.
-        var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        CollectExpandedPaths(root, expanded);
-
+        if (!TryBeginReload(node, out var root, out var rootPath, out var expanded)) return;
         try
         {
             var collection = CollectionLoader.Load(rootPath);
-            var refreshed = CollectionNodeViewModel.FromCollection(collection, rootPath);
-            Roots[index] = refreshed;
-            HookExpansionEvents(refreshed);
-
-            _suppressExpansionEvents = true;
-            try { ApplyExpandedPathsTo(refreshed, expanded); }
-            finally { _suppressExpansionEvents = false; }
+            var index = Roots.IndexOf(root);
+            if (index < 0) return;
+            SwapRoot(index, collection, rootPath, expanded);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Reload after move failed for {Path}", rootPath);
+            _logger.LogWarning(ex, "Reload failed for {Path}", rootPath);
         }
+    }
+
+    /// <summary>Off-thread reload for the file-watcher path: parses the collection on a worker
+    /// thread (the freeze source when a watched collection is large) then swaps the root on the
+    /// UI thread. Re-resolves the index after the await — a progressive workspace-apply attach
+    /// may have shifted it — and bails if the root vanished or a workspace apply started
+    /// meanwhile (the apply rebuilds the whole tree, so reloading underneath it is wasted work
+    /// and risks reentrant Roots mutation).</summary>
+    private async Task ReloadRootContainingAsync(CollectionNodeViewModel node)
+    {
+        if (!TryBeginReload(node, out var root, out var rootPath, out var expanded)) return;
+        try
+        {
+            var collection = await Task.Run(() => CollectionLoader.Load(rootPath)).ConfigureAwait(true);
+            if (AutoSelectSuspended) return; // a workspace apply began while we were parsing
+            var index = Roots.IndexOf(root);
+            if (index < 0) return;          // root removed/replaced meanwhile
+            SwapRoot(index, collection, rootPath, expanded);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Async reload failed for {Path}", rootPath);
+        }
+    }
+
+    /// <summary>Shared UI-thread prep for both reload paths: resolves the owning root, snapshots
+    /// its expanded-folder set (the swap creates a fresh, collapsed subtree), and refuses while
+    /// a workspace apply is in flight. Returns false when there's nothing to reload.</summary>
+    private bool TryBeginReload(
+        CollectionNodeViewModel node,
+        out CollectionRootViewModel root,
+        out string rootPath,
+        out HashSet<string> expanded)
+    {
+        root = null!;
+        rootPath = string.Empty;
+        expanded = null!;
+
+        // A workspace apply rebuilds the whole tree; don't fight it.
+        if (AutoSelectSuspended) return false;
+
+        var resolved = FindRootOf(node);
+        if (resolved is null) return false;
+        var path = resolved.SourcePath;
+        if (string.IsNullOrEmpty(path) || !Directory.Exists(path)) return false;
+
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CollectExpandedPaths(resolved, set);
+
+        root = resolved;
+        rootPath = path;
+        expanded = set;
+        return true;
+    }
+
+    /// <summary>Replaces the root at <paramref name="index"/> with a fresh tree built from
+    /// <paramref name="collection"/>, re-hooks expansion events, and re-applies the snapshotted
+    /// expanded-folder set. Must run on the UI thread (mutates the bound <see cref="Roots"/>).</summary>
+    private void SwapRoot(int index, Collection collection, string rootPath, HashSet<string> expanded)
+    {
+        var refreshed = CollectionNodeViewModel.FromCollection(collection, rootPath);
+        Roots[index] = refreshed;
+        HookExpansionEvents(refreshed);
+
+        _suppressExpansionEvents = true;
+        try { ApplyExpandedPathsTo(refreshed, expanded); }
+        finally { _suppressExpansionEvents = false; }
     }
 
     /// <summary>Walks the subtree and adds the paths of every expanded folder/root into
@@ -2071,7 +2274,11 @@ public abstract partial class CollectionNodeViewModel : ObservableObject
         }
         foreach (var r in requests)
         {
-            var bruFile = FindBruFile(parentPath, r.Name);
+            // The loader stamps RequestItem.SourcePath at parse time — use it directly and
+            // only fall back to the folder scan for in-memory requests that lack one (e.g. a
+            // cURL import that hasn't been persisted yet). This avoids re-reading + re-parsing
+            // every sibling .bru a second time just to recover the path.
+            var bruFile = r.SourcePath ?? FindBruFile(parentPath, r.Name);
             children.Add(new CollectionItemViewModel
             {
                 Name = r.Name,

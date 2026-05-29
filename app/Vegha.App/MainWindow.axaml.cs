@@ -212,20 +212,25 @@ public partial class MainWindow : Window
 
         // === DEFERRED block A: workspace tree → restore tabs → env push → welcome ===
         // Runs at Background priority so the window paints first. Order matters:
-        //   1. ApplyActive populates Collections.Roots (needed before tab restore can
-        //      resolve CollectionPath references).
-        //   2. Drop IsLoading so the tree replaces the skeleton.
-        //   3. RestoreOpenTabsAsync rehydrates tabs (now parallelized — see OpenTabsViewModel).
-        //   4. PushEnvironmentToOpenTabs feeds restored tabs the current env snapshot so
+        //   1. ApplyActiveAsync populates Collections.Roots off-thread (needed before tab
+        //      restore can resolve CollectionPath references) and manages the IsLoading
+        //      skeleton itself, dropping it when the tree is ready.
+        //   2. RestoreOpenTabsAsync rehydrates tabs (now parallelized — see OpenTabsViewModel).
+        //   3. PushEnvironmentToOpenTabs feeds restored tabs the current env snapshot so
         //      {{var}} resolves without a close/reopen.
-        //   5. Welcome dialog last, so it appears over the fully-painted main UI.
+        //   4. Welcome dialog last, so it appears over the fully-painted main UI.
         global::Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
         {
             try
             {
+                // ApplyActiveAsync owns the IsLoading skeleton for the has-workspace path —
+                // it loads collections off-thread and drops IsLoading when done (or when a
+                // later switch supersedes it). Only the no-workspace case needs an explicit
+                // drop here so the skeleton doesn't linger over an empty sidebar.
                 if (workspacesForApply?.ActiveWorkspace is not null)
                     await workspacesForApply.ApplyActiveAsync(workspacesForApply.ActiveWorkspace);
-                if (collectionsForSkeleton is not null) collectionsForSkeleton.IsLoading = false;
+                else if (collectionsForSkeleton is not null)
+                    collectionsForSkeleton.IsLoading = false;
                 System.Diagnostics.Debug.WriteLine(
                     $"[startup] workspace applied at {Program.StartupClock.ElapsedMilliseconds}ms");
 
@@ -240,7 +245,8 @@ public partial class MainWindow : Window
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[startup] deferred init failed: {ex}");
-                if (collectionsForSkeleton is not null) collectionsForSkeleton.IsLoading = false;
+                // IsLoading is already owned + reset by ApplyActiveAsync (or the no-workspace
+                // branch above); nothing to drop here.
             }
         }, global::Avalonia.Threading.DispatcherPriority.Background);
 

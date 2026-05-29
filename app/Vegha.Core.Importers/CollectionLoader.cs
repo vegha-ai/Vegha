@@ -132,11 +132,13 @@ public static class CollectionLoader
             var text = File.ReadAllText(filePath);
             var doc = BruParser.Parse(text);
             var req = BruToRequestConverter.Convert(doc);
-            // Fall back to file name (without .bru) when meta.name is missing.
-            if (string.IsNullOrEmpty(req.Name))
+            // Stamp the on-disk path so the UI tree builder can resolve the file without a
+            // second parse pass. Fall back to file name (without .bru) when meta.name is missing.
+            req = req with
             {
-                req = req with { Name = Path.GetFileNameWithoutExtension(filePath) };
-            }
+                SourcePath = filePath,
+                Name = string.IsNullOrEmpty(req.Name) ? Path.GetFileNameWithoutExtension(filePath) : req.Name,
+            };
             return req;
         }
         catch

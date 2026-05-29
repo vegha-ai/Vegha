@@ -70,6 +70,7 @@ function Invoke-Pack([string] $rid) {
         --runtime $rid `
         --self-contained true `
         -p:PublishSingleFile=false `
+        -p:PublishReadyToRun=true `
         --output $publishDir
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $rid" }
 

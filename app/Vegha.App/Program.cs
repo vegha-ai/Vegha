@@ -17,6 +17,8 @@ class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        TraceStartupReset();
+        Trace("Main:enter");
 #if !Vegha_MSIX && !Vegha_MAS
         // Velopack must run before Avalonia: if the EXE was launched as part of
         // an install/update step (--squirrel-install, --veloapp-uninstall, etc.)
@@ -26,6 +28,7 @@ class Program
         // is disabled at compile time on both.
         VelopackApp.Build().Run();
 #endif
+        Trace("Main:post-velopack");
 
         // Capture any unhandled exception to %LocalAppData%/Vegha/crash.log so the user
         // can share the stack trace when the app dies mid-action.
@@ -36,10 +39,36 @@ class Program
             e.SetObserved();
         };
 
+        Trace("Main:pre-avalonia-start");
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
-    private static void LogCrash(Exception? ex)
+    /// <summary>Startup phase tracing for diagnosing time-to-first-paint. Off unless the
+    /// <c>VEGHA_TRACE_STARTUP=1</c> environment variable is set; writes phase timestamps to
+    /// <c>%TEMP%/vegha-startup.log</c>. Cheap no-op in normal runs.</summary>
+    internal static void Trace(string label)
+    {
+        try
+        {
+            if (Environment.GetEnvironmentVariable("VEGHA_TRACE_STARTUP") != "1") return;
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vegha-startup.log");
+            System.IO.File.AppendAllText(path, $"{StartupClock.ElapsedMilliseconds,6} ms  {label}{Environment.NewLine}");
+        }
+        catch { /* tracing must never affect startup */ }
+    }
+
+    private static void TraceStartupReset()
+    {
+        try
+        {
+            if (Environment.GetEnvironmentVariable("VEGHA_TRACE_STARTUP") != "1") return;
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vegha-startup.log");
+            System.IO.File.WriteAllText(path, $"=== Vegha startup trace {DateTime.Now:O} ==={Environment.NewLine}");
+        }
+        catch { /* best-effort */ }
+    }
+
+    internal static void LogCrash(Exception? ex)
     {
         try
         {
