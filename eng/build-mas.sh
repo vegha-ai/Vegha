@@ -47,6 +47,7 @@ dotnet restore
 dotnet publish app/Vegha.App/Vegha.App.csproj \
   -c Release -r osx-arm64 --self-contained true \
   -p:DefineConstants=Vegha_MAS \
+  -p:PublishReadyToRun=true \
   -o publish/osx-arm64
 
 echo "==> Assembling Vegha.app bundle"

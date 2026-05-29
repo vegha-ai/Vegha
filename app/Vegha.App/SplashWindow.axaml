@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Vegha.App.SplashWindow"
+        Width="360" Height="240"
+        CanResize="False"
+        ShowInTaskbar="false"
+        SystemDecorations="None"
+        Topmost="True"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        WindowStartupLocation="CenterScreen">
+
+    <!-- Lightweight, dependency-free splash: paints almost instantly while the DI graph and
+         main window are constructed on the UI thread. Uses the app's default (Dark) theme
+         tokens already loaded in App.axaml. Intentionally static — the UI thread is busy
+         building the window, so an animated indicator would freeze and read as "hung". -->
+    <Border Background="{DynamicResource Bg1Brush}"
+            BorderBrush="{DynamicResource Border0Brush}"
+            BorderThickness="1"
+            CornerRadius="12">
+        <StackPanel Spacing="16"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+            <Image Source="avares://Vegha.App/Assets/logo.png"
+                   Width="76" Height="76"
+                   HorizontalAlignment="Center" />
+            <StackPanel Spacing="3" HorizontalAlignment="Center">
+                <TextBlock Text="Vegha"
+                           FontSize="22" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text0Brush}"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="Starting up…"
+                           FontSize="12"
+                           Foreground="{DynamicResource Text2Brush}"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

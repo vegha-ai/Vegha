@@ -90,6 +90,7 @@ dotnet publish "$PROJECT_PATH" \
     --runtime "$RUNTIME" \
     --self-contained true \
     -p:PublishSingleFile=false \
+    -p:PublishReadyToRun=true \
     --output "$PUBLISH_DIR"
 
 # ----------------------------------------------------------------------------

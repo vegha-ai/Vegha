@@ -98,6 +98,14 @@ public sealed record RequestItem
     /// generated into the SOAP <c>&lt;Header&gt;</c> at send time. Null for non-SOAP requests
     /// and for SOAP requests with no WS-* configuration. Persisted as the <c>soap { }</c> block.</summary>
     public SoapConfig? Soap { get; init; }
+
+    /// <summary>Absolute path to the <c>.bru</c> file this request was loaded from. Set by
+    /// <c>CollectionLoader</c> at load time so the UI can resolve the on-disk file without
+    /// re-reading and re-parsing every sibling <c>.bru</c> to recover it. Transient: it is
+    /// not part of the serialized <c>.bru</c> format (emitters ignore it) and is recomputed on
+    /// each load. Null for in-memory requests that aren't backed by a file yet (e.g. a fresh
+    /// cURL import before it's persisted).</summary>
+    public string? SourcePath { get; init; }
 }
 
 /// <summary>SOAP WS-* configuration applied to the outgoing envelope at send time. Each

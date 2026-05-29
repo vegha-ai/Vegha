@@ -23,12 +23,19 @@ public partial class WorkspacesViewModel : ObservableObject
     private readonly CollectionsViewModel _collections;
     private readonly ILogger<WorkspacesViewModel> _logger;
     private bool _suspendPersist;
-    /// <summary>True while <see cref="ApplyActive"/> is clearing+restoring env state on a
+    /// <summary>True while <see cref="ApplyActiveAsync"/> is clearing+restoring env state on a
     /// workspace switch. The store helpers short-circuit so the transient null we write to
     /// <c>_collections.ActiveGlobalEnvironment</c> mid-load doesn't get persisted onto the
     /// newly-activated workspace — which would erase its saved env selection before the
     /// restore step gets a chance to read it.</summary>
     private bool _isApplyingWorkspace;
+
+    /// <summary>Cancels the in-flight <see cref="ApplyActiveAsync"/> when a newer switch
+    /// supersedes it. <see cref="_applyGeneration"/> is the monotonic stamp that lets a
+    /// superseded continuation know it's no longer current and skip resetting shared flags.
+    /// Both are touched only on the UI thread, so no synchronization is needed.</summary>
+    private CancellationTokenSource? _applyCts;
+    private int _applyGeneration;
 
     public ObservableCollection<WorkspaceItemViewModel> Workspaces { get; } = new();
 
@@ -106,101 +113,87 @@ public partial class WorkspacesViewModel : ObservableObject
         // synchronously (the user-initiated path needs immediate visual feedback).
     }
 
-    /// <summary>Public hook so the host can run the first <see cref="ApplyActive"/> at
-    /// background dispatcher priority. Keeps the work on the UI thread (ApplyActive mutates
-    /// UI-bound ObservableCollections) — running at <c>Background</c> just lets first paint
-    /// happen first.</summary>
-    public Task ApplyActiveAsync(WorkspaceItemViewModel ws)
+    /// <summary>Activates a workspace without freezing the UI: clears the sidebar, loads the
+    /// workspace-level inheritance model and every collection under
+    /// <c>&lt;workspace&gt;/collections/</c> (plus linked collections) off the UI thread, and
+    /// fills the sidebar progressively. The <em>active</em> collection (the one the TreeView
+    /// renders) loads first so the user sees their tree as soon as possible; the rest fill the
+    /// picker behind it. Falls back to loading the workspace folder itself when there's no
+    /// <c>collections/</c> subfolder (legacy single-folder workspaces).
+    ///
+    /// Cancellable + generation-guarded so a rapid workspace switch supersedes an in-flight
+    /// load: the older load adds nothing to the sidebar and doesn't reset the shared
+    /// loading/applying flags out from under the newer one.</summary>
+    public async Task ApplyActiveAsync(WorkspaceItemViewModel ws)
     {
-        ApplyActive(ws);
-        return Task.CompletedTask;
-    }
+        // Supersede any in-flight apply. Bump the generation, cancel the previous token, and
+        // start a fresh one — all synchronously on the UI thread before the first await, so an
+        // older continuation that resumes later sees a stale generation/cancelled token and
+        // bails before mutating the sidebar.
+        var generation = ++_applyGeneration;
+        _applyCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _applyCts = cts;
+        var ct = cts.Token;
 
-    partial void OnActiveWorkspaceChanged(WorkspaceItemViewModel? value)
-    {
-        if (_suspendPersist) return;
-        if (value is not null) ApplyActive(value);
-        Persist();
-    }
-
-    /// <summary>Loads every collection under <c>&lt;workspace&gt;/collections/</c> as a
-    /// separate root in the Collections sidebar, and re-applies each tree's saved
-    /// expansion set. Falls back to loading the workspace folder itself if no
-    /// <c>collections/</c> subfolder exists (legacy single-folder workspaces).
-    /// Also loads the workspace-level inheritance model (envs + scripts) and restores the
-    /// per-workspace active collection.</summary>
-    public void ApplyActive(WorkspaceItemViewModel ws)
-    {
         _isApplyingWorkspace = true;
+        _collections.IsLoading = true;
+        // Suspend auto-select for the whole load so progressively-added roots only fill the
+        // picker; we activate the persisted collection explicitly once. Ref-counted, so it
+        // composes if this apply is superseded before its scope disposes.
+        using var autoSelect = _collections.SuspendAutoSelect();
         try
         {
-            // Capture the persisted active-collection path BEFORE we start loading.
-            // Loading the first collection auto-selects it (CollectionsViewModel.OnRootsCollectionChanged),
-            // which fires OnActiveCollectionChanged and overwrites ws.ActiveCollectionPath. Without
-            // this snapshot the restore at the bottom would always land on the first collection.
+            // Snapshot the persisted active-collection path BEFORE loading — used to pick the
+            // active-first collection and to restore selection at the end.
             var persistedActivePath = ws.ActiveCollectionPath;
 
+            // Clear the previous workspace's tree + env state up front so the skeleton shows
+            // immediately and stale collections vanish at once. Dropping ActiveEnvironment /
+            // ActiveGlobalEnvironment here prevents the previous workspace's selected env name
+            // from leaking into RebuildEnvironments and silently auto-activating a same-named
+            // env in the new workspace.
             _collections.Roots.Clear();
             _collections.Environments.Clear();
             _collections.ActiveCollection = null;
-            // Drop any lingering ActiveEnvironment / ActiveGlobalEnvironment from the
-            // previous workspace BEFORE loading the new envs. Without this, the previous
-            // workspace's selected env name leaks into RebuildEnvironments and silently
-            // auto-activates a same-named env in the new workspace — exactly the
-            // "carry over" bug the per-workspace persistence is meant to prevent.
             _collections.ActiveEnvironment = null;
             _collections.ActiveGlobalEnvironment = null;
+            // Drop the previous workspace's global envs too. We're about to await the new
+            // workspace-model load off-thread; without this the env picker would briefly show
+            // the old workspace's global envs during that gap (the old synchronous path had no
+            // such window). Republished below once the new model is loaded.
+            _collections.SetWorkspaceEnvironments(System.Array.Empty<Vegha.Core.Domain.Environment>());
             if (!Directory.Exists(ws.FolderPath)) return;
 
-            // Load workspace-level envs/scripts BEFORE collections so the first
-            // ActiveCollection assignment can merge them into the env list.
-            var wsModel = WorkspaceModelLoader.Load(ws.FolderPath);
+            // Workspace-level envs/scripts — parse off the UI thread (file reads + JSON), then
+            // publish on the UI thread so the first ActiveCollection assignment can merge them.
+            var wsModel = await Task.Run(() => WorkspaceModelLoader.Load(ws.FolderPath), ct).ConfigureAwait(true);
+            if (ct.IsCancellationRequested) return;
             ws.WorkspaceModel = wsModel;
             _collections.SetWorkspaceEnvironments(wsModel.Environments.ToList());
             _collections.SetWorkspaceScripts(wsModel.PreRequestScript, wsModel.PostResponseScript, wsModel.TestsScript);
 
-            // Restore the workspace's own persisted global env choice (null if it had
-            // none, which is the right default for a fresh workspace).
+            // Restore the workspace's own persisted global env choice (null for a fresh workspace).
             if (!string.IsNullOrEmpty(ws.ActiveGlobalEnvironmentName))
             {
                 _collections.ActiveGlobalEnvironment = _collections.GlobalEnvironments
                     .FirstOrDefault(e => string.Equals(e.Name, ws.ActiveGlobalEnvironmentName, StringComparison.OrdinalIgnoreCase));
             }
 
+            // Build the ordered list of collection directories: in-folder collections (or the
+            // legacy single-folder workspace) then linked collections, pruning dead links.
+            var dirs = new List<string>();
             var collectionsRoot = Path.Combine(ws.FolderPath, "collections");
             if (Directory.Exists(collectionsRoot))
-            {
-                foreach (var dir in Directory.EnumerateDirectories(collectionsRoot))
-                {
-                    _collections.LoadFromDirectory(dir);
-                    if (ws.ExpandedPathsByCollection.TryGetValue(dir, out var set))
-                        _collections.ApplyExpansionState(set);
-                }
-            }
+                dirs.AddRange(Directory.EnumerateDirectories(collectionsRoot));
             else
-            {
-                // Legacy workspace whose folder is itself a collection (pre-multi-collection
-                // model). Load it directly. The expansion set is keyed by the workspace path.
-                _collections.LoadFromDirectory(ws.FolderPath);
-                if (ws.ExpandedPathsByCollection.TryGetValue(ws.FolderPath, out var set))
-                    _collections.ApplyExpansionState(set);
-            }
+                dirs.Add(ws.FolderPath);
 
-            // Linked collections — folders the user "Open Collection"-picked from outside the
-            // workspace's collections/ folder. Persisted in workspaces.json so they survive
-            // restarts. Skip silently if the folder no longer exists; we'll prune dead links
-            // on the next persist.
             var pruned = new List<string>();
             foreach (var linked in ws.LinkedCollections.ToList())
             {
-                if (!Directory.Exists(linked))
-                {
-                    pruned.Add(linked);
-                    continue;
-                }
-                _collections.LoadFromDirectory(linked);
-                if (ws.ExpandedPathsByCollection.TryGetValue(linked, out var set))
-                    _collections.ApplyExpansionState(set);
+                if (!Directory.Exists(linked)) { pruned.Add(linked); continue; }
+                dirs.Add(linked);
             }
             if (pruned.Count > 0)
             {
@@ -208,26 +201,97 @@ public partial class WorkspacesViewModel : ObservableObject
                 Persist();
             }
 
-            // Restore the active collection from the snapshot we took before loading (the
-            // path in ws.ActiveCollectionPath has been mutated by the auto-select cascade).
-            // Falls back to the first available when the persisted path no longer resolves
-            // (collection deleted or renamed on disk).
-            if (!string.IsNullOrEmpty(persistedActivePath))
+            // Active-first: load the collection that will become active before the rest so the
+            // user's tree appears ASAP (the TreeView binds to ActiveCollection, not Roots).
+            var targetDir = ResolveTargetDir(dirs, persistedActivePath);
+            if (targetDir is not null)
             {
-                var match = _collections.AvailableCollections.FirstOrDefault(c =>
-                    string.Equals(c.SourcePath, persistedActivePath, StringComparison.OrdinalIgnoreCase));
+                var targetRoot = await _collections.LoadFromDirectoryAsync(targetDir, ct).ConfigureAwait(true);
+                if (ct.IsCancellationRequested) return;
+                if (targetRoot is not null)
+                {
+                    _collections.ActiveCollection = targetRoot; // explicit (auto-select is suspended)
+                    // Expand the active tree right away; the merged pass at the end re-applies
+                    // it (idempotent) alongside every other collection's expansion.
+                    if (ws.ExpandedPathsByCollection.TryGetValue(targetDir, out var tset))
+                        _collections.ApplyExpansionState(tset);
+                }
+            }
+
+            // Remaining collections fill the picker progressively (each parse off-thread).
+            foreach (var dir in dirs)
+            {
+                if (ct.IsCancellationRequested) return;
+                if (string.Equals(dir, targetDir, StringComparison.OrdinalIgnoreCase)) continue;
+                await _collections.LoadFromDirectoryAsync(dir, ct).ConfigureAwait(true);
+            }
+            if (ct.IsCancellationRequested) return;
+
+            // Restore expansion across every loaded collection in one pass. Paths are absolute
+            // and unique per collection, so a single merged set expands each tree correctly
+            // without collapsing the others (and is one tree walk instead of N).
+            var merged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var set in ws.ExpandedPathsByCollection.Values)
+                foreach (var p in set) merged.Add(p);
+            if (merged.Count > 0) _collections.ApplyExpansionState(merged);
+
+            // Final active-collection restore — covers the no-persisted-path case and the case
+            // where the active-first target failed to load. Explicit assignment works while
+            // auto-select is still suspended; the scope resumes it on exit.
+            if (_collections.ActiveCollection is null)
+            {
+                var match = string.IsNullOrEmpty(persistedActivePath)
+                    ? null
+                    : _collections.AvailableCollections.FirstOrDefault(c =>
+                        string.Equals(c.SourcePath, persistedActivePath, StringComparison.OrdinalIgnoreCase));
                 _collections.ActiveCollection = match ?? _collections.AvailableCollections.FirstOrDefault();
             }
-            else
-            {
-                _collections.ActiveCollection ??= _collections.AvailableCollections.FirstOrDefault();
-            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer apply — expected, drop silently.
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to apply workspace {Name} at {Path}", ws.Name, ws.FolderPath);
         }
-        finally { _isApplyingWorkspace = false; }
+        finally
+        {
+            // Only clear the shared flags if we're still the current generation. A superseded
+            // apply resetting them would hide the skeleton / drop the persist-guard while the
+            // newer apply is still loading.
+            if (generation == _applyGeneration)
+            {
+                _isApplyingWorkspace = false;
+                _collections.IsLoading = false;
+            }
+        }
+    }
+
+    partial void OnActiveWorkspaceChanged(WorkspaceItemViewModel? value)
+    {
+        if (_suspendPersist) return;
+        // Persist the active index synchronously (cheap) so a crash mid-load still remembers
+        // the chosen workspace. Expansion / active-collection get re-persisted by their own
+        // event handlers as the async load completes.
+        Persist();
+        // Fire-and-forget the cancellable apply — it supersedes any in-flight load.
+        if (value is not null) _ = ApplyActiveAsync(value);
+    }
+
+    /// <summary>Picks which collection directory should load first (and become active). Prefers
+    /// the one matching the workspace's persisted active-collection path; otherwise the first
+    /// directory so the user sees <em>some</em> tree quickly. Null when there are none.</summary>
+    private static string? ResolveTargetDir(List<string> dirs, string? persistedActivePath)
+    {
+        if (dirs.Count == 0) return null;
+        if (!string.IsNullOrEmpty(persistedActivePath))
+        {
+            var match = dirs.FirstOrDefault(d =>
+                string.Equals(NormalizeForCompare(d), NormalizeForCompare(persistedActivePath), StringComparison.OrdinalIgnoreCase));
+            if (match is not null) return match;
+        }
+        return dirs[0];
     }
 
     /// <summary>Reacts to a collection switch: persist the new <c>ActiveCollectionPath</c> and
@@ -504,7 +568,7 @@ public partial class WorkspaceItemViewModel : ObservableObject
 
     /// <summary>Absolute paths to collections that were "Open Collection"-picked from outside
     /// the workspace's own <c>collections/</c> folder. Persisted so the user's selections
-    /// survive restarts; <see cref="WorkspacesViewModel.ApplyActive"/> loads each one
+    /// survive restarts; <see cref="WorkspacesViewModel.ApplyActiveAsync"/> loads each one
     /// in addition to the in-folder collections.</summary>
     public HashSet<string> LinkedCollections { get; init; } =
         new(StringComparer.OrdinalIgnoreCase);
@@ -524,7 +588,7 @@ public partial class WorkspaceItemViewModel : ObservableObject
     public string? ActiveGlobalEnvironmentName { get; set; }
 
     /// <summary>Loaded workspace-level inheritance payload (envs + scripts). Set by
-    /// <see cref="WorkspacesViewModel.ApplyActive"/>; consumed by the request executor's
+    /// <see cref="WorkspacesViewModel.ApplyActiveAsync"/>; consumed by the request executor's
     /// merge chain. Not persisted — recomputed from disk on every activation.</summary>
     public Vegha.Core.FileFormat.WorkspaceModel WorkspaceModel { get; set; } =
         Vegha.Core.FileFormat.WorkspaceModel.Empty;
