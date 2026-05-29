@@ -1,9 +1,9 @@
 name: Nightly
 
-# Auto-fires on every push to main. Builds Velopack installers for all
-# platforms and publishes them as a single rolling prerelease tagged
-# `nightly` — each run replaces the prior nightly's assets so the
-# Releases page stays clean.
+# Manual-only (workflow_dispatch): does NOT auto-fire on merge to main.
+# Builds Velopack installers for all platforms and publishes them as a
+# single rolling prerelease tagged `nightly` — each run replaces the prior
+# nightly's assets so the Releases page stays clean.
 #
 # Versioning: <Directory.Build.props base>-nightly.<YYYYMMDD>+<shortsha>
 # (SemVer 2.0 pre-release suffix; vpk pack accepts this verbatim).
@@ -19,8 +19,8 @@ name: Nightly
 #   ./eng/Publish-Release.ps1 -Version X.Y.Z
 # or the "Release" workflow's "Run workflow" button.
 on:
-  push:
-    branches: [main]
+  # No push trigger: nightly must not auto-run on merge to main. Kick it off
+  # by hand from the Actions tab ("Run workflow") when a nightly is wanted.
   workflow_dispatch:
 
 env:
@@ -162,7 +162,7 @@ jobs:
 
             - Version: `${{ needs.resolve.outputs.version }}`
             - Commit: ${{ github.sha }}
-            - Built: ${{ github.run_id }} on ${{ github.event.head_commit.timestamp }}
+            - Built: ${{ github.run_id }}
 
             These builds are **unsigned** — Windows SmartScreen and macOS Gatekeeper will
             warn on launch. For verified, code-signed installs use the latest

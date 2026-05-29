@@ -24,6 +24,21 @@
             <Setter Property="Padding" Value="0" />
             <Setter Property="Cursor" Value="Hand" />
         </Style>
+        <!-- Variable rows: destructive ✕ delete grouped away from the secret toggle,
+             hidden at rest, revealed (and hit-testable) only on row-hover (audit §07.4)
+             so it can't be mis-clicked; danger color on the delete's own hover only. -->
+        <Style Selector="Border.varRow Button.del">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
+        </Style>
+        <Style Selector="Border.varRow:pointerover Button.del">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="IsHitTestVisible" Value="True" />
+        </Style>
+        <Style Selector="Button.del:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource StatusErrBrush}" />
+        </Style>
         <Style Selector="Button.swatch">
             <Setter Property="Width" Value="28" />
             <Setter Property="Height" Value="28" />
@@ -113,12 +128,26 @@
 
                 <ScrollViewer>
                     <StackPanel Margin="0,4,0,0">
-                        <TextBlock IsVisible="{Binding !Filtered.Count}"
-                                   Text="No environments — click + to create one, or ⤓ to import."
-                                   FontSize="10" FontStyle="Italic"
-                                   Foreground="{DynamicResource Text3Brush}"
-                                   TextWrapping="Wrap"
-                                   Padding="14,16" />
+                        <StackPanel IsVisible="{Binding !Filtered.Count}"
+                                    HorizontalAlignment="Center" Margin="14,40,14,0"
+                                    Spacing="10" MaxWidth="200">
+                            <Border Width="44" Height="44" CornerRadius="22"
+                                    Background="{DynamicResource Bg3Brush}"
+                                    HorizontalAlignment="Center">
+                                <icons:Icon Kind="Env" Size="20"
+                                            Foreground="{DynamicResource Text3Brush}"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Text="No environments yet"
+                                       FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text1Brush}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="Click + to create one, or ⤓ to import."
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
                         <!-- Master list: rows are just [color-dot] [name]. All per-env
                              actions (rename / copy / delete / color / +var / Reset / Save)
                              live in the detail-pane header for the selected env, matching
@@ -145,7 +174,7 @@
                                         <TextBlock Grid.Column="2"
                                                    Text="✓" FontWeight="Bold"
                                                    FontSize="14"
-                                                   Foreground="#16A34A"
+                                                   Foreground="{DynamicResource StatusOkBrush}"
                                                    Margin="8,0,4,0"
                                                    VerticalAlignment="Center">
                                             <TextBlock.IsVisible>
@@ -178,7 +207,10 @@
                     BorderThickness="0,0,0,1"
                     Padding="14,10"
                     IsVisible="{Binding SelectedEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}">
-                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto,Auto,Auto">
+                <!-- Env-level actions (rename / duplicate / delete) sit next to the env
+                     name on the left so "edit" clearly means "edit the env name"; the
+                     variable actions (Add / Reset / Save) stay grouped on the right. -->
+                <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto,Auto">
                     <Button Grid.Column="0"
                             Click="OnSetColor_Click"
                             Background="Transparent" BorderThickness="0"
@@ -196,10 +228,12 @@
                                VerticalAlignment="Center" />
                     <Button Grid.Column="2"
                             Click="OnRename_Click"
-                            ToolTip.Tip="Rename"
+                            ToolTip.Tip="Rename environment"
                             Background="Transparent" BorderThickness="0"
                             Foreground="{DynamicResource Text2Brush}"
-                            Width="28" Height="28" Padding="0">
+                            Width="28" Height="28" Padding="0"
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center">
                         <TextBlock Text="✎" FontSize="14" />
                     </Button>
                     <Button Grid.Column="3"
@@ -214,24 +248,24 @@
                             Click="OnDelete_Click"
                             ToolTip.Tip="Delete"
                             Background="Transparent" BorderThickness="0"
-                            Foreground="#DC2626"
+                            Foreground="{DynamicResource StatusErrBrush}"
                             Width="28" Height="28" Padding="0">
                         <icons:Icon Kind="Trash" Size="13" />
                     </Button>
-                    <Button Grid.Column="5"
+                    <Button Grid.Column="6"
                             Command="{Binding AddVariableCommand}"
                             Content="+ Add variable"
                             Margin="6,0,0,0"
                             Background="{DynamicResource Bg3Brush}"
                             Foreground="{DynamicResource Text0Brush}"
                             Padding="10,4" />
-                    <Button Grid.Column="6"
+                    <Button Grid.Column="7"
                             Command="{Binding ResetCommand}"
                             Content="Reset"
                             Background="Transparent" BorderThickness="0"
                             Foreground="{DynamicResource AccentBrush}"
                             Padding="10,4" />
-                    <Button Grid.Column="7"
+                    <Button Grid.Column="8"
                             Command="{Binding SaveCommand}"
                             Content="Save"
                             Background="{DynamicResource AccentBrush}"
@@ -252,9 +286,11 @@
                 <ItemsControl ItemsSource="{Binding Variables}" Margin="14,8">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:EnvVarRow">
-                            <Grid ColumnDefinitions="Auto,260,*,Auto,Auto" Margin="0,3">
+                            <Border Classes="varRow" Background="Transparent">
+                              <Grid ColumnDefinitions="Auto,260,*,Auto,Auto,Auto" Margin="0,2">
                                 <CheckBox Grid.Column="0"
                                           IsChecked="{Binding IsEnabled}"
+                                          VerticalAlignment="Center"
                                           ToolTip.Tip="Enabled" />
                                 <TextBox Grid.Column="1"
                                          Text="{Binding Name}"
@@ -320,21 +356,31 @@
                                         </StackPanel>
                                     </TextBox.InnerRightContent>
                                 </TextBox>
-                                <CheckBox Grid.Column="3"
+                                <!-- divider: separates the key=value group from the secret + delete group -->
+                                <Border Grid.Column="3" Width="1" Margin="12,4"
+                                        Background="{DynamicResource Border1Brush}" />
+                                <CheckBox Grid.Column="4"
                                           IsChecked="{Binding IsSecret}"
                                           Content="secret"
-                                          Margin="10,0,4,0"
-                                          VerticalAlignment="Center" />
-                                <Button Grid.Column="4"
+                                          Margin="2,0"
+                                          VerticalAlignment="Center"
+                                          ToolTip.Tip="Mark as secret (mask the value)" />
+                                <Button Grid.Column="5"
+                                        Classes="del"
                                         Tag="{Binding}"
                                         Click="OnRemoveVariable_Click"
                                         Background="Transparent" BorderThickness="0"
-                                        Foreground="{DynamicResource Text2Brush}"
                                         Width="22" Height="22" Padding="0"
-                                        ToolTip.Tip="Remove">
-                                    <TextBlock Text="✕" FontSize="12" />
+                                        Margin="8,0,0,0"
+                                        VerticalAlignment="Center"
+                                        HorizontalContentAlignment="Center"
+                                        VerticalContentAlignment="Center"
+                                        Cursor="Hand"
+                                        ToolTip.Tip="Remove variable">
+                                    <icons:Icon Kind="Close" Size="12" />
                                 </Button>
-                            </Grid>
+                              </Grid>
+                            </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

@@ -64,7 +64,7 @@
 
         <!-- ===== Merge banner (above the editor) ===== -->
         <Border DockPanel.Dock="Top" Padding="10,8"
-                Background="#22D97706"
+                Background="{DynamicResource StatusWarnSoftBrush}"
                 BorderBrush="{DynamicResource StatusWarnBrush}"
                 BorderThickness="0,0,0,1"
                 IsVisible="{Binding IsMergeMode}">

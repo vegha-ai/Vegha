@@ -26,6 +26,13 @@
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#22cba6f7" />
     <SolidColorBrush x:Key="AccentSoftStrongBrush" Color="#3acba6f7" />
 
+    <!-- Fluent input-state overrides (audit §04): keep the input background on hover/focus
+         and use the accent border instead of Fluent's focused-state defaults. -->
+    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#11111b" />
+    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#11111b" />
+    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#45475a" />
+    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#cba6f7" />
+
     <SolidColorBrush x:Key="MethodGetBrush" Color="#a6e3a1" />
     <SolidColorBrush x:Key="MethodPostBrush" Color="#f9e2af" />
     <SolidColorBrush x:Key="MethodPutBrush" Color="#89b4fa" />
@@ -34,11 +41,29 @@
     <SolidColorBrush x:Key="MethodHeadBrush" Color="#94e2d5" />
     <SolidColorBrush x:Key="MethodOptionsBrush" Color="#7f849c" />
 
+    <!-- Status / semantic — Catppuccin Mocha green/peach/red/blue + soft tints. -->
     <SolidColorBrush x:Key="StatusOkBrush" Color="#a6e3a1" />
     <SolidColorBrush x:Key="StatusWarnBrush" Color="#fab387" />
     <SolidColorBrush x:Key="StatusErrBrush" Color="#f38ba8" />
+    <SolidColorBrush x:Key="StatusInfoBrush" Color="#89b4fa" />
+    <SolidColorBrush x:Key="StatusOkSoftBrush" Color="#26a6e3a1" />
+    <SolidColorBrush x:Key="StatusWarnSoftBrush" Color="#26fab387" />
+    <SolidColorBrush x:Key="StatusErrSoftBrush" Color="#26f38ba8" />
+    <SolidColorBrush x:Key="StatusInfoSoftBrush" Color="#2689b4fa" />
 
     <SolidColorBrush x:Key="CodeBgBrush" Color="#11111b" />
+
+    <!-- Syntax highlighting — Catppuccin Mocha family. Consumed by EditorSyntaxTheme. -->
+    <SolidColorBrush x:Key="CodeCommentBrush" Color="#6c7086" />
+    <SolidColorBrush x:Key="CodeTagBrush" Color="#89b4fa" />
+    <SolidColorBrush x:Key="CodeAttrBrush" Color="#cba6f7" />
+    <SolidColorBrush x:Key="CodeAttrValueBrush" Color="#a6e3a1" />
+    <SolidColorBrush x:Key="CodeStringBrush" Color="#a6e3a1" />
+    <SolidColorBrush x:Key="CodeNumberBrush" Color="#f9e2af" />
+    <SolidColorBrush x:Key="CodeKeywordBrush" Color="#cba6f7" />
+    <SolidColorBrush x:Key="CodeBoolBrush" Color="#94e2d5" />
+    <SolidColorBrush x:Key="CodeFunctionBrush" Color="#f9e2af" />
+    <SolidColorBrush x:Key="CodePunctBrush" Color="#9399b2" />
 
     <SolidColorBrush x:Key="SelectionBrush" Color="#44cba6f7" />
 

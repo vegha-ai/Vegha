@@ -30,9 +30,8 @@ name: Sign Windows Installer & Draft Release
 # role on the signing account. The job fails fast if any secret is missing.
 
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
+  # No pull_request:closed trigger: this must not auto-run when a PR merges
+  # into main. Run it by hand from the Actions tab when an installer is wanted.
   workflow_dispatch:
     inputs:
       dry_run:

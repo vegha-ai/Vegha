@@ -46,7 +46,7 @@
 
         <!-- Error strip -->
         <Border DockPanel.Dock="Top"
-                Background="#3F1A1A"
+                Background="{DynamicResource StatusErrSoftBrush}"
                 Padding="20,8"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
             <TextBlock Text="{Binding ErrorMessage}" FontSize="11"

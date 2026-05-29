@@ -11,9 +11,10 @@
     <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#ececec" />
 
+    <!-- Borders stepped up for visible field edges on white (audit §07.1). -->
     <SolidColorBrush x:Key="Border0Brush" Color="#e5e5e5" />
-    <SolidColorBrush x:Key="Border1Brush" Color="#d4d4d4" />
-    <SolidColorBrush x:Key="Border2Brush" Color="#b3b3b3" />
+    <SolidColorBrush x:Key="Border1Brush" Color="#c4c4c4" />
+    <SolidColorBrush x:Key="Border2Brush" Color="#a6a6a6" />
 
     <SolidColorBrush x:Key="Text0Brush" Color="#1f1f1f" />
     <SolidColorBrush x:Key="Text1Brush" Color="#3b3b3b" />
@@ -26,6 +27,13 @@
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#220078d4" />
     <SolidColorBrush x:Key="AccentSoftStrongBrush" Color="#380078d4" />
 
+    <!-- Fluent input-state overrides (audit §04): keep the input background on hover/focus
+         and use the accent border instead of Fluent's focused-state defaults. -->
+    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#ffffff" />
+    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#ffffff" />
+    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#a6a6a6" />
+    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#0078d4" />
+
     <SolidColorBrush x:Key="MethodGetBrush" Color="#16825d" />
     <SolidColorBrush x:Key="MethodPostBrush" Color="#bf8803" />
     <SolidColorBrush x:Key="MethodPutBrush" Color="#0078d4" />
@@ -34,11 +42,29 @@
     <SolidColorBrush x:Key="MethodHeadBrush" Color="#008575" />
     <SolidColorBrush x:Key="MethodOptionsBrush" Color="#5c5c5c" />
 
+    <!-- Status / semantic — VS Code green/amber/red + blue info + soft tints. -->
     <SolidColorBrush x:Key="StatusOkBrush" Color="#16825d" />
     <SolidColorBrush x:Key="StatusWarnBrush" Color="#bf8803" />
     <SolidColorBrush x:Key="StatusErrBrush" Color="#d13438" />
+    <SolidColorBrush x:Key="StatusInfoBrush" Color="#0078d4" />
+    <SolidColorBrush x:Key="StatusOkSoftBrush" Color="#2616825d" />
+    <SolidColorBrush x:Key="StatusWarnSoftBrush" Color="#26bf8803" />
+    <SolidColorBrush x:Key="StatusErrSoftBrush" Color="#26d13438" />
+    <SolidColorBrush x:Key="StatusInfoSoftBrush" Color="#260078d4" />
 
     <SolidColorBrush x:Key="CodeBgBrush" Color="#f8f8f8" />
+
+    <!-- Syntax highlighting — VS Code Light palette. Consumed by EditorSyntaxTheme. -->
+    <SolidColorBrush x:Key="CodeCommentBrush" Color="#008000" />
+    <SolidColorBrush x:Key="CodeTagBrush" Color="#800000" />
+    <SolidColorBrush x:Key="CodeAttrBrush" Color="#0070C9" />
+    <SolidColorBrush x:Key="CodeAttrValueBrush" Color="#0451A5" />
+    <SolidColorBrush x:Key="CodeStringBrush" Color="#A31515" />
+    <SolidColorBrush x:Key="CodeNumberBrush" Color="#098658" />
+    <SolidColorBrush x:Key="CodeKeywordBrush" Color="#0000FF" />
+    <SolidColorBrush x:Key="CodeBoolBrush" Color="#0070C9" />
+    <SolidColorBrush x:Key="CodeFunctionBrush" Color="#795E26" />
+    <SolidColorBrush x:Key="CodePunctBrush" Color="#1f1f1f" />
 
     <SolidColorBrush x:Key="SelectionBrush" Color="#330078d4" />
 

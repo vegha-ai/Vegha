@@ -39,7 +39,7 @@
                 <DataTemplate x:DataType="vm:WorkspaceItemViewModel">
                     <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="2,4">
                         <Border Grid.Column="0" Width="22" Height="22" CornerRadius="4"
-                                Background="#3B82F6" Margin="0,0,10,0" VerticalAlignment="Center">
+                                Background="{DynamicResource AccentBrush}" Margin="0,0,10,0" VerticalAlignment="Center">
                             <TextBlock Text="{Binding Initials}" FontSize="10" FontWeight="Bold"
                                        Foreground="White"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />

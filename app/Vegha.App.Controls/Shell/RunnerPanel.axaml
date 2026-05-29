@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:runner="using:Vegha.App.ViewModels.Runner"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="700"
              x:Class="Vegha.App.Controls.Shell.RunnerPanel"
              x:DataType="runner:RunnerSidebarViewModel">
@@ -29,14 +30,26 @@
 
         <ScrollViewer>
             <StackPanel Margin="0,4,0,0">
-                <TextBlock IsVisible="{Binding !AvailableCollections.Count}"
-                           Text="Open a collection to start a run."
-                           Foreground="{DynamicResource Text3Brush}"
-                           FontSize="11" FontStyle="Italic"
-                           TextWrapping="Wrap"
-                           Padding="14,40,14,0"
-                           HorizontalAlignment="Stretch"
-                           TextAlignment="Center" />
+                <StackPanel IsVisible="{Binding !AvailableCollections.Count}"
+                            HorizontalAlignment="Center" Margin="14,48,14,0"
+                            Spacing="10" MaxWidth="220">
+                    <Border Width="44" Height="44" CornerRadius="22"
+                            Background="{DynamicResource Bg3Brush}"
+                            HorizontalAlignment="Center">
+                        <icons:Icon Kind="FlowRunner" Size="20"
+                                    Foreground="{DynamicResource Text3Brush}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="No collection open"
+                               FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text1Brush}"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="Open a collection to start a run."
+                               Foreground="{DynamicResource Text2Brush}"
+                               FontSize="11"
+                               TextWrapping="Wrap" TextAlignment="Center"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
 
                 <Border IsVisible="{Binding ActiveCollection, Converter={x:Static ObjectConverters.IsNotNull}}"
                         Margin="10,8" Padding="10"

@@ -12,6 +12,23 @@
     <UserControl.Resources>
         <conv:BoolToPasswordCharConverter x:Key="BoolToPasswordCharConverter" />
     </UserControl.Resources>
+    <UserControl.Styles>
+        <!-- Variable rows: the destructive ✕ delete is grouped away from the secret
+             toggle, hidden at rest, and revealed only on row-hover (audit §07.4) so it
+             can't be mis-clicked. Danger color appears on the delete's own hover only. -->
+        <Style Selector="Border.varRow Button.del">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
+        </Style>
+        <Style Selector="Border.varRow:pointerover Button.del">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="IsHitTestVisible" Value="True" />
+        </Style>
+        <Style Selector="Button.del:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource StatusErrBrush}" />
+        </Style>
+    </UserControl.Styles>
     <DockPanel Background="{DynamicResource Bg2Brush}">
         <!-- Toolbar -->
         <Border DockPanel.Dock="Top"
@@ -60,9 +77,11 @@
             <ItemsControl ItemsSource="{Binding Variables}" Margin="14,8">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:EnvVarRow">
-                        <Grid ColumnDefinitions="Auto,260,*,Auto,Auto" Margin="0,3">
+                        <Border Classes="varRow" Background="Transparent">
+                          <Grid ColumnDefinitions="Auto,260,*,Auto,Auto,Auto" Margin="0,2">
                             <CheckBox Grid.Column="0"
                                       IsChecked="{Binding IsEnabled}"
+                                      VerticalAlignment="Center"
                                       ToolTip.Tip="Enabled" />
                             <TextBox Grid.Column="1"
                                      Text="{Binding Name}"
@@ -93,20 +112,31 @@
                                     </ToggleButton>
                                 </TextBox.InnerRightContent>
                             </TextBox>
-                            <CheckBox Grid.Column="3"
+                            <!-- divider: separates the key=value group from the secret + delete group -->
+                            <Border Grid.Column="3" Width="1" Margin="12,4"
+                                    Background="{DynamicResource Border1Brush}" />
+                            <CheckBox Grid.Column="4"
                                       IsChecked="{Binding IsSecret}"
                                       Content="secret"
-                                      Margin="8,0"
+                                      Margin="2,0"
+                                      VerticalAlignment="Center"
                                       ToolTip.Tip="Mark as secret (mask the value)" />
-                            <Button Grid.Column="4"
+                            <Button Grid.Column="5"
+                                    Classes="del"
                                     Tag="{Binding}"
                                     Click="OnRemove_Click"
-                                    Content="✕"
                                     Background="Transparent" BorderThickness="0"
-                                    Foreground="{DynamicResource Text2Brush}"
                                     Width="28" Height="28" Padding="0"
-                                    ToolTip.Tip="Remove" />
-                        </Grid>
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    Cursor="Hand"
+                                    ToolTip.Tip="Remove variable">
+                                <icons:Icon Kind="Close" Size="12" />
+                            </Button>
+                          </Grid>
+                        </Border>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

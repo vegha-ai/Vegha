@@ -1,24 +1,27 @@
 using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Media;
-using Avalonia.Styling;
 using AvaloniaEdit.Highlighting;
 
 namespace Vegha.App.Controls.Workspace;
 
 /// <summary>
-/// Repaints AvaloniaEdit syntax-highlighting definitions for readability on our
-/// dark / light theme variants. The stock XML / JSON / JavaScript palettes that
-/// ship with AvaloniaEdit are tuned for a generic mid-grey theme — XML tags
-/// render at ~#600000, attribute names at ~#990099, attribute values at navy.
-/// Those look fine on light backgrounds but become near-illegible on our dark
-/// code background (#0a0c0f).
+/// Repaints AvaloniaEdit syntax-highlighting definitions so the editor honors the
+/// <em>active</em> theme variant, not just a generic dark/light split. The stock XML /
+/// JSON / JavaScript palettes that ship with AvaloniaEdit are tuned for a mid-grey
+/// theme and look wrong on both our dark code backgrounds and the themed variants
+/// (Nord, Dracula, Solarized, …).
+///
+/// Each highlight color is mapped — by category name — to one of the per-theme
+/// <c>Code*Brush</c> tokens declared in <c>Themes/Tokens/*.axaml</c> and resolved from
+/// the application resource dictionary for the current <see cref="ThemeVariant"/>. That
+/// makes string/key/number/tag hues come from each theme's own family, so the response
+/// body finally feels native to Nord/Dracula/etc. instead of showing VS-Code blue
+/// everywhere (audit §07.6).
 ///
 /// On the first call we subscribe once to <see cref="Application.ActualThemeVariantProperty"/>
-/// so any definitions we've already patched get repainted when the user flips
-/// theme without restarting the app. Each definition is patched ONCE per theme
-/// change — re-patching the same definition with the same palette is a no-op
-/// for the underlying brushes.
+/// so every definition we've patched is repainted when the user flips theme without
+/// restarting. Re-patching the same definition with the same palette is a no-op.
 /// </summary>
 internal static class EditorSyntaxTheme
 {
@@ -53,11 +56,10 @@ internal static class EditorSyntaxTheme
 
     private static void ApplyPalette(IHighlightingDefinition def)
     {
-        var isDark = IsDark();
         foreach (var color in def.NamedHighlightingColors)
         {
-            var hex = ChooseHexByCategory(color.Name, isDark);
-            if (hex is not null && Color.TryParse(hex, out var c))
+            var key = ChooseBrushKeyByCategory(color.Name);
+            if (key is not null && TryGetThemeColor(key, out var c))
             {
                 color.Foreground = new SimpleHighlightingBrush(c);
             }
@@ -66,45 +68,48 @@ internal static class EditorSyntaxTheme
 
     /// <summary>Category-based name match so we tolerate naming drift across
     /// AvaloniaEdit versions (XmlTag vs Tag vs TagName, XmlAttribute vs
-    /// AttributeName, etc.). Anything containing "tag" / "element" gets the
-    /// "markup element" treatment; "attribute" + "value" gets the value color;
-    /// "attribute" alone (no "value") gets the attribute-name color; and so on.
-    /// Returns <c>null</c> when no category matches, in which case we leave
-    /// the original color alone.</summary>
-    private static string? ChooseHexByCategory(string name, bool isDark)
+    /// AttributeName, etc.). Each category resolves to one of the per-theme
+    /// <c>Code*Brush</c> token keys. Order matters: more specific matches first.
+    /// Returns <c>null</c> when no category matches, in which case we leave the
+    /// original color alone.</summary>
+    private static string? ChooseBrushKeyByCategory(string name)
     {
         var n = name.ToLowerInvariant();
-        // Order matters: more specific matches must come first.
-        if (n.Contains("comment"))                       return isDark ? "#6A9955" : "#008000";
-        if (n.Contains("cdata"))                         return isDark ? "#C586C0" : "#6F42C1";
-        if (n.Contains("doctype"))                       return isDark ? "#9CDCFE" : "#E50000";
+        if (n.Contains("comment"))                       return "CodeCommentBrush";
+        if (n.Contains("cdata"))                         return "CodeKeywordBrush";
+        if (n.Contains("doctype"))                       return "CodeAttrBrush";
         if (n.Contains("declaration") || n.Contains("processinginstruction"))
-                                                         return isDark ? "#569CD6" : "#800000";
+                                                         return "CodeTagBrush";
         if (n.Contains("attribute") && n.Contains("value"))
-                                                         return isDark ? "#CE9178" : "#0451A5";
-        if (n.Contains("attribute"))                     return isDark ? "#9CDCFE" : "#E50000";
-        if (n.Contains("tag") || n.Contains("element"))  return isDark ? "#569CD6" : "#800000";
-        if (n.Contains("brokenentity"))                  return isDark ? "#F48771" : "#C61C1C";
-        if (n.Contains("entity"))                        return isDark ? "#D7BA7D" : "#9B4F00";
-        if (n.Contains("string"))                        return isDark ? "#CE9178" : "#A31515";
-        if (n.Contains("digit") || n.Contains("number")) return isDark ? "#B5CEA8" : "#098658";
-        if (n.Contains("bool") || n.Contains("null"))    return isDark ? "#569CD6" : "#0070C9";
+                                                         return "CodeAttrValueBrush";
+        if (n.Contains("attribute"))                     return "CodeAttrBrush";
+        if (n.Contains("tag") || n.Contains("element"))  return "CodeTagBrush";
+        if (n.Contains("entity"))                        return "CodeFunctionBrush";
+        if (n.Contains("string"))                        return "CodeStringBrush";
+        if (n.Contains("digit") || n.Contains("number")) return "CodeNumberBrush";
+        if (n.Contains("bool") || n.Contains("null"))    return "CodeBoolBrush";
         if (n.Contains("field") || n.Contains("key") || n.Contains("property"))
-                                                         return isDark ? "#9CDCFE" : "#0070C9";
-        if (n.Contains("keyword"))                       return isDark ? "#C586C0" : "#0000FF";
+                                                         return "CodeAttrBrush";
+        if (n.Contains("keyword"))                       return "CodeKeywordBrush";
         if (n.Contains("method") || n.Contains("function") || n.Contains("call"))
-                                                         return isDark ? "#DCDCAA" : "#795E26";
+                                                         return "CodeFunctionBrush";
         if (n.Contains("punctuation") || n.Contains("symbol") || n.Contains("operator"))
-                                                         return isDark ? "#D4D4D4" : "#15181D";
+                                                         return "CodePunctBrush";
         return null;
     }
 
-    private static bool IsDark()
+    private static bool TryGetThemeColor(string key, out Color color)
     {
         var app = Application.Current;
-        if (app is null) return true; // before-startup default
-        return app.ActualThemeVariant == ThemeVariant.Dark
-            || app.ActualThemeVariant == ThemeVariant.Default; // honor system-dark
-    }
+        if (app is not null
+            && app.TryGetResource(key, app.ActualThemeVariant, out var res)
+            && res is ISolidColorBrush brush)
+        {
+            color = brush.Color;
+            return true;
+        }
 
+        color = default;
+        return false;
+    }
 }

@@ -5,6 +5,7 @@
              xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:ws="using:Vegha.App.Controls.Workspace"
              xmlns:icons="using:Vegha.App.Controls.Icons"
+             xmlns:conv="using:Vegha.App.Controls.Converters"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="360"
              x:Class="Vegha.App.Controls.Workspace.ResponseDisplay"
              x:DataType="vm:RequestEditorViewModel">
@@ -22,12 +23,7 @@
                                Margin="0,0,14,0"
                                VerticalAlignment="Center" />
 
-                    <TextBlock Grid.Column="1"
-                               Text="(no response yet — press Send)"
-                               IsVisible="{Binding !HasResponse}"
-                               FontSize="11" FontStyle="Italic"
-                               Foreground="{DynamicResource Text3Brush}"
-                               VerticalAlignment="Center" />
+                    <!-- (empty-state hint moved into the response body below) -->
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
                                 Margin="0,0,14,0"
@@ -35,7 +31,7 @@
                                 VerticalAlignment="Center">
                         <TextBlock Text="Status:" Foreground="{DynamicResource Text2Brush}" FontSize="11" />
                         <TextBlock FontWeight="SemiBold" FontSize="12"
-                                   Foreground="{DynamicResource StatusOkBrush}">
+                                   Foreground="{Binding ResponseStatusCode, Converter={x:Static conv:StatusCategoryToBrushConverter.Instance}}">
                             <Run Text="{Binding ResponseStatusCode}" />
                             <Run Text=" " />
                             <Run Text="{Binding ResponseStatusText}" />
@@ -70,8 +66,8 @@
             <!-- Error banner -->
             <Border DockPanel.Dock="Top"
                     IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
-                    Background="#26DC2626"
-                    BorderBrush="#80DC2626"
+                    Background="{DynamicResource StatusErrSoftBrush}"
+                    BorderBrush="{DynamicResource StatusErrBrush}"
                     BorderThickness="0,0,0,1"
                     Padding="12,8">
                 <TextBlock Text="{Binding ErrorMessage}"
@@ -80,8 +76,12 @@
                            TextWrapping="Wrap" />
             </Border>
 
-            <!-- Subtabs -->
+            <!-- Body area: response subtabs once a response exists, otherwise a
+                 designed empty state (audit §07.3). The Grid lets the empty state
+                 fill the body region below the status line. -->
+            <Grid>
             <TabControl Classes="subtabs"
+                        IsVisible="{Binding HasResponse}"
                         SelectedIndex="{Binding ResponseTabIndex}">
                 <!-- Body — switches between text / image / PDF based on Content-Type.
                      Uses Grid (not DockPanel) for the body-mode children so the active
@@ -484,6 +484,46 @@
                     </ScrollViewer>
                 </TabItem>
             </TabControl>
+
+            <!-- Empty state — shown until the first response arrives. -->
+            <StackPanel IsVisible="{Binding !HasResponse}"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Spacing="12" MaxWidth="380">
+                <Border Width="52" Height="52" CornerRadius="26"
+                        Background="{DynamicResource Bg3Brush}"
+                        HorizontalAlignment="Center">
+                    <icons:Icon Kind="Send" Size="22"
+                                Foreground="{DynamicResource Text3Brush}"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="No response yet"
+                           FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text1Brush}"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="Send this request and the response — status, headers, timing and body — appears here."
+                           FontSize="12"
+                           Foreground="{DynamicResource Text2Brush}"
+                           TextWrapping="Wrap" TextAlignment="Center"
+                           HorizontalAlignment="Center" />
+                <Border Background="{DynamicResource Bg3Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        BorderThickness="1" CornerRadius="4"
+                        Padding="10,4" HorizontalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Name="SendShortcutChip"
+                                   Text="Ctrl + Enter"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text1Brush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="Send"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+            </Grid>
         </DockPanel>
 
         <!-- Busy overlay — covers the entire response panel while a request is in flight.

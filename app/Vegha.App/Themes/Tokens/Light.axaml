@@ -11,9 +11,11 @@
     <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#eef0f3" />
 
+    <!-- Borders — stepped up from the original near-invisible #d6d9df/#b8bdc6 so
+         inputs read as bordered fields on white instead of floating (audit §07.1). -->
     <SolidColorBrush x:Key="Border0Brush" Color="#e6e8ec" />
-    <SolidColorBrush x:Key="Border1Brush" Color="#d6d9df" />
-    <SolidColorBrush x:Key="Border2Brush" Color="#b8bdc6" />
+    <SolidColorBrush x:Key="Border1Brush" Color="#c2c7d0" />
+    <SolidColorBrush x:Key="Border2Brush" Color="#a6acb8" />
 
     <SolidColorBrush x:Key="Text0Brush" Color="#15181d" />
     <SolidColorBrush x:Key="Text1Brush" Color="#41464f" />
@@ -26,6 +28,13 @@
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#1F3b82f6" />
     <SolidColorBrush x:Key="AccentSoftStrongBrush" Color="#383b82f6" />
 
+    <!-- Fluent input-state overrides (audit §04): keep the input background on hover/focus
+         and use the accent border instead of Fluent's focused-state defaults. -->
+    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#ffffff" />
+    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#ffffff" />
+    <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#a6acb8" />
+    <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#3b82f6" />
+
     <SolidColorBrush x:Key="MethodGetBrush" Color="#16a34a" />
     <SolidColorBrush x:Key="MethodPostBrush" Color="#ca8a04" />
     <SolidColorBrush x:Key="MethodPutBrush" Color="#2563eb" />
@@ -34,11 +43,30 @@
     <SolidColorBrush x:Key="MethodHeadBrush" Color="#0891b2" />
     <SolidColorBrush x:Key="MethodOptionsBrush" Color="#475569" />
 
-    <SolidColorBrush x:Key="StatusOkBrush" Color="#16a34a" />
-    <SolidColorBrush x:Key="StatusWarnBrush" Color="#d97706" />
-    <SolidColorBrush x:Key="StatusErrBrush" Color="#dc2626" />
+    <!-- Status / semantic — distinct from method hues; light soft tints are the
+         opaque pastels from the audit so they stay crisp on white. -->
+    <SolidColorBrush x:Key="StatusOkBrush" Color="#1f9d57" />
+    <SolidColorBrush x:Key="StatusWarnBrush" Color="#d08700" />
+    <SolidColorBrush x:Key="StatusErrBrush" Color="#dc3a3a" />
+    <SolidColorBrush x:Key="StatusInfoBrush" Color="#2f6df0" />
+    <SolidColorBrush x:Key="StatusOkSoftBrush" Color="#e7f5ed" />
+    <SolidColorBrush x:Key="StatusWarnSoftBrush" Color="#fdf3e0" />
+    <SolidColorBrush x:Key="StatusErrSoftBrush" Color="#fdeaea" />
+    <SolidColorBrush x:Key="StatusInfoSoftBrush" Color="#eaf1fe" />
 
     <SolidColorBrush x:Key="CodeBgBrush" Color="#f8f9fb" />
+
+    <!-- Syntax highlighting — VS Code Light palette. Consumed by EditorSyntaxTheme. -->
+    <SolidColorBrush x:Key="CodeCommentBrush" Color="#008000" />
+    <SolidColorBrush x:Key="CodeTagBrush" Color="#800000" />
+    <SolidColorBrush x:Key="CodeAttrBrush" Color="#0070C9" />
+    <SolidColorBrush x:Key="CodeAttrValueBrush" Color="#0451A5" />
+    <SolidColorBrush x:Key="CodeStringBrush" Color="#A31515" />
+    <SolidColorBrush x:Key="CodeNumberBrush" Color="#098658" />
+    <SolidColorBrush x:Key="CodeKeywordBrush" Color="#0000FF" />
+    <SolidColorBrush x:Key="CodeBoolBrush" Color="#0070C9" />
+    <SolidColorBrush x:Key="CodeFunctionBrush" Color="#795E26" />
+    <SolidColorBrush x:Key="CodePunctBrush" Color="#15181D" />
 
     <SolidColorBrush x:Key="SelectionBrush" Color="#333b82f6" />
 
