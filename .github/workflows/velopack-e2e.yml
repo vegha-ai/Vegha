@@ -5,26 +5,21 @@ name: Velopack auto-update e2e
 # feed, then runs the launcher with --VelopackUpdate to verify the update is
 # detected and applied without losing user state.
 #
-# Triggered three ways:
+# Triggered two ways (never automatically on PRs or merges to main):
 #   - workflow_dispatch (manual button)
 #   - on push of v*.*.* tags so every release gets an upgrade-path smoke
 #     before users see it (runs alongside the release.yml packaging job)
-#   - on PRs that touch packaging-relevant files so we catch regressions
-#     before merge
 #
 # Runs on Windows; the same shape transposes to macOS but we keep it
 # Windows-only here to limit CI minutes.
 
 on:
+  # No pull_request trigger: must not auto-run on PRs. Still runs on release
+  # tags (so every release gets an upgrade-path smoke) and on manual dispatch.
   workflow_dispatch:
   push:
     tags:
       - 'v*.*.*'
-  pull_request:
-    paths:
-      - 'app/Vegha.App/**'
-      - '.github/workflows/velopack-e2e.yml'
-      - '.github/workflows/release.yml'
 
 jobs:
   e2e-update:
