@@ -93,10 +93,17 @@ public partial class MainWindow : Window
         // now a modal dialog — no in-memory tab to clean up.)
 
         // Welcome card buttons (only relevant when no tabs are open).
-        WelcomeCard.NewRequestRequested += (_, _) =>
-            App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>()?.OpenDraft();
+        WelcomeCard.NewRequestRequested += (_, _) => CreateScratchRequest();
         WelcomeCard.OpenCollectionRequested += async (_, _) => await OpenCollectionFolderAsync();
         WelcomeCard.ImportRequested += async (_, _) => await OpenImportWizardAsync();
+
+        // Tab strip: "+" / per-tab right-click menu actions that need host services (file IO,
+        // dialogs, the scratch + collection stores) bubble up here.
+        RequestTabStripControl.NewRequestRequested += (_, _) => CreateScratchRequest();
+        RequestTabStripControl.CloneRequested += (_, tab) => CloneTabToScratch(tab);
+        RequestTabStripControl.RenameRequested += async (_, tab) => await RenameTabAsync(tab);
+        RequestTabStripControl.RevertRequested += async (_, tab) => await RevertTabAsync(tab);
+        RequestTabStripControl.SaveToCollectionRequested += async (_, tab) => await SaveTabToCollectionAsync(tab);
 
         // Codegen panel close → collapse right column (View menu / </> button re-opens).
         CodegenPaneRef.CloseRequested += (_, _) => SetCodePanelCollapsed(true);
@@ -144,18 +151,40 @@ public partial class MainWindow : Window
             };
         }
 
-        // Persist on every tab change. Wire here (cheap event-only) so even tabs the user
-        // opens before the deferred restore completes still persist.
+        // Tab persistence is DB-backed: the full editor state of every open tab (including
+        // unsaved/dirty edits and untitled scratch drafts) is snapshotted to tabs.db at
+        // checkpoints — structural changes (open/close/reorder), collection switch, workspace
+        // switch, and app close — so nothing is lost across switches or restarts. We deliberately
+        // do NOT persist on every keystroke; in-memory editor state is authoritative between
+        // checkpoints.
         var tabs = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
-        var tabStore = App.Services.GetService<TabSessionStore>();
-        if (tabs is not null && tabStore is not null)
+        var tabStateStore = App.Services.GetService<Vegha.Core.Persistence.TabStateStore>();
+        var collectionsForTabs = App.Services.GetService<CollectionsViewModel>();
+        var workspacesForTabs = App.Services.GetService<WorkspacesViewModel>();
+        // Saving a scratch ("+") draft has no on-disk home — promote it into a collection.
+        if (tabs is not null)
+            tabs.SaveAsRequested += async (_, tab) => await SaveTabToCollectionAsync(tab);
+
+        if (tabs is not null && tabStateStore is not null)
         {
-            tabs.TabsChanged += (_, _) => SaveTabSession(tabs, tabStore);
-            tabs.PropertyChanged += (_, evt) =>
-            {
-                if (evt.PropertyName == nameof(Vegha.App.ViewModels.Tabs.OpenTabsViewModel.ActiveTab))
-                    SaveTabSession(tabs, tabStore);
-            };
+            // Structural change (open/close/reorder) → persist. This also reflects a closed
+            // scratch tab being dropped from the DB.
+            tabs.TabsChanged += (_, _) => PersistTabs(tabs, tabStateStore);
+
+            // Collection switch → persist (durability; tabs stay in memory, filtered by scope).
+            if (collectionsForTabs is not null)
+                collectionsForTabs.ActiveCollectionChanged += (_, _) => PersistTabs(tabs, tabStateStore);
+
+            // Workspace switch → repoint the scratch scope and persist. Tabs stay in memory and
+            // are filtered by ActiveWorkspaceId (scratch) / ActiveScope (collection), so dirty
+            // edits survive a round-trip without touching disk.
+            if (workspacesForTabs is not null)
+                workspacesForTabs.PropertyChanged += (_, evt) =>
+                {
+                    if (evt.PropertyName != nameof(WorkspacesViewModel.ActiveWorkspace)) return;
+                    tabs.ActiveWorkspaceId = workspacesForTabs.ActiveWorkspace?.FolderPath;
+                    PersistTabs(tabs, tabStateStore);
+                };
         }
 
         // Source Control: open a diff tab when the user clicks a change row.
@@ -370,47 +399,74 @@ public partial class MainWindow : Window
     private async Task RestoreOpenTabsAsync()
     {
         var tabs = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
-        var tabStore = App.Services.GetService<TabSessionStore>();
+        var store = App.Services.GetService<Vegha.Core.Persistence.TabStateStore>();
         var historyStore = App.Services.GetService<Vegha.Core.History.HistoryStore>();
-        if (tabs is null || tabStore is null) return;
+        if (tabs is null || store is null) return;
 
-        // Run the retention prune once before we resolve history-backed tabs — entries past
-        // the age/count cutoff get dropped now so a snapshot referencing them just turns into
-        // a silent skip in LoadFromStoreAsync.
+        // Scope scratch tabs to the active workspace so a restored draft from another workspace
+        // stays hidden until the user switches to it.
+        tabs.ActiveWorkspaceId = App.Services.GetService<WorkspacesViewModel>()?.ActiveWorkspace?.FolderPath;
+
         if (historyStore is not null)
         {
             try { await historyStore.PruneAsync(); }
             catch { /* best-effort */ }
         }
 
-        // Convert persisted entries into the VM's snapshot shape, then delegate. The host
-        // owns the Bru-file resolver because the VM project doesn't depend on Bru.Parser.
-        var raw = tabStore.Load();
-        var snapshots = raw.Select(e => new Vegha.App.ViewModels.Tabs.TabSnapshot(
-            Id: e.Id,
-            SourcePath: e.SourcePath,
-            Name: e.Name,
-            Kind: Enum.TryParse<Vegha.Core.Domain.RequestKind>(e.Kind, true, out var k)
-                ? k : Vegha.Core.Domain.RequestKind.Http,
-            IsActive: e.IsActive,
-            CollectionPath: e.CollectionPath)).ToList();
-
-        // History resolver: only built when the store is available. Pulls both the request
-        // blob and the response preview so the rehydrated tab matches the live click path.
-        Func<long, Task<HistoryReplayPayload?>>? historyResolver = historyStore is null
-            ? null
-            : async id =>
+        try
+        {
+            // Reinstate each tab in saved order:
+            //   • history tabs  → resolved from the history DB
+            //   • blob present  → reinstated verbatim (dirty edits + scratch drafts), keeping dirty
+            //   • file-backed   → parsed fresh from disk (clean collection tabs stay in sync with disk)
+            var jsonOpts = new System.Text.Json.JsonSerializerOptions();
+            string? activeId = null;
+            foreach (var r in store.LoadAll())
             {
-                var entry = await historyStore.GetByIdAsync(id);
-                if (entry is null) return null;
-                var blob = await historyStore.GetRequestBlobAsync(id);
-                return new HistoryReplayPayload(
-                    Row: HistoryRow.From(entry),
-                    RequestBlob: blob,
-                    ResponseBody: entry.ResponseBodyPreview);
-            };
+                if (r.IsActive) activeId = r.Id;
+                try
+                {
+                    if (Vegha.App.ViewModels.Tabs.HistoryTabViewModel.TryParseId(r.Id, out var historyId))
+                    {
+                        if (historyStore is null) continue;
+                        var entry = await historyStore.GetByIdAsync(historyId);
+                        if (entry is null) continue;
+                        var hblob = await historyStore.GetRequestBlobAsync(historyId);
+                        tabs.OpenHistoryTab(new HistoryReplayPayload(
+                            Row: HistoryRow.From(entry), RequestBlob: hblob, ResponseBody: entry.ResponseBodyPreview));
+                    }
+                    else if (!string.IsNullOrEmpty(r.StateBlob))
+                    {
+                        var item = System.Text.Json.JsonSerializer.Deserialize<Vegha.Core.Domain.RequestItem>(r.StateBlob, jsonOpts);
+                        if (item is null) continue;
+                        tabs.RestoreHttpTab(item, r.Id, r.SourcePath, r.CollectionPath,
+                            r.WorkspaceId, r.IsScratch, r.IsDirty, r.Name);
+                    }
+                    else if (!string.IsNullOrEmpty(r.SourcePath) && File.Exists(r.SourcePath))
+                    {
+                        var item = await ParseBruFromDiskAsync(r.SourcePath);
+                        if (item is not null) tabs.OpenOrActivate(item, r.SourcePath, collectionPath: r.CollectionPath);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[tabs] skipping unrestorable tab {r.Id}: {ex.Message}");
+                }
+            }
 
-        await tabs.LoadFromStoreAsync(snapshots, ParseBruFromDiskAsync, historyResolver);
+            // Restore the active selection by id.
+            if (activeId is not null)
+            {
+                var match = tabs.Tabs.FirstOrDefault(t => string.Equals(t.Id, activeId, StringComparison.OrdinalIgnoreCase));
+                if (match is not null) tabs.ActiveTab = match;
+            }
+        }
+        finally
+        {
+            // Enable checkpoint persistence now that the DB has been read — even if it was empty,
+            // so a freshly-started session that opens its first tab gets saved.
+            _tabPersistenceReady = true;
+        }
     }
 
     private static async Task<Vegha.Core.Domain.RequestItem?> ParseBruFromDiskAsync(string path)
@@ -1006,14 +1062,40 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void SaveTabSession(
+    /// <summary>Gate that keeps checkpoint persistence from firing until the startup restore has
+    /// finished. Without it, the collection/workspace activation that runs during startup would
+    /// snapshot an empty tab set over the DB before <see cref="RestoreOpenTabsAsync"/> reads it.</summary>
+    private bool _tabPersistenceReady;
+
+    /// <summary>Snapshots every open tab's full state to the session DB. Cheap for the common
+    /// case (only dirty/scratch tabs serialize a blob); safe to call on every checkpoint.</summary>
+    private void PersistTabs(
         Vegha.App.ViewModels.Tabs.OpenTabsViewModel tabs,
-        TabSessionStore store)
+        Vegha.Core.Persistence.TabStateStore store)
     {
-        var entries = tabs.Snapshot()
-            .Select(s => new TabSessionEntry(s.Id, s.SourcePath, s.Name, s.Kind.ToString(), s.IsActive, s.CollectionPath))
-            .ToList();
-        store.Save(entries);
+        if (!_tabPersistenceReady) return;
+        try
+        {
+            var rows = tabs.FullSnapshot()
+                .Select(s => new Vegha.Core.Persistence.TabStateRow(
+                    Id: s.Id,
+                    WorkspaceId: s.WorkspaceId,
+                    CollectionPath: s.CollectionPath,
+                    SourcePath: s.SourcePath,
+                    Name: s.Name,
+                    Kind: s.Kind.ToString(),
+                    OrderIndex: s.OrderIndex,
+                    IsActive: s.IsActive,
+                    IsDirty: s.IsDirty,
+                    IsScratch: s.IsScratch,
+                    StateBlob: s.StateBlob))
+                .ToList();
+            store.SaveAll(rows);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[tabs] persist failed: {ex}");
+        }
     }
 
     private async Task ShowWelcomeAsync(AppSettings current)
@@ -1082,8 +1164,7 @@ public partial class MainWindow : Window
 
     // ---- File / Edit / View / Help menu handlers ----
 
-    private void OnMenuNewRequest_Click(object? sender, RoutedEventArgs e)
-        => App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>()?.OpenDraft();
+    private void OnMenuNewRequest_Click(object? sender, RoutedEventArgs e) => CreateScratchRequest();
 
     private void OnMenuNewFolder_Click(object? sender, RoutedEventArgs e)
     {
@@ -1167,8 +1248,6 @@ public partial class MainWindow : Window
         await dlg.ShowDialog(this);
     }
 
-    private bool _confirmedClose;
-
     /// <summary>If any open tabs are dirty, prompt the user before letting the window close.
     /// Cancel keeps the app running; Discard exits without saving; Save iterates dirty tabs and
     /// awaits each editor's SaveCommand, then closes once persistence settles.</summary>
@@ -1205,114 +1284,15 @@ public partial class MainWindow : Window
         catch { /* best-effort — already mid-close */ }
     }
 
-    private async void OnClosing(object? sender, global::Avalonia.Controls.WindowClosingEventArgs e)
+    private void OnClosing(object? sender, global::Avalonia.Controls.WindowClosingEventArgs e)
     {
-        if (_confirmedClose) { TearDownBeforeClose(); return; }
+        // No save/discard prompt: every tab's full state (including unsaved edits and scratch
+        // drafts) is snapshotted to the session DB and reinstated on next launch. Just persist
+        // and tear down.
         var tabs = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
-        if (tabs is null) { TearDownBeforeClose(); return; }
-        var dirty = tabs.Tabs.Where(t => t.IsDirty).ToList();
-        if (dirty.Count == 0) { TearDownBeforeClose(); return; }
-
-        e.Cancel = true;
-        var result = await ShowUnsavedPromptAsync(dirty.Count);
-        if (result == UnsavedChoice.Cancel) return;
-
-        if (result == UnsavedChoice.Save)
-        {
-            var failed = await SaveDirtyTabsAsync(dirty);
-            if (failed > 0)
-            {
-                // One or more saves failed (probably no SourcePath on a draft tab). Surface
-                // via the collections status line and bail without closing so the user can
-                // choose Discard or pick another action.
-                var collections = App.Services.GetService<CollectionsViewModel>();
-                if (collections is not null)
-                    collections.StatusMessage =
-                        $"{failed} tab(s) couldn't be saved (drafts need a Save As first). Close canceled.";
-                return;
-            }
-        }
-        // Discard branch (or all saves succeeded): drop dirty flags and re-issue Close.
-        foreach (var t in dirty) t.IsDirty = false;
-        _confirmedClose = true;
+        var store = App.Services.GetService<Vegha.Core.Persistence.TabStateStore>();
+        if (tabs is not null && store is not null) PersistTabs(tabs, store);
         TearDownBeforeClose();
-        Close();
-    }
-
-    /// <summary>Awaits each dirty tab's Save action. Only HttpRequestTabViewModel currently
-    /// has a persisted-to-disk concept; other tab kinds are treated as already-saved (their
-    /// state lives in the workspace VM itself, no .bru file). Returns the count of dirty
-    /// tabs that failed to save (e.g., draft tabs without a SourcePath).</summary>
-    private static async Task<int> SaveDirtyTabsAsync(
-        IReadOnlyList<Vegha.App.ViewModels.Tabs.RequestTabViewModel> dirty)
-    {
-        var failed = 0;
-        foreach (var tab in dirty)
-        {
-            if (tab is Vegha.App.ViewModels.Tabs.HttpRequestTabViewModel http)
-            {
-                if (string.IsNullOrEmpty(http.SourcePath))
-                {
-                    failed++;
-                    continue;
-                }
-                if (http.Editor.SaveCommand.CanExecute(null))
-                    await http.Editor.SaveCommand.ExecuteAsync(null);
-            }
-            // Non-HTTP tabs don't persist via SaveCommand; treat as "no save needed".
-        }
-        return failed;
-    }
-
-    private enum UnsavedChoice { Cancel, Discard, Save }
-
-    private async Task<UnsavedChoice> ShowUnsavedPromptAsync(int dirtyCount)
-    {
-        // Lightweight built-in dialog using a Window + 3 buttons. Picking a richer
-        // MessageBox lib later is fine; this keeps dependencies tight.
-        var dlg = new Window
-        {
-            Title = "Unsaved changes",
-            Width = 460, Height = 170,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            CanResize = false,
-            Background = this.TryFindResource("Bg1Brush", out var bg) && bg is global::Avalonia.Media.IBrush bgBrush
-                ? bgBrush : new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Colors.DimGray),
-        };
-        var stack = new StackPanel { Margin = new Thickness(20), Spacing = 14 };
-        stack.Children.Add(new TextBlock
-        {
-            Text = $"{dirtyCount} tab(s) have unsaved changes. Save them, discard, or cancel?",
-            FontSize = 12,
-            TextWrapping = global::Avalonia.Media.TextWrapping.Wrap,
-        });
-        var buttons = new StackPanel
-        {
-            Orientation = global::Avalonia.Layout.Orientation.Horizontal,
-            HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Right,
-            Spacing = 8,
-        };
-        UnsavedChoice choice = UnsavedChoice.Cancel;
-        var cancel = new Button { Content = "Cancel", Padding = new Thickness(14, 6) };
-        var discard = new Button { Content = "Discard", Padding = new Thickness(14, 6) };
-        var save = new Button
-        {
-            Content = "Save All",
-            Padding = new Thickness(14, 6),
-            Background = this.TryFindResource("AccentBrush", out var accent) && accent is global::Avalonia.Media.IBrush ab
-                ? ab : new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Colors.SteelBlue),
-            Foreground = global::Avalonia.Media.Brushes.White,
-        };
-        cancel.Click += (_, _) => { choice = UnsavedChoice.Cancel; dlg.Close(); };
-        discard.Click += (_, _) => { choice = UnsavedChoice.Discard; dlg.Close(); };
-        save.Click += (_, _) => { choice = UnsavedChoice.Save; dlg.Close(); };
-        buttons.Children.Add(cancel);
-        buttons.Children.Add(discard);
-        buttons.Children.Add(save);
-        stack.Children.Add(buttons);
-        dlg.Content = stack;
-        await dlg.ShowDialog(this);
-        return choice;
     }
 
     private async Task OpenImportWizardAsync()
@@ -1491,14 +1471,174 @@ public partial class MainWindow : Window
         if (string.IsNullOrEmpty(newPath)) return;
 
         // Open the freshly created request in a new tab. ParseBruFromDiskAsync gives us a
-        // RequestItem; OpenTabsViewModel + the existing tab strip handle the rest.
+        // RequestItem; OpenTabsViewModel + the existing tab strip handle the rest. Stamp the
+        // owning collection's root path so the tab is filtered to that collection's scope —
+        // without it the new request leaked into every collection's tab strip.
         try
         {
             var item = await ParseBruFromDiskAsync(newPath);
             var tabs = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
-            if (item is not null && tabs is not null) tabs.OpenOrActivate(item, newPath);
+            var collectionPath = collections.ResolveCollectionRootPath(node);
+            if (item is not null && tabs is not null)
+                tabs.OpenOrActivate(item, newPath, collectionPath: collectionPath);
         }
         catch { /* best-effort — the file is on disk regardless. */ }
+    }
+
+    // ===================== Scratch ("+") request tab actions =====================
+
+    /// <summary>Creates a fresh "Untitled" scratch request in the active workspace and opens it.
+    /// Used by the tab strip's "+" button, the File ▸ New Request menu, the welcome card, and the
+    /// tab menu's "New Request" entry. Scratch tabs live only in the session DB (no collection
+    /// file) until promoted via "Save to collection…".</summary>
+    private void CreateScratchRequest()
+    {
+        var tabs = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
+        if (tabs is null) return;
+        var workspaceId = App.Services.GetService<WorkspacesViewModel>()?.ActiveWorkspace?.FolderPath;
+        tabs.CreateScratch(workspaceId);
+    }
+
+    /// <summary>Duplicates a tab's current (possibly unsaved) state into a new scratch request.</summary>
+    private void CloneTabToScratch(Vegha.App.ViewModels.Tabs.RequestTabViewModel tab)
+    {
+        var tabs = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
+        if (tabs is null) return;
+        if (tab is not Vegha.App.ViewModels.Tabs.HttpRequestTabViewModel http)
+            return; // SOAP (and any future non-editor) tabs aren't clonable through this path yet.
+
+        var workspaceId = App.Services.GetService<WorkspacesViewModel>()?.ActiveWorkspace?.FolderPath;
+        var clone = tabs.CreateScratch(workspaceId);
+        // Copy the source's current editor state into the new draft and mark it unsaved.
+        var item = http.Editor.BuildRequestItemFromVm();
+        clone.Editor.LoadFromRequestItem(item, sourcePath: null);
+        clone.Editor.IsDirty = true;
+    }
+
+    /// <summary>Renames a tab's backing file (scratch or collection) and re-keys the open tab in
+    /// place, preserving the editor's current edits. Drafts with no file just get a new title.</summary>
+    private async Task RenameTabAsync(Vegha.App.ViewModels.Tabs.RequestTabViewModel tab)
+    {
+        var dlg = new Vegha.App.Controls.Workspace.RenameDialog("Rename request", "Request name", tab.Name);
+        var ok = await dlg.ShowDialog<bool>(this);
+        if (!ok || string.IsNullOrWhiteSpace(dlg.ResultName)) return;
+        var newName = dlg.ResultName.Trim();
+        if (string.Equals(newName, tab.Name, StringComparison.Ordinal)) return;
+
+        // Draft with no backing file: in-memory title change is all we can do.
+        if (string.IsNullOrEmpty(tab.SourcePath) || tab is not Vegha.App.ViewModels.Tabs.HttpRequestTabViewModel http)
+        {
+            tab.Name = newName;
+            return;
+        }
+
+        try
+        {
+            var oldPath = tab.SourcePath!;
+            var dir = Path.GetDirectoryName(oldPath);
+            var ext = Path.GetExtension(oldPath);
+            if (string.IsNullOrEmpty(dir)) { tab.Name = newName; return; }
+
+            var stem = SanitizeFileStem(newName);
+            var newPath = Path.Combine(dir, stem + ext);
+            if (!string.Equals(newPath, oldPath, StringComparison.OrdinalIgnoreCase) && File.Exists(newPath))
+            {
+                var collisions = App.Services.GetService<CollectionsViewModel>();
+                if (collisions is not null) collisions.StatusMessage = $"“{stem}{ext}” already exists.";
+                return;
+            }
+
+            // Re-emit with the new meta.name (keeps the tree/label in sync) and persist the
+            // editor's current state, then move the tab onto the new path.
+            var item = http.Editor.BuildRequestItemFromVm() with { Name = stem };
+            File.WriteAllText(newPath, Vegha.Core.Importers.BruEmitter.Emit(item));
+            if (!string.Equals(newPath, oldPath, StringComparison.OrdinalIgnoreCase) && File.Exists(oldPath))
+                File.Delete(oldPath);
+
+            tab.Id = newPath;
+            tab.SourcePath = newPath;
+            tab.Name = stem;
+            http.Editor.SourcePath = newPath;
+            http.Editor.IsDirty = false;
+            // Collection-backed tabs refresh themselves: the per-root file watcher picks up the
+            // move (delete old + write new) and reloads the tree so the renamed file shows.
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[rename] failed: {ex}");
+        }
+    }
+
+    private static string SanitizeFileStem(string name)
+    {
+        var bad = Path.GetInvalidFileNameChars();
+        var s = new string(name.Select(c => bad.Contains(c) ? '_' : c).ToArray()).Trim();
+        return string.IsNullOrEmpty(s) ? "untitled" : s;
+    }
+
+    /// <summary>Discards a tab's unsaved edits by reloading it from disk.</summary>
+    private async Task RevertTabAsync(Vegha.App.ViewModels.Tabs.RequestTabViewModel tab)
+    {
+        if (tab is not Vegha.App.ViewModels.Tabs.HttpRequestTabViewModel http || string.IsNullOrEmpty(tab.SourcePath))
+            return;
+        try
+        {
+            var item = await ParseBruFromDiskAsync(tab.SourcePath!);
+            if (item is null) return;
+            http.Editor.LoadFromRequestItem(item, tab.SourcePath);
+            http.Editor.IsDirty = false;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[revert] failed: {ex}");
+        }
+    }
+
+    /// <summary>Promotes a scratch request into the active collection: the user picks the target
+    /// folder within it (or creates a new folder), then the full request is written there, removed
+    /// from scratch, and re-opened as a normal collection-scoped tab.</summary>
+    private async Task SaveTabToCollectionAsync(Vegha.App.ViewModels.Tabs.RequestTabViewModel tab)
+    {
+        var collections = App.Services.GetService<CollectionsViewModel>();
+        var tabs = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
+        if (collections is null || tabs is null) return;
+        if (tab is not Vegha.App.ViewModels.Tabs.HttpRequestTabViewModel http) return;
+
+        // Scope the picker to the CURRENT collection only — folders (and new-folder creation) are
+        // confined to it rather than spanning every collection in the workspace.
+        var activeCollection = collections.ActiveCollection;
+        if (activeCollection is null)
+        {
+            collections.StatusMessage = "Open or select a collection first.";
+            return;
+        }
+
+        var dlg = new Vegha.App.Controls.Workspace.SaveToCollectionDialog(activeCollection, tab.Name);
+        var ok = await dlg.ShowDialog<bool>(this);
+        if (!ok || dlg.Result is null) return;
+        var result = dlg.Result;
+
+        try
+        {
+            var item = http.Editor.BuildRequestItemFromVm();
+            var newPath = collections.CreateRequestFromItemInDirectory(result.DirectoryPath, item, result.Name);
+            if (string.IsNullOrEmpty(newPath)) return;
+
+            // Close the scratch tab (drops it from memory + the session DB at the next snapshot),
+            // then open the freshly-saved request, scoped to the collection it now lives in.
+            tabs.CloseTab(tab);
+            var saved = await ParseBruFromDiskAsync(newPath);
+            if (saved is not null)
+            {
+                var root = collections.FindRootForDirectory(result.DirectoryPath);
+                tabs.OpenOrActivate(saved, newPath, root?.Collection,
+                    Array.Empty<Vegha.Core.Domain.Folder>(), root?.SourcePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[promote] failed: {ex}");
+        }
     }
 
     private async Task OpenSettingsDialogAsync()

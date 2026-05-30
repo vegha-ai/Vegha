@@ -1942,11 +1942,23 @@ public partial class RequestEditorViewModel : ObservableObject
         catch { /* swallow — ticker is best-effort UI candy */ }
     }
 
-    /// <summary>Saves the current request as .bru text to <see cref="SourcePath"/>.</summary>
+    /// <summary>Raised when Save is invoked on a request that has no file yet (a "+" scratch
+    /// draft). The host turns this into the "Save to collection…" flow — the editor itself can't
+    /// pick a destination. File-backed requests save in place and never raise this.</summary>
+    public event EventHandler? SaveAsRequested;
+
+    /// <summary>Saves the current request as .bru text to <see cref="SourcePath"/>, or — when the
+    /// request isn't backed by a file (a scratch draft) — asks the host to promote it into a
+    /// collection via <see cref="SaveAsRequested"/>.</summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
-        if (string.IsNullOrEmpty(SourcePath)) return;
+        if (string.IsNullOrEmpty(SourcePath))
+        {
+            // No on-disk home yet → let the host run the Save-to-collection flow.
+            SaveAsRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
 
         var item = BuildRequestItemFromVm();
         var bru = BruEmitter.Emit(item);
@@ -1962,7 +1974,9 @@ public partial class RequestEditorViewModel : ObservableObject
         }
     }
 
-    private bool CanSave() => !string.IsNullOrEmpty(SourcePath) && IsDirty;
+    // Enabled whenever there are unsaved edits. A file-backed request saves in place; a scratch
+    // draft (no SourcePath) routes to the host's Save-to-collection flow.
+    private bool CanSave() => IsDirty;
 
     [RelayCommand]
     private void AddHeader() => Headers.Add(new KvEntry());

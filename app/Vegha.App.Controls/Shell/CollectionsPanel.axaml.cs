@@ -280,7 +280,20 @@ public partial class CollectionsPanel : UserControl
             && b.Classes.Contains("rowMenu")) return;
 
         var tvi = v.FindAncestorOfType<TreeViewItem>(includeSelf: true);
-        if (tvi?.DataContext is not CollectionNodeViewModel node || node.IsLeaf) return;
+        if (tvi?.DataContext is not CollectionNodeViewModel node) return;
+
+        // The synthetic "+ New request" row inside an empty folder runs New Request scoped to
+        // its parent — the same flow as the folder's context-menu "New Request" entry.
+        if (node is NewRequestPlaceholderViewModel placeholder)
+        {
+            if (DataContext is CollectionsViewModel vm
+                && vm.CreateRequestCommand.CanExecute(placeholder.Parent))
+                vm.CreateRequestCommand.Execute(placeholder.Parent);
+            e.Handled = true;
+            return;
+        }
+
+        if (node.IsLeaf) return;
 
         node.IsExpanded = !node.IsExpanded;
         e.Handled = true;
@@ -329,8 +342,9 @@ public partial class CollectionsPanel : UserControl
         if (Math.Abs(p.X - _pressPoint.X) < DragThreshold &&
             Math.Abs(p.Y - _pressPoint.Y) < DragThreshold) return;
 
-        // Roots aren't draggable — only requests + folders can be moved.
-        if (_pressedNode is CollectionRootViewModel) { _pressedNode = null; return; }
+        // Roots + the synthetic "+ New request" row aren't draggable — only requests + folders move.
+        if (_pressedNode is CollectionRootViewModel or NewRequestPlaceholderViewModel)
+        { _pressedNode = null; return; }
 
         _dragInProgress = true;
         var data = new DataObject();
@@ -348,6 +362,8 @@ public partial class CollectionsPanel : UserControl
     {
         if (!e.Data.Contains(DragFormat)) { e.DragEffects = DragDropEffects.None; return; }
         var target = ResolveNodeFromSource(e.Source);
+        // Dropping onto the "+ New request" row means "into the folder that owns it".
+        if (target is NewRequestPlaceholderViewModel ph) target = ph.Parent;
         // Only folders / roots are valid drop targets. Leaf-on-leaf is a no-op.
         if (target is null || target is CollectionItemViewModel)
         {
@@ -362,6 +378,7 @@ public partial class CollectionsPanel : UserControl
         if (DataContext is not CollectionsViewModel vm) return;
         if (e.Data.Get(DragFormat) is not CollectionNodeViewModel source) return;
         var target = ResolveNodeFromSource(e.Source);
+        if (target is NewRequestPlaceholderViewModel ph) target = ph.Parent;
         if (target is null) return;
 
         if (vm.MoveNode(source, target))
