@@ -17,6 +17,26 @@ public partial class RequestTabStrip : UserControl
 
     private OpenTabsViewModel? _attached;
 
+    /// <summary>Raised by the "+" button and the tab menu's "New Request" entry. The host creates
+    /// a fresh scratch request (it owns the file IO + scratch store).</summary>
+    public event EventHandler? NewRequestRequested;
+
+    /// <summary>Raised by the tab menu's "Clone Request" entry — host duplicates the request into
+    /// a new scratch tab.</summary>
+    public event EventHandler<RequestTabViewModel>? CloneRequested;
+
+    /// <summary>Raised by the tab menu's "Rename" entry — host prompts for a name and renames the
+    /// backing file.</summary>
+    public event EventHandler<RequestTabViewModel>? RenameRequested;
+
+    /// <summary>Raised by the tab menu's "Revert Changes" entry — host reloads the request from
+    /// disk, discarding unsaved edits.</summary>
+    public event EventHandler<RequestTabViewModel>? RevertRequested;
+
+    /// <summary>Raised by the tab menu's "Save to collection…" entry — host promotes a scratch
+    /// request into a real collection.</summary>
+    public event EventHandler<RequestTabViewModel>? SaveToCollectionRequested;
+
     public RequestTabStrip()
     {
         InitializeComponent();
@@ -114,8 +134,63 @@ public partial class RequestTabStrip : UserControl
         e.Handled = true;
     }
 
-    private void OnNewTab_Click(object? sender, RoutedEventArgs e)
+    private void OnNewTab_Click(object? sender, RoutedEventArgs e) =>
+        NewRequestRequested?.Invoke(this, EventArgs.Empty);
+
+    // ---- Per-tab right-click context menu ----
+    // The MenuFlyout is attached to each tab Border, so its items inherit that Border's
+    // DataContext (the RequestTabViewModel). Handlers read the tab from the MenuItem's Tag
+    // (bound to the same {Binding}), mirroring the close button's existing pattern.
+
+    private static RequestTabViewModel? TabFrom(object? sender) =>
+        (sender as Control)?.Tag as RequestTabViewModel;
+
+    private void OnMenuNewRequest_Click(object? sender, RoutedEventArgs e) =>
+        NewRequestRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnMenuClone_Click(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is OpenTabsViewModel tabs) tabs.OpenDraft();
+        if (TabFrom(sender) is { } tab) CloneRequested?.Invoke(this, tab);
     }
+
+    private void OnMenuRename_Click(object? sender, RoutedEventArgs e)
+    {
+        if (TabFrom(sender) is { } tab) RenameRequested?.Invoke(this, tab);
+    }
+
+    private void OnMenuRevert_Click(object? sender, RoutedEventArgs e)
+    {
+        if (TabFrom(sender) is { } tab) RevertRequested?.Invoke(this, tab);
+    }
+
+    private void OnMenuSaveToCollection_Click(object? sender, RoutedEventArgs e)
+    {
+        if (TabFrom(sender) is { } tab) SaveToCollectionRequested?.Invoke(this, tab);
+    }
+
+    private void OnMenuClose_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_attached is { } tabs && TabFrom(sender) is { } tab) tabs.CloseTab(tab);
+    }
+
+    private void OnMenuCloseOthers_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_attached is { } tabs && TabFrom(sender) is { } tab) tabs.CloseOthers(tab);
+    }
+
+    private void OnMenuCloseLeft_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_attached is { } tabs && TabFrom(sender) is { } tab) tabs.CloseToLeft(tab);
+    }
+
+    private void OnMenuCloseRight_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_attached is { } tabs && TabFrom(sender) is { } tab) tabs.CloseToRight(tab);
+    }
+
+    private void OnMenuCloseSaved_Click(object? sender, RoutedEventArgs e) =>
+        _attached?.CloseSaved();
+
+    private void OnMenuCloseAll_Click(object? sender, RoutedEventArgs e) =>
+        _attached?.CloseAll();
 }

@@ -79,6 +79,28 @@
                                     Classes.active="{Binding IsActive}"
                                     PointerPressed="OnTab_PointerPressed"
                                     Tag="{Binding}">
+                                <!-- Per-tab right-click menu. Inline so it inherits this tab's
+                                     DataContext (RequestTabViewModel) directly; handlers in
+                                     code-behind read the tab from each item's Tag. -->
+                                <Border.ContextFlyout>
+                                    <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                        <MenuItem Header="New Request" Tag="{Binding}" Click="OnMenuNewRequest_Click" />
+                                        <MenuItem Header="Clone Request" Tag="{Binding}" Click="OnMenuClone_Click" />
+                                        <MenuItem Header="Rename…" Tag="{Binding}" Click="OnMenuRename_Click" />
+                                        <MenuItem Header="Revert Changes" Tag="{Binding}"
+                                                  IsEnabled="{Binding CanRevert}" Click="OnMenuRevert_Click" />
+                                        <Separator />
+                                        <MenuItem Header="Save to collection…" Tag="{Binding}"
+                                                  Click="OnMenuSaveToCollection_Click" />
+                                        <Separator />
+                                        <MenuItem Header="Close" Tag="{Binding}" Click="OnMenuClose_Click" />
+                                        <MenuItem Header="Close Others" Tag="{Binding}" Click="OnMenuCloseOthers_Click" />
+                                        <MenuItem Header="Close to the Left" Tag="{Binding}" Click="OnMenuCloseLeft_Click" />
+                                        <MenuItem Header="Close to the Right" Tag="{Binding}" Click="OnMenuCloseRight_Click" />
+                                        <MenuItem Header="Close Saved" Tag="{Binding}" Click="OnMenuCloseSaved_Click" />
+                                        <MenuItem Header="Close All" Tag="{Binding}" Click="OnMenuCloseAll_Click" />
+                                    </MenuFlyout>
+                                </Border.ContextFlyout>
                                 <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
                                     <TextBlock Grid.Column="0"
                                                Text="{Binding Method}"

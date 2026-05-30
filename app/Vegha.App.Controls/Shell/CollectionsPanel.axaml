@@ -309,6 +309,16 @@
                         </Button>
                     </Grid>
                 </TreeDataTemplate>
+                <!-- "+ New request" affordance shown inside an empty folder. A plain link-styled
+                     row (no method label, no "..." menu); CollectionsPanel's tap handler routes a
+                     click to New Request scoped to the owning folder. -->
+                <TreeDataTemplate DataType="vm:NewRequestPlaceholderViewModel">
+                    <TextBlock Text="+ New request"
+                               FontSize="12" FontStyle="Italic"
+                               Foreground="{DynamicResource AccentBrush}"
+                               VerticalAlignment="Center"
+                               Cursor="Hand" />
+                </TreeDataTemplate>
                 <!-- Request leaf — method label colored by HTTP verb -->
                 <TreeDataTemplate DataType="vm:CollectionItemViewModel">
                     <Grid ColumnDefinitions="34,*,Auto" ContextFlyout="{StaticResource RequestMenu}">

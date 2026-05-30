@@ -166,7 +166,8 @@
                              rail so the collection + env pickers stay visible regardless of
                              which sidebar panel is open.) -->
                         <!-- Tab strip: one tab per opened request, kind-routed below. -->
-                        <shell:RequestTabStrip DockPanel.Dock="Top"
+                        <shell:RequestTabStrip x:Name="RequestTabStripControl"
+                                               DockPanel.Dock="Top"
                                                DataContext="{Binding OpenTabs}" />
                         <Panel>
                             <!-- Welcome card when no tabs are open -->

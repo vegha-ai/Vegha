@@ -5,6 +5,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Lets the UI test project drive internal helpers (e.g. SaveToCollectionDialog.CreateFolderNode)
+         without forcing them onto the public surface. -->
+    <InternalsVisibleTo Include="Vegha.Tests.UI" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="Avalonia.AvaloniaEdit" />

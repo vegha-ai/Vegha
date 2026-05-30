@@ -63,7 +63,7 @@ internal static class ServiceRegistration
         });
         services.AddSingleton<Vegha.Core.History.HistoryStore>(_ => new Vegha.Core.History.HistoryStore());
         services.AddSingleton<Vegha.Core.Persistence.WorkspaceStore>();
-        services.AddSingleton<Vegha.Core.Persistence.TabSessionStore>(_ => new Vegha.Core.Persistence.TabSessionStore());
+        services.AddSingleton<Vegha.Core.Persistence.TabStateStore>(_ => new Vegha.Core.Persistence.TabStateStore());
         services.AddSingleton<Vegha.Core.Persistence.RecentItemsStore>(_ => new Vegha.Core.Persistence.RecentItemsStore());
         services.AddSingleton<Vegha.Core.Persistence.OpenApiLinkStore>(_ => new Vegha.Core.Persistence.OpenApiLinkStore());
         services.AddSingleton<Vegha.Core.Persistence.SecretProviderConfigStore>(_ => new Vegha.Core.Persistence.SecretProviderConfigStore());

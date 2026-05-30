@@ -1188,6 +1188,66 @@ public partial class CollectionsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Absolute path of the collection root that owns <paramref name="node"/>, or null when
+    /// the node isn't in any loaded root. Lets the host stamp a freshly-created request's tab with
+    /// its scope so the tab strip filters it to the right collection.</summary>
+    public string? ResolveCollectionRootPath(CollectionNodeViewModel? node)
+    {
+        if (node is null) return null;
+        if (node is CollectionRootViewModel root) return root.SourcePath;
+        return FindRootFor(node)?.SourcePath;
+    }
+
+    /// <summary>Writes a fully-formed <see cref="RequestItem"/> into an explicit on-disk directory
+    /// (chosen in the Save-to-collection folder picker) as a uniquely-named .bru, then reloads the
+    /// owning collection root so the tree shows it. Used when promoting a scratch ("+") request
+    /// into a real collection — unlike <see cref="CreateRequestFromDialog"/> this preserves the
+    /// complete request (body, auth, scripts, settings) captured from the editor. Creates the
+    /// directory if needed. Returns the new file path, or null on failure.</summary>
+    public string? CreateRequestFromItemInDirectory(string dir, RequestItem item, string name)
+    {
+        if (string.IsNullOrEmpty(dir)) { StatusMessage = "No target folder."; return null; }
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var stem = NextUniqueName(dir, Sanitize(string.IsNullOrWhiteSpace(name) ? "request" : name), ".bru");
+            var dest = System.IO.Path.Combine(dir, stem + ".bru");
+            File.WriteAllText(dest, Vegha.Core.Importers.BruEmitter.Emit(item with { Name = stem }));
+            StatusMessage = $"Saved “{stem}.bru”.";
+            var root = FindRootForDirectory(dir);
+            if (root is not null) ReloadRootContaining(root);
+            return dest;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CreateRequestFromItemInDirectory failed under {Dir}", dir);
+            StatusMessage = $"Save failed: {ex.Message}";
+            return null;
+        }
+    }
+
+    /// <summary>The loaded collection root that owns <paramref name="dir"/> (the deepest root whose
+    /// folder contains it), or null when the directory isn't inside any loaded collection.</summary>
+    public CollectionRootViewModel? FindRootForDirectory(string dir)
+    {
+        if (string.IsNullOrEmpty(dir)) return null;
+        string full;
+        try { full = System.IO.Path.GetFullPath(dir); }
+        catch { return null; }
+
+        return Roots.OfType<CollectionRootViewModel>()
+            .Where(r => !string.IsNullOrEmpty(r.SourcePath))
+            .OrderByDescending(r => r.SourcePath.Length)
+            .FirstOrDefault(r =>
+            {
+                var rootFull = System.IO.Path.GetFullPath(r.SourcePath);
+                if (string.Equals(full, rootFull, StringComparison.OrdinalIgnoreCase)) return true;
+                var prefix = rootFull.EndsWith(System.IO.Path.DirectorySeparatorChar)
+                    ? rootFull : rootFull + System.IO.Path.DirectorySeparatorChar;
+                return full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+            });
+    }
+
     private static string BuildMinimalBru(NewRequestKind kind, string name, string method, string url)
     {
         // Map dialog kind to the meta.type Bruno expects.
@@ -2116,6 +2176,15 @@ public partial class CollectionsViewModel : ObservableObject
 
         bool WalkApply(CollectionNodeViewModel node, string n, bool emptyFilter)
         {
+            // The "+ New request" placeholder is chrome, not content: show it only when there's
+            // no active filter, and never let it count as a descendant match that would keep an
+            // otherwise non-matching empty folder visible during a search.
+            if (node is NewRequestPlaceholderViewModel)
+            {
+                node.IsVisibleByFilter = emptyFilter;
+                return false;
+            }
+
             bool selfMatch = emptyFilter || node.Name.Contains(n, StringComparison.OrdinalIgnoreCase);
             bool anyChild = false;
             foreach (var c in node.Children)
@@ -2247,8 +2316,9 @@ public abstract partial class CollectionNodeViewModel : ObservableObject
         if (!IsLeaf) ExpansionChanged?.Invoke(this, value);
     }
 
-    public static CollectionNodeViewModel FromCollection(Collection col, string rootPath) =>
-        new CollectionRootViewModel
+    public static CollectionNodeViewModel FromCollection(Collection col, string rootPath)
+    {
+        var root = new CollectionRootViewModel
         {
             Name = col.Name,
             Path = rootPath,
@@ -2256,6 +2326,21 @@ public abstract partial class CollectionNodeViewModel : ObservableObject
             Collection = col,
             Children = ToChildren(col.Folders, col.Requests, rootPath),
         };
+        AddNewRequestPlaceholderIfEmpty(root);
+        return root;
+    }
+
+    /// <summary>An empty folder / collection root that still surfaces in the tree (it carries a
+    /// <c>folder.bru</c> / <c>collection.bru</c> marker, so the loader didn't prune it) gets a
+    /// single <see cref="NewRequestPlaceholderViewModel"/> child. That keeps its expand chevron
+    /// visible (the TreeView hides the caret for a child-less row) and, when expanded, offers a
+    /// one-click "+ New request" affordance. It's rebuilt with the tree on every reload, so it
+    /// appears / disappears automatically as the folder gains or loses real content.</summary>
+    private static void AddNewRequestPlaceholderIfEmpty(CollectionNodeViewModel node)
+    {
+        if (node.Children.Count == 0)
+            node.Children.Add(new NewRequestPlaceholderViewModel { Parent = node, Name = "New request" });
+    }
 
     private static ObservableCollection<CollectionNodeViewModel> ToChildren(
         IEnumerable<Folder> folders, IEnumerable<RequestItem> requests, string parentPath)
@@ -2264,13 +2349,15 @@ public abstract partial class CollectionNodeViewModel : ObservableObject
         foreach (var f in folders)
         {
             var folderPath = global::System.IO.Path.Combine(parentPath, f.Name);
-            children.Add(new CollectionFolderViewModel
+            var folderVm = new CollectionFolderViewModel
             {
                 Name = f.Name,
                 Path = folderPath,
                 Folder = f,
                 Children = ToChildren(f.Folders, f.Requests, folderPath),
-            });
+            };
+            AddNewRequestPlaceholderIfEmpty(folderVm);
+            children.Add(folderVm);
         }
         foreach (var r in requests)
         {
@@ -2340,6 +2427,19 @@ public sealed partial class CollectionItemViewModel : CollectionNodeViewModel
 
     [ObservableProperty]
     private string _methodLabel = "GET";
+
+    public override bool IsLeaf => true;
+}
+
+/// <summary>Synthetic "+ New request" row injected into an empty folder / collection root. It
+/// isn't backed by any file — it exists only to (a) keep the expand chevron visible for an
+/// otherwise child-less folder and (b) give an obvious one-click way to add the first request.
+/// A tap runs New Request scoped to <see cref="Parent"/>. It's rebuilt with the tree on every
+/// reload, so it vanishes the moment the folder gains real content.</summary>
+public sealed partial class NewRequestPlaceholderViewModel : CollectionNodeViewModel
+{
+    /// <summary>The folder / root a click should create the new request in.</summary>
+    public CollectionNodeViewModel Parent { get; init; } = null!;
 
     public override bool IsLeaf => true;
 }
