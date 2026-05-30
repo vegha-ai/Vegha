@@ -80,10 +80,18 @@ public sealed class HistoryStore : IDisposable
             CREATE INDEX IF NOT EXISTS idx_history_ts ON history (timestamp_utc DESC);
             """);
 
-        // Forward-compat: add request_blob column on older databases. ADD COLUMN IF NOT
-        // EXISTS isn't supported; we probe via PRAGMA + tolerate the duplicate-column error.
+        // Forward-compat column adds on older databases. ADD COLUMN IF NOT EXISTS isn't
+        // supported, so each add tolerates the duplicate-column error when already present.
+        //   • request_blob  — full request snapshot for History → Replay (see RequestEditorViewModel).
+        //   • workspace_id  — folder path of the owning workspace so history is per-workspace.
         try { conn.Execute("ALTER TABLE history ADD COLUMN request_blob TEXT;"); }
         catch (Microsoft.Data.Sqlite.SqliteException) { /* column already present */ }
+        try { conn.Execute("ALTER TABLE history ADD COLUMN workspace_id TEXT;"); }
+        catch (Microsoft.Data.Sqlite.SqliteException) { /* column already present */ }
+
+        // Per-workspace paging index. Created after the ALTER so the column exists.
+        try { conn.Execute("CREATE INDEX IF NOT EXISTS idx_history_ws ON history (workspace_id, timestamp_utc DESC);"); }
+        catch (Microsoft.Data.Sqlite.SqliteException) { /* tolerate older engines */ }
     }
 
     public async Task<long> AppendAsync(
@@ -94,7 +102,8 @@ public sealed class HistoryStore : IDisposable
         string? responseBody,
         string? errorMessage,
         CancellationToken ct = default,
-        string? requestBlob = null)
+        string? requestBlob = null,
+        string? workspaceId = null)
     {
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -105,8 +114,8 @@ public sealed class HistoryStore : IDisposable
             using var conn = OpenConnection();
             var id = await conn.ExecuteScalarAsync<long>(
                 """
-                INSERT INTO history (timestamp_utc, method, url, status_code, duration_ms, response_body_preview, error_message, request_blob)
-                VALUES (@Ts, @Method, @Url, @Status, @Duration, @Preview, @Error, @Blob);
+                INSERT INTO history (timestamp_utc, method, url, status_code, duration_ms, response_body_preview, error_message, request_blob, workspace_id)
+                VALUES (@Ts, @Method, @Url, @Status, @Duration, @Preview, @Error, @Blob, @Workspace);
                 SELECT last_insert_rowid();
                 """,
                 new
@@ -119,6 +128,7 @@ public sealed class HistoryStore : IDisposable
                     Preview = persistPayloads ? Truncate(responseBody, MaxPreviewChars) : null,
                     Error = errorMessage,
                     Blob = persistPayloads ? requestBlob : null,
+                    Workspace = string.IsNullOrEmpty(workspaceId) ? null : workspaceId,
                 }).ConfigureAwait(false);
 
             await PruneInternalAsync(conn).ConfigureAwait(false);
@@ -132,30 +142,42 @@ public sealed class HistoryStore : IDisposable
 
     public Task<IReadOnlyList<HistoryEntry>> GetRecentAsync(
         int limit = 100,
+        string? workspaceId = null,
         CancellationToken ct = default)
-        => GetRangeAsync(offset: 0, limit: limit, ct);
+        => GetRangeAsync(offset: 0, limit: limit, workspaceId: workspaceId, search: null, ct: ct);
 
     /// <summary>Page-friendly slice of the most-recent entries. Ordered newest first;
     /// <paramref name="offset"/> skips that many rows from the head. The sidebar uses this for
-    /// load-on-scroll paging.</summary>
+    /// load-on-scroll paging.
+    ///
+    /// <paramref name="workspaceId"/> scopes the slice to one workspace (its folder path); null
+    /// returns every workspace's rows (used by tests and the legacy "all" view).
+    /// <paramref name="search"/> filters by a case-insensitive substring of method or URL.</summary>
     public async Task<IReadOnlyList<HistoryEntry>> GetRangeAsync(
         int offset,
         int limit,
+        string? workspaceId = null,
+        string? search = null,
         CancellationToken ct = default)
     {
         if (offset < 0) offset = 0;
         if (limit <= 0) return Array.Empty<HistoryEntry>();
 
+        var (whereSql, prms) = BuildFilter(workspaceId, search);
+        prms.Add("Limit", limit);
+        prms.Add("Offset", offset);
+
         using var conn = OpenConnection();
         var rows = await conn.QueryAsync(
-            """
+            $"""
             SELECT id, timestamp_utc AS ts, method, url, status_code AS status,
                    duration_ms AS duration, response_body_preview AS preview, error_message AS error
               FROM history
-             ORDER BY timestamp_utc DESC
+             {whereSql}
+             ORDER BY timestamp_utc DESC, id DESC
              LIMIT @Limit OFFSET @Offset
             """,
-            new { Limit = limit, Offset = offset }).ConfigureAwait(false);
+            prms).ConfigureAwait(false);
 
         return rows.Select(r => new HistoryEntry(
             Id: (long)r.id,
@@ -166,6 +188,34 @@ public sealed class HistoryStore : IDisposable
             DurationMs: (long)r.duration,
             ResponseBodyPreview: r.preview as string,
             ErrorMessage: r.error as string)).ToList();
+    }
+
+    /// <summary>Builds the <c>WHERE</c> clause + Dapper parameters shared by the read/count/clear
+    /// paths. A null/empty <paramref name="workspaceId"/> applies no workspace filter (all rows);
+    /// a non-empty value matches that workspace exactly. A non-blank <paramref name="search"/>
+    /// adds a case-insensitive substring match against method or URL.</summary>
+    private static (string Sql, DynamicParameters Parameters) BuildFilter(string? workspaceId, string? search)
+    {
+        var clauses = new List<string>();
+        var prms = new DynamicParameters();
+
+        if (!string.IsNullOrEmpty(workspaceId))
+        {
+            clauses.Add("workspace_id = @Workspace");
+            prms.Add("Workspace", workspaceId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            // Escape LIKE wildcards so a literal % or _ in the query matches literally.
+            var term = search.Trim()
+                .Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+            clauses.Add("(url LIKE @Search ESCAPE '\\' OR method LIKE @Search ESCAPE '\\')");
+            prms.Add("Search", "%" + term + "%");
+        }
+
+        var sql = clauses.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", clauses);
+        return (sql, prms);
     }
 
     /// <summary>Runs the count + age prunes once. Called at startup so accumulated rows that
@@ -184,12 +234,22 @@ public sealed class HistoryStore : IDisposable
 
     private async Task PruneInternalAsync(IDbConnection conn)
     {
-        // Count prune: keep only the most recent MaxRetained rows.
+        // Count prune: keep only the most recent MaxRetained rows PER WORKSPACE so a busy
+        // workspace can't evict another workspace's history. Rows with no workspace_id
+        // (legacy/global, pre-migration) share a single partition. ROW_NUMBER requires a
+        // window-function-capable SQLite (3.25+, which the bundled engine satisfies).
         await conn.ExecuteAsync(
             """
             DELETE FROM history
              WHERE id IN (
-                   SELECT id FROM history ORDER BY timestamp_utc DESC LIMIT -1 OFFSET @Keep
+                   SELECT id FROM (
+                       SELECT id,
+                              ROW_NUMBER() OVER (
+                                  PARTITION BY COALESCE(workspace_id, '')
+                                  ORDER BY timestamp_utc DESC, id DESC
+                              ) AS rn
+                         FROM history
+                   ) WHERE rn > @Keep
              );
             """,
             new { Keep = Math.Max(1, MaxRetained) }).ConfigureAwait(false);
@@ -205,13 +265,40 @@ public sealed class HistoryStore : IDisposable
         }
     }
 
-    public async Task ClearAsync(CancellationToken ct = default)
+    /// <summary>Deletes history rows. A null/empty <paramref name="workspaceId"/> clears every
+    /// workspace; a non-empty value clears only that workspace's rows (the History panel passes
+    /// the active workspace so "Clear" is scoped to what the user is looking at).</summary>
+    public async Task ClearAsync(string? workspaceId = null, CancellationToken ct = default)
     {
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             using var conn = OpenConnection();
-            await conn.ExecuteAsync("DELETE FROM history;").ConfigureAwait(false);
+            if (string.IsNullOrEmpty(workspaceId))
+                await conn.ExecuteAsync("DELETE FROM history;").ConfigureAwait(false);
+            else
+                await conn.ExecuteAsync(
+                    "DELETE FROM history WHERE workspace_id = @Workspace;",
+                    new { Workspace = workspaceId }).ConfigureAwait(false);
+        }
+        finally { _writeLock.Release(); }
+    }
+
+    /// <summary>One-time migration: assigns every row that has no workspace (legacy/global
+    /// history recorded before per-workspace scoping) to <paramref name="workspaceId"/>. Called
+    /// at startup with the active workspace so a user's existing history lands in the workspace
+    /// they were last using rather than vanishing under the new per-workspace filter. Idempotent
+    /// — once every row has a workspace it matches nothing.</summary>
+    public async Task<int> BackfillWorkspaceAsync(string workspaceId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(workspaceId)) return 0;
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var conn = OpenConnection();
+            return await conn.ExecuteAsync(
+                "UPDATE history SET workspace_id = @Workspace WHERE workspace_id IS NULL;",
+                new { Workspace = workspaceId }).ConfigureAwait(false);
         }
         finally { _writeLock.Release(); }
     }
@@ -229,10 +316,12 @@ public sealed class HistoryStore : IDisposable
         finally { _writeLock.Release(); }
     }
 
-    public async Task<int> CountAsync(CancellationToken ct = default)
+    public async Task<int> CountAsync(string? workspaceId = null, CancellationToken ct = default)
     {
+        var (whereSql, prms) = BuildFilter(workspaceId, search: null);
         using var conn = OpenConnection();
-        var n = await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM history;").ConfigureAwait(false);
+        var n = await conn.ExecuteScalarAsync<long>(
+            $"SELECT COUNT(*) FROM history {whereSql};", prms).ConfigureAwait(false);
         return (int)n;
     }
 

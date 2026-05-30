@@ -290,17 +290,29 @@ public partial class OpenTabsViewModel : ObservableObject
         var editor = _editorFactory();
         // Wire the workspace context BEFORE LoadFromRequestItem so the initial inheritance
         // hints (refreshed during SetParentContext below) see the workspace layer.
-        if (WorkspaceContextProvider is not null) editor.WorkspaceContextProvider = WorkspaceContextProvider;
+        WireEditorProviders(editor);
         editor.LoadFromRequestItem(request, sourcePath);
-        var snapshot = EnvironmentSnapshotProvider?.Invoke();
-        if (snapshot is not null) editor.EnvironmentVariables = snapshot;
-        var secretNames = SecretNamesProvider?.Invoke();
-        if (secretNames is not null) editor.SecretVariableNames = secretNames;
         var tab = new HttpRequestTabViewModel(editor, request, sourcePath, id) { CollectionPath = collectionPath };
         tab.SetParentContext(collection, folderChain);
         // Saving a draft (no file) bubbles up so the host can promote it into a collection.
         editor.SaveAsRequested += (_, _) => SaveAsRequested?.Invoke(this, tab);
         return tab;
+    }
+
+    /// <summary>Wires the workspace/env/history providers every editable request editor needs so
+    /// Send composes inherited vars + scripts, resolves <c>{{var}}</c> against the active
+    /// environment, and records history into the active workspace. Shared by the collection-tab
+    /// path and the history-replay path so a request opened from history runs exactly like the
+    /// original.</summary>
+    private void WireEditorProviders(RequestEditorViewModel editor)
+    {
+        if (WorkspaceContextProvider is not null) editor.WorkspaceContextProvider = WorkspaceContextProvider;
+        // Tag history rows with the workspace active at Send time so history stays per-workspace.
+        editor.HistoryWorkspaceIdProvider = () => ActiveWorkspaceId;
+        var snapshot = EnvironmentSnapshotProvider?.Invoke();
+        if (snapshot is not null) editor.EnvironmentVariables = snapshot;
+        var secretNames = SecretNamesProvider?.Invoke();
+        if (secretNames is not null) editor.SecretVariableNames = secretNames;
     }
 
     /// <summary>Raised when the user saves a request that has no backing file (a "+" scratch
@@ -578,6 +590,10 @@ public partial class OpenTabsViewModel : ObservableObject
         if (existing is HistoryTabViewModel ht) { ActiveTab = ht; return ht; }
 
         var editor = _editorFactory();
+        // Wire the same workspace/env/history providers a normal request tab gets so clicking
+        // Send on a history replay resolves {{vars}} and records the new row into the active
+        // workspace — i.e. it truly re-runs the original request.
+        WireEditorProviders(editor);
         // Request side: prefer the persisted blob (full state) and fall back to method/url
         // when payload persistence was off when the row was recorded.
         if (!string.IsNullOrEmpty(payload.RequestBlob))
@@ -608,6 +624,63 @@ public partial class OpenTabsViewModel : ObservableObject
         Tabs.Add(tab);
         ActiveTab = tab;
         return tab;
+    }
+
+    /// <summary>Promotes a history entry into a fresh, editable scratch tab — the same kind the
+    /// "+" button creates — hydrated with the entry's full request snapshot (and its recorded
+    /// response, for reference). Unlike <see cref="OpenHistoryTab"/>'s read-only replay marker,
+    /// the result is a real draft scoped to <paramref name="workspaceId"/>: it survives sidebar
+    /// mode switches, can be freely edited and re-sent, and can be saved into a collection via
+    /// the tab's "Save to collection…" action. This is the History → "open as request" path.</summary>
+    public HttpRequestTabViewModel OpenHistoryAsScratch(HistoryReplayPayload payload, string? workspaceId)
+    {
+        var id = "scratch:" + Guid.NewGuid().ToString("N");
+        // Seed with a named item so the tab gets a stable title (BuildHttpTab mirrors the URL
+        // into the title only for null-request drafts; a history draft already knows its URL).
+        var seed = new RequestItem
+        {
+            Name = ScratchNameFromUrl(payload.Row.Url) ?? NextUntitledName(workspaceId),
+            Kind = RequestKind.Http,
+            Method = payload.Row.Method,
+            Url = payload.Row.Url,
+        };
+        var tab = BuildHttpTab(seed, sourcePath: null, id, collection: null, folderChain: null, collectionPath: null);
+        tab.WorkspaceId = workspaceId;
+        tab.IsScratch = true;
+
+        // Hydrate the full request state from the persisted snapshot (auth/body/headers/vars/…).
+        if (!string.IsNullOrEmpty(payload.RequestBlob))
+            tab.Editor.ApplyRequestBlob(payload.RequestBlob);
+
+        // Show the recorded response too so the draft opens with context, mirroring OpenHistoryTab.
+        tab.Editor.ResponseStatusCode = payload.Row.StatusCode;
+        tab.Editor.ResponseBody = payload.ResponseBody ?? string.Empty;
+        tab.Editor.ResponseElapsedMilliseconds = payload.Row.DurationMs;
+        tab.Editor.ErrorMessage = payload.Row.ErrorMessage;
+        tab.Editor.HasResponse = payload.Row.StatusCode != 0 || !string.IsNullOrEmpty(payload.ResponseBody);
+        // A scratch draft is persisted by virtue of IsScratch; keep it non-dirty so closing it
+        // (it's a throwaway draft) doesn't trigger the unsaved-changes prompt.
+        tab.Editor.IsDirty = false;
+
+        Tabs.Add(tab);
+        ActiveTab = tab;
+        return tab;
+    }
+
+    /// <summary>Short, human display name for a history-derived draft: host + path of the URL,
+    /// trimmed. Returns null when the URL can't be parsed so the caller can fall back to
+    /// "Untitled".</summary>
+    private static string? ScratchNameFromUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            var path = string.IsNullOrEmpty(uri.AbsolutePath) || uri.AbsolutePath == "/"
+                ? uri.Host
+                : uri.Host + uri.AbsolutePath;
+            return path.Length > 40 ? path[..40] + "…" : path;
+        }
+        return url.Length > 40 ? url[..40] + "…" : url;
     }
 
     /// <summary>Opens (or activates) a tab editing the given environment. Saves go
