@@ -11,6 +11,16 @@
     <SolidColorBrush x:Key="BgTabActiveBrush" Color="#3b4252" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#242933" />
 
+    <!-- Chrome surfaces — one tone per window region (VSCode-style). Preserves the current
+         Nord look: Polar Night #242933 frames the title bar; side/activity/header/tab/status
+         share the #3b4252 mid-surface, above the editor (Bg1) and below cards. -->
+    <SolidColorBrush x:Key="ChromeTitleBarBrush" Color="#242933" />
+    <SolidColorBrush x:Key="ChromeActivityBarBrush" Color="#3b4252" />
+    <SolidColorBrush x:Key="ChromeSideBarBrush" Color="#3b4252" />
+    <SolidColorBrush x:Key="ChromeHeaderBarBrush" Color="#3b4252" />
+    <SolidColorBrush x:Key="ChromeTabBarBrush" Color="#3b4252" />
+    <SolidColorBrush x:Key="ChromeStatusBarBrush" Color="#3b4252" />
+
     <SolidColorBrush x:Key="Border0Brush" Color="#3b4252" />
     <SolidColorBrush x:Key="Border1Brush" Color="#434c5e" />
     <SolidColorBrush x:Key="Border2Brush" Color="#4c566a" />

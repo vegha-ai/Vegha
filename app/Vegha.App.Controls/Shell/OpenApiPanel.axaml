@@ -6,7 +6,7 @@
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="700"
              x:Class="Vegha.App.Controls.Shell.OpenApiPanel"
              x:DataType="vm:OpenApiViewModel">
-    <DockPanel Background="{DynamicResource Bg2Brush}">
+    <DockPanel Background="{DynamicResource ChromeSideBarBrush}">
         <Border DockPanel.Dock="Top" Padding="10,8" Height="34"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,0,0,1">

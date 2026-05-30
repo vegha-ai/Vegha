@@ -39,7 +39,7 @@
     </UserControl.Styles>
 
     <Panel>
-    <Border Background="{DynamicResource Bg2Brush}"
+    <Border Background="{DynamicResource ChromeStatusBarBrush}"
             BorderBrush="{DynamicResource Border0Brush}"
             BorderThickness="0,1,0,0"
             Padding="6,0">

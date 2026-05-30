@@ -44,7 +44,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Border Background="{DynamicResource Bg2Brush}"
+    <Border Background="{DynamicResource ChromeHeaderBarBrush}"
             BorderBrush="{DynamicResource Border0Brush}"
             BorderThickness="0,0,0,1">
         <!-- Workspace header: always-visible band carrying the collection switcher + add (left)

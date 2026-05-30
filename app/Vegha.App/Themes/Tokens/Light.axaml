@@ -11,6 +11,15 @@
     <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#eef0f3" />
 
+    <!-- Chrome surfaces — one tone per window region (VSCode-style). Soft neutral greys
+         stepped below the editor (Bg1 #f4f5f7) so the frame recedes and content lifts. -->
+    <SolidColorBrush x:Key="ChromeTitleBarBrush" Color="#e8eaee" />
+    <SolidColorBrush x:Key="ChromeActivityBarBrush" Color="#e1e4e9" />
+    <SolidColorBrush x:Key="ChromeSideBarBrush" Color="#eceef2" />
+    <SolidColorBrush x:Key="ChromeHeaderBarBrush" Color="#eceef2" />
+    <SolidColorBrush x:Key="ChromeTabBarBrush" Color="#e6e8ed" />
+    <SolidColorBrush x:Key="ChromeStatusBarBrush" Color="#e8eaee" />
+
     <!-- Borders — stepped up from the original near-invisible #d6d9df/#b8bdc6 so
          inputs read as bordered fields on white instead of floating (audit §07.1). -->
     <SolidColorBrush x:Key="Border0Brush" Color="#e6e8ec" />

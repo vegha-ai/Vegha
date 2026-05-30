@@ -102,17 +102,21 @@
         <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
     </Style>
 
-    <!-- Activity rail buttons -->
+    <!-- Activity rail buttons — VSCode-style. Items span the full rail width and carry a
+         reserved (transparent) 2px left border so the active state can show a flush-left
+         accent bar without nudging the glyph. Active = accent bar + accent glyph and NO
+         background fill (the old AccentSoft shading read as a dated chip). Taller 40px rows
+         + larger glyphs (set on the icons in ActivityRail.axaml) match VS Code's rail. -->
     <Style Selector="Button.rail">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
-        <Setter Property="Width" Value="32" />
-        <Setter Property="Height" Value="32" />
-        <Setter Property="Margin" Value="0,2" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="2,0,0,0" />
+        <Setter Property="Height" Value="40" />
+        <Setter Property="Margin" Value="0" />
         <Setter Property="Padding" Value="0" />
-        <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}" />
+        <Setter Property="CornerRadius" Value="0" />
         <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
-        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Center" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="FontSize" Value="14" />
@@ -122,16 +126,15 @@
         <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
         <Setter Property="TextElement.Foreground" Value="{DynamicResource Text0Brush}" />
     </Style>
+    <!-- Active = flush-left accent bar (the button's own left border, reserved above so it
+         sits at the rail edge) + accent glyph. No fill — VSCode's activity-bar model. -->
     <Style Selector="Button.rail.active">
         <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
-        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
-    </Style>
-    <Style Selector="Button.rail.active /template/ ContentPresenter">
-        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
-        <!-- Accent left-indicator bar for the active section
-             (audit §07 "active = accent + indicator bar"). -->
         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-        <Setter Property="BorderThickness" Value="2,0,0,0" />
+    </Style>
+    <!-- Keep the active glyph accent-tinted even while hovered (base hover would grey it). -->
+    <Style Selector="Button.rail.active:pointerover /template/ ContentPresenter">
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource AccentBrush}" />
     </Style>
 
     <!-- Hover "..." button on every tree row that opens the context menu. Visible only
@@ -154,14 +157,17 @@
         <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
     </Style>
 
-    <!-- Request tab (one per opened request) -->
+    <!-- Request tab (one per opened request). Active is shown purely by lifting to the editor
+         background (Bg1) — the same cream as the pane below — so the tab reads as "merged with
+         the editor" like a browser/VSCode tab. The old accent border around the active tab was
+         removed (it read as dated); only a reserved 1px right divider stays, transparent. -->
     <Style Selector="Border.reqTab">
         <Setter Property="MinWidth" Value="140" />
         <Setter Property="MaxWidth" Value="240" />
         <Setter Property="Height" Value="36" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0,0,1,2" />
+        <Setter Property="BorderThickness" Value="0,0,1,0" />
         <Setter Property="Cursor" Value="Hand" />
     </Style>
     <Style Selector="Border.reqTab:pointerover">
@@ -169,7 +175,6 @@
     </Style>
     <Style Selector="Border.reqTab.active">
         <Setter Property="Background" Value="{DynamicResource Bg1Brush}" />
-        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
 
     <!-- Workspace mode tab (REST / GraphQL / WebSocket / gRPC / SOAP) -->
@@ -809,5 +814,49 @@
     </Style>
     <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+    </Style>
+
+    <!-- ============================================================================
+         Popup / overlay surfaces (audit §08 — "stray white menus").
+         FluentTheme paints context menus, flyouts, combo dropdowns and tooltips with its
+         own near-white surface that ignores our palette, so on warm/tinted variants a
+         right-click menu or dropdown reads as a stark white card floating over solarized
+         paper. Bind every overlay presenter to the theme's elevated surface (Bg2) + border
+         so popups match the rest of the UI — the VSCode model where menus share the
+         dropdown/editor-widget tone rather than raw #fff.
+         ============================================================================ -->
+    <Style Selector="MenuFlyoutPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+    </Style>
+    <Style Selector="ContextMenu">
+        <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+    </Style>
+    <Style Selector="FlyoutPresenter">
+        <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+        <!-- Zero the default presenter padding so flyout content (which paints its own
+             surface) sits flush inside the border instead of leaving a white halo. -->
+        <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="ToolTip">
+        <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusSm}" />
+    </Style>
+    <!-- ComboBox dropdown popup — Fluent draws the list surface from a fixed near-white
+         resource; point it at the elevated surface so method/auth/type dropdowns match. -->
+    <Style Selector="ComboBox /template/ Border#PopupBorder">
+        <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
     </Style>
 </Styles>

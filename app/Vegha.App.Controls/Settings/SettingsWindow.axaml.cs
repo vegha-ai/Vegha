@@ -44,4 +44,12 @@ public partial class SettingsWindow : Window
     {
         Close(false);
     }
+
+    // Drag the dialog by its themed title bar (no OS chrome to grab now that the client
+    // area is extended). Left-button only so the close button still gets its clicks.
+    private void OnHeaderPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginMoveDrag(e);
+    }
 }
