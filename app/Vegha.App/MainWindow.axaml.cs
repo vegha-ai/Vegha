@@ -285,10 +285,26 @@ public partial class MainWindow : Window
         global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
             var history = App.Services.GetService<HistoryViewModel>();
+            var workspacesForHistory = App.Services.GetService<WorkspacesViewModel>();
             if (history is not null)
             {
                 history.HarExportRequested += async (_, _) => await SaveHarAsync(history);
                 history.OpenInTabRequested += (_, payload) => OpenHistoryTabFromPayload(payload);
+                history.OpenAsRequestRequested += (_, payload) => OpenHistoryAsScratchFromPayload(payload);
+                history.SaveToCollectionRequested += async (_, payload) => await SaveHistoryToCollectionAsync(payload);
+
+                // Scope history to the active workspace and keep it in sync on every switch. A
+                // one-time backfill (awaited before scoping) moves any pre-migration (unscoped)
+                // rows into the active workspace so existing history doesn't disappear under the
+                // new filter or flash empty before the migration lands.
+                var activeWs = workspacesForHistory?.ActiveWorkspace?.FolderPath;
+                _ = InitializeHistoryWorkspaceAsync(history, activeWs);
+                if (workspacesForHistory is not null)
+                    workspacesForHistory.PropertyChanged += (_, evt) =>
+                    {
+                        if (evt.PropertyName == nameof(WorkspacesViewModel.ActiveWorkspace))
+                            history.WorkspaceId = workspacesForHistory.ActiveWorkspace?.FolderPath;
+                    };
             }
 
             // Runner sidebar: clicking "Run" should open a CollectionRunTab.
@@ -360,6 +376,53 @@ public partial class MainWindow : Window
     {
         var tabs = App.Services?.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
         tabs?.OpenHistoryTab(payload);
+    }
+
+    /// <summary>One-time per-launch: migrate legacy unscoped history rows into the active
+    /// workspace, THEN point the History panel at that workspace. Doing the backfill first
+    /// avoids the first scoped load returning nothing while the migration is still running.</summary>
+    private async Task InitializeHistoryWorkspaceAsync(HistoryViewModel history, string? activeWorkspaceId)
+    {
+        if (!string.IsNullOrEmpty(activeWorkspaceId))
+        {
+            var store = App.Services?.GetService<Vegha.Core.History.HistoryStore>();
+            if (store is not null)
+            {
+                try { await store.BackfillWorkspaceAsync(activeWorkspaceId); }
+                catch { /* best-effort migration */ }
+            }
+        }
+        history.WorkspaceId = activeWorkspaceId; // triggers the first scoped refresh
+    }
+
+    /// <summary>History → "Open as request": promote the entry into an editable scratch draft in
+    /// the active workspace and flip the sidebar back to Collections so the (non-history) scratch
+    /// tab is actually visible in the strip.</summary>
+    private void OpenHistoryAsScratchFromPayload(HistoryReplayPayload payload)
+    {
+        var tabs = App.Services?.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
+        if (tabs is null) return;
+        var workspaceId = App.Services?.GetService<WorkspacesViewModel>()?.ActiveWorkspace?.FolderPath
+                          ?? tabs.ActiveWorkspaceId;
+        tabs.OpenHistoryAsScratch(payload, workspaceId);
+        // The scratch tab is a normal request tab, hidden while the History section is active.
+        if (DataContext is MainWindowViewModel mwvm)
+            mwvm.ActiveSidebarSection = "collections";
+    }
+
+    /// <summary>History → "Save to collection…": open the entry as an editable scratch draft and
+    /// immediately run the save-to-collection picker on it. Cancelling the picker leaves the
+    /// draft open so nothing is lost.</summary>
+    private async Task SaveHistoryToCollectionAsync(HistoryReplayPayload payload)
+    {
+        var tabs = App.Services?.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
+        if (tabs is null) return;
+        var workspaceId = App.Services?.GetService<WorkspacesViewModel>()?.ActiveWorkspace?.FolderPath
+                          ?? tabs.ActiveWorkspaceId;
+        var tab = tabs.OpenHistoryAsScratch(payload, workspaceId);
+        if (DataContext is MainWindowViewModel mwvm)
+            mwvm.ActiveSidebarSection = "collections";
+        await SaveTabToCollectionAsync(tab);
     }
 
     /// <summary>Opens a new Collection Runner tab for <paramref name="root"/>'s collection.
@@ -1623,6 +1686,15 @@ public partial class MainWindow : Window
             var item = http.Editor.BuildRequestItemFromVm();
             var newPath = collections.CreateRequestFromItemInDirectory(result.DirectoryPath, item, result.Name);
             if (string.IsNullOrEmpty(newPath)) return;
+
+            // Saving from a history-replay tab happens while the History sidebar section is
+            // active, where the freshly-opened (non-history) request tab would be hidden. Flip
+            // back to Collections so the user lands on their newly-saved request.
+            if (tab is Vegha.App.ViewModels.Tabs.HistoryTabViewModel
+                && DataContext is MainWindowViewModel mwvm)
+            {
+                mwvm.ActiveSidebarSection = "collections";
+            }
 
             // Close the scratch tab (drops it from memory + the session DB at the next snapshot),
             // then open the freshly-saved request, scoped to the collection it now lives in.

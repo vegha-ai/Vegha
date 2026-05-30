@@ -100,6 +100,10 @@ public partial class MainWindowViewModel : ObservableObject
     {
         _seedEditor = seedEditor;
         OpenTabs = openTabs;
+        // The seed editor is shown when no request tab is open; it bypasses OpenTabs.BuildHttpTab,
+        // so wire its history-workspace provider here too so any send from it is recorded against
+        // the active workspace rather than landing unscoped.
+        _seedEditor.HistoryWorkspaceIdProvider = () => OpenTabs.ActiveWorkspaceId;
         Collections = collections;
         Codegen = codegen;
         Workspaces = workspaces;

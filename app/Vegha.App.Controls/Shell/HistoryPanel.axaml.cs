@@ -75,6 +75,12 @@ public partial class HistoryPanel : UserControl
     private void OnDelete_Click(object? sender, RoutedEventArgs e) =>
         InvokeOnRow(sender, vm => vm.DeleteCommand);
 
+    private void OnOpenAsRequest_Click(object? sender, RoutedEventArgs e) =>
+        InvokeOnRow(sender, vm => vm.OpenAsRequestCommand);
+
+    private void OnSaveToCollection_Click(object? sender, RoutedEventArgs e) =>
+        InvokeOnRow(sender, vm => vm.SaveToCollectionCommand);
+
     private void InvokeOnRow(
         object? sender,
         Func<HistoryViewModel, System.Windows.Input.ICommand> commandSelector)
