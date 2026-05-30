@@ -68,7 +68,7 @@
 
         <!-- ============ MASTER: env list ============ -->
         <Border Grid.Column="0"
-                Background="{DynamicResource Bg2Brush}"
+                Background="{DynamicResource ChromeSideBarBrush}"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,0,1,0">
             <DockPanel>

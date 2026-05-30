@@ -11,6 +11,16 @@
     <SolidColorBrush x:Key="BgTabActiveBrush" Color="#1e1e2e" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#11111b" />
 
+    <!-- Chrome surfaces — one tone per window region (VSCode-style). Preserves the current
+         Catppuccin look: crust (#11111b) frames the title bar; side/activity/header/tab/
+         status share the base (#1e1e2e) mid-surface, above the editor (Bg1) and below cards. -->
+    <SolidColorBrush x:Key="ChromeTitleBarBrush" Color="#11111b" />
+    <SolidColorBrush x:Key="ChromeActivityBarBrush" Color="#1e1e2e" />
+    <SolidColorBrush x:Key="ChromeSideBarBrush" Color="#1e1e2e" />
+    <SolidColorBrush x:Key="ChromeHeaderBarBrush" Color="#1e1e2e" />
+    <SolidColorBrush x:Key="ChromeTabBarBrush" Color="#1e1e2e" />
+    <SolidColorBrush x:Key="ChromeStatusBarBrush" Color="#1e1e2e" />
+
     <SolidColorBrush x:Key="Border0Brush" Color="#252535" />
     <SolidColorBrush x:Key="Border1Brush" Color="#313244" />
     <SolidColorBrush x:Key="Border2Brush" Color="#45475a" />

@@ -7,9 +7,20 @@
     <SolidColorBrush x:Key="Bg2Brush" Color="#eceff4" />
     <SolidColorBrush x:Key="Bg3Brush" Color="#f3f5f9" />
     <SolidColorBrush x:Key="Bg4Brush" Color="#dde2ec" />
-    <SolidColorBrush x:Key="BgInputBrush" Color="#ffffff" />
-    <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
+    <!-- Inputs & editors use the snow-storm writing surfaces, not raw #fff. -->
+    <SolidColorBrush x:Key="BgInputBrush" Color="#e3e9f1" />
+    <SolidColorBrush x:Key="BgTabActiveBrush" Color="#e5e9f0" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#dde2ec" />
+
+    <!-- Chrome surfaces — one tone per window region (VSCode-style). Nord Snow Storm steps
+         BELOW the editor (Bg1 #e5e9f0) so the cool frame recesses: activity bar deepest
+         (#d3dae6), tab bar #d8dee9, side/header #e1e6ef, title/status #dde2ec. -->
+    <SolidColorBrush x:Key="ChromeTitleBarBrush" Color="#dde2ec" />
+    <SolidColorBrush x:Key="ChromeActivityBarBrush" Color="#d3dae6" />
+    <SolidColorBrush x:Key="ChromeSideBarBrush" Color="#e1e6ef" />
+    <SolidColorBrush x:Key="ChromeHeaderBarBrush" Color="#e1e6ef" />
+    <SolidColorBrush x:Key="ChromeTabBarBrush" Color="#d8dee9" />
+    <SolidColorBrush x:Key="ChromeStatusBarBrush" Color="#dde2ec" />
 
     <!-- Borders stepped up for visible field edges on snow-white (audit §07.1). -->
     <SolidColorBrush x:Key="Border0Brush" Color="#d8dee9" />
@@ -29,8 +40,8 @@
 
     <!-- Fluent input-state overrides (audit §04): keep the input background on hover/focus
          and use the accent border instead of Fluent's focused-state defaults. -->
-    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#ffffff" />
-    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#ffffff" />
+    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#e3e9f1" />
+    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#e3e9f1" />
     <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#94a0b3" />
     <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#5e81ac" />
 

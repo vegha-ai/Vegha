@@ -11,6 +11,16 @@
     <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#eaeef2" />
 
+    <!-- Chrome surfaces — one tone per window region (VSCode-style). GitHub Primer tones:
+         canvas.subtle #f6f8fa for title/status, a mid #f0f3f6 for side/header, and the
+         muted #eaeef2 for activity/tab bars; editor (Bg1 #f6f8fa) is the lightest. -->
+    <SolidColorBrush x:Key="ChromeTitleBarBrush" Color="#f6f8fa" />
+    <SolidColorBrush x:Key="ChromeActivityBarBrush" Color="#eaeef2" />
+    <SolidColorBrush x:Key="ChromeSideBarBrush" Color="#f0f3f6" />
+    <SolidColorBrush x:Key="ChromeHeaderBarBrush" Color="#f0f3f6" />
+    <SolidColorBrush x:Key="ChromeTabBarBrush" Color="#eaeef2" />
+    <SolidColorBrush x:Key="ChromeStatusBarBrush" Color="#f6f8fa" />
+
     <!-- Borders stepped up for visible field edges on white (audit §07.1). -->
     <SolidColorBrush x:Key="Border0Brush" Color="#d0d7de" />
     <SolidColorBrush x:Key="Border1Brush" Color="#a0aab4" />

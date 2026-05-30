@@ -251,11 +251,16 @@ public partial class VariableAwareTextEditor : UserControl
         {
             FontFamily = _editor.FontFamily,
             FontSize = _editor.FontSize,
-            Foreground = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
             VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 0, 0),
             IsHitTestVisible = false,
         };
+        // Placeholder colour comes from the theme's faint-text token, not a hardcoded
+        // translucent white — that white was invisible on every light variant (the URL,
+        // body, and KV-cell watermarks vanished). GetResourceObservable re-emits on theme
+        // switch so the placeholder tracks the active variant live.
+        _watermarkBlock.Bind(TextBlock.ForegroundProperty,
+            this.GetResourceObservable("Text3Brush"));
         // Inline eye + warning glyphs. Both are stacked together on the right edge so the
         // layout stays stable as IsPassword / WarningTip flip at runtime. The eye drives
         // IsRevealed two-way so the property and the toggle stay in sync.

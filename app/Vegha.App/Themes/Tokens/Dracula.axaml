@@ -11,6 +11,16 @@
     <SolidColorBrush x:Key="BgTabActiveBrush" Color="#343746" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#1b1c25" />
 
+    <!-- Chrome surfaces — one tone per window region (VSCode-style). Preserves the current
+         Dracula look: deepest navy (#1b1c25) frames the title bar; side/activity/header/tab/
+         status share the #343746 mid-surface, above the editor (Bg1) and below cards. -->
+    <SolidColorBrush x:Key="ChromeTitleBarBrush" Color="#1b1c25" />
+    <SolidColorBrush x:Key="ChromeActivityBarBrush" Color="#343746" />
+    <SolidColorBrush x:Key="ChromeSideBarBrush" Color="#343746" />
+    <SolidColorBrush x:Key="ChromeHeaderBarBrush" Color="#343746" />
+    <SolidColorBrush x:Key="ChromeTabBarBrush" Color="#343746" />
+    <SolidColorBrush x:Key="ChromeStatusBarBrush" Color="#343746" />
+
     <SolidColorBrush x:Key="Border0Brush" Color="#343746" />
     <SolidColorBrush x:Key="Border1Brush" Color="#44475a" />
     <SolidColorBrush x:Key="Border2Brush" Color="#5c5f72" />

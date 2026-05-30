@@ -12,6 +12,16 @@
     <SolidColorBrush x:Key="BgTabActiveBrush" Color="#073642" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#001f27" />
 
+    <!-- Chrome surfaces — one tone per window region (VSCode-style). Preserves the current
+         Solarized Dark look: base03-deep (#001f27) frames the title bar; side/activity/
+         header/tab/status share base02 (#073642), above the editor (Bg1) and below cards. -->
+    <SolidColorBrush x:Key="ChromeTitleBarBrush" Color="#001f27" />
+    <SolidColorBrush x:Key="ChromeActivityBarBrush" Color="#073642" />
+    <SolidColorBrush x:Key="ChromeSideBarBrush" Color="#073642" />
+    <SolidColorBrush x:Key="ChromeHeaderBarBrush" Color="#073642" />
+    <SolidColorBrush x:Key="ChromeTabBarBrush" Color="#073642" />
+    <SolidColorBrush x:Key="ChromeStatusBarBrush" Color="#073642" />
+
     <SolidColorBrush x:Key="Border0Brush" Color="#0c4554" />
     <SolidColorBrush x:Key="Border1Brush" Color="#155262" />
     <SolidColorBrush x:Key="Border2Brush" Color="#1e6577" />

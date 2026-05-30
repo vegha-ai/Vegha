@@ -8,7 +8,7 @@
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="700"
              x:Class="Vegha.App.Controls.Shell.RunnerPanel"
              x:DataType="runner:RunnerSidebarViewModel">
-    <DockPanel Background="{DynamicResource Bg2Brush}">
+    <DockPanel Background="{DynamicResource ChromeSideBarBrush}">
         <Border DockPanel.Dock="Top" Padding="10,8" Height="34"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,0,0,1">
