@@ -261,4 +261,142 @@ public class HistoryStoreTests : IDisposable
 
         (await store.CountAsync()).Should().Be(2);
     }
+
+    // ============================== per-workspace history ==============================
+
+    [Fact]
+    public async Task GetRange_ScopedToWorkspace_ReturnsOnlyThatWorkspacesRows()
+    {
+        var store = Store();
+        await store.AppendAsync("GET", "https://a/1", 200, 1, null, null, workspaceId: "/ws/A");
+        await store.AppendAsync("GET", "https://a/2", 200, 1, null, null, workspaceId: "/ws/A");
+        await store.AppendAsync("GET", "https://b/1", 200, 1, null, null, workspaceId: "/ws/B");
+
+        var a = await store.GetRangeAsync(0, 100, workspaceId: "/ws/A");
+        a.Select(r => r.Url).Should().BeEquivalentTo("https://a/1", "https://a/2");
+
+        var b = await store.GetRangeAsync(0, 100, workspaceId: "/ws/B");
+        b.Select(r => r.Url).Should().BeEquivalentTo("https://b/1");
+
+        // Null workspace = no filter = every row (used by tests and the "all" view).
+        (await store.GetRangeAsync(0, 100)).Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task Count_ScopedToWorkspace()
+    {
+        var store = Store();
+        await store.AppendAsync("GET", "https://a/1", 200, 1, null, null, workspaceId: "/ws/A");
+        await store.AppendAsync("GET", "https://b/1", 200, 1, null, null, workspaceId: "/ws/B");
+        await store.AppendAsync("GET", "https://b/2", 200, 1, null, null, workspaceId: "/ws/B");
+
+        (await store.CountAsync("/ws/A")).Should().Be(1);
+        (await store.CountAsync("/ws/B")).Should().Be(2);
+        (await store.CountAsync()).Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Clear_ScopedToWorkspace_LeavesOtherWorkspacesIntact()
+    {
+        var store = Store();
+        await store.AppendAsync("GET", "https://a/1", 200, 1, null, null, workspaceId: "/ws/A");
+        await store.AppendAsync("GET", "https://b/1", 200, 1, null, null, workspaceId: "/ws/B");
+
+        await store.ClearAsync("/ws/A");
+
+        (await store.CountAsync("/ws/A")).Should().Be(0);
+        (await store.CountAsync("/ws/B")).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CountPrune_IsPerWorkspace_OneBusyWorkspaceDoesNotEvictAnother()
+    {
+        var store = Store();
+        store.MaxRetained = 3;
+
+        // Workspace B stays small; workspace A overflows. A's overflow must not touch B.
+        await store.AppendAsync("GET", "https://b/keep", 200, 1, null, null, workspaceId: "/ws/B");
+        for (int i = 0; i < 10; i++)
+            await store.AppendAsync("GET", $"https://a/{i}", 200, i, null, null, workspaceId: "/ws/A");
+
+        (await store.CountAsync("/ws/A")).Should().Be(3); // capped
+        (await store.CountAsync("/ws/B")).Should().Be(1); // untouched
+
+        var b = await store.GetRangeAsync(0, 100, workspaceId: "/ws/B");
+        b.Should().ContainSingle(r => r.Url == "https://b/keep");
+    }
+
+    [Fact]
+    public async Task Search_FiltersByMethodOrUrl_CaseInsensitive()
+    {
+        var store = Store();
+        await store.AppendAsync("GET", "https://api.example.com/users", 200, 1, null, null);
+        await store.AppendAsync("POST", "https://api.example.com/orders", 201, 1, null, null);
+        await store.AppendAsync("DELETE", "https://cdn.other.com/asset", 204, 1, null, null);
+
+        (await store.GetRangeAsync(0, 100, search: "USERS"))
+            .Select(r => r.Url).Should().BeEquivalentTo("https://api.example.com/users");
+
+        (await store.GetRangeAsync(0, 100, search: "example.com"))
+            .Should().HaveCount(2);
+
+        (await store.GetRangeAsync(0, 100, search: "post"))
+            .Select(r => r.Method).Should().BeEquivalentTo("POST");
+
+        (await store.GetRangeAsync(0, 100, search: "nomatch")).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Search_TreatsWildcardsLiterally()
+    {
+        var store = Store();
+        await store.AppendAsync("GET", "https://x/a", 200, 1, null, null);
+        await store.AppendAsync("GET", "https://x/100%done", 200, 1, null, null);
+
+        // A literal % must match only the row that actually contains it, not act as a wildcard.
+        var hits = await store.GetRangeAsync(0, 100, search: "100%");
+        hits.Should().ContainSingle(r => r.Url == "https://x/100%done");
+    }
+
+    [Fact]
+    public async Task Search_CombinesWithWorkspaceFilter()
+    {
+        var store = Store();
+        await store.AppendAsync("GET", "https://api/users", 200, 1, null, null, workspaceId: "/ws/A");
+        await store.AppendAsync("GET", "https://api/users", 200, 1, null, null, workspaceId: "/ws/B");
+
+        var hits = await store.GetRangeAsync(0, 100, workspaceId: "/ws/A", search: "users");
+        hits.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Backfill_AssignsLegacyNullRowsToWorkspace_Idempotent()
+    {
+        var store = Store();
+        // Legacy rows recorded before per-workspace scoping have no workspace_id.
+        await store.AppendAsync("GET", "https://legacy/1", 200, 1, null, null);
+        await store.AppendAsync("GET", "https://legacy/2", 200, 1, null, null);
+        // A row already scoped to another workspace must be left alone.
+        await store.AppendAsync("GET", "https://b/1", 200, 1, null, null, workspaceId: "/ws/B");
+
+        var moved = await store.BackfillWorkspaceAsync("/ws/A");
+        moved.Should().Be(2);
+
+        (await store.CountAsync("/ws/A")).Should().Be(2);
+        (await store.CountAsync("/ws/B")).Should().Be(1);
+
+        // Running again moves nothing — every row now has a workspace.
+        (await store.BackfillWorkspaceAsync("/ws/A")).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetRecent_ScopedToWorkspace()
+    {
+        var store = Store();
+        await store.AppendAsync("GET", "https://a/1", 200, 1, null, null, workspaceId: "/ws/A");
+        await store.AppendAsync("GET", "https://b/1", 200, 1, null, null, workspaceId: "/ws/B");
+
+        var a = await store.GetRecentAsync(limit: 100, workspaceId: "/ws/A");
+        a.Should().ContainSingle(r => r.Url == "https://a/1");
+    }
 }

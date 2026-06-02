@@ -3,10 +3,11 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:conv="using:Vegha.App.Controls.Converters"
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="700"
              x:Class="Vegha.App.Controls.Shell.HistoryPanel"
              x:DataType="vm:HistoryViewModel">
-    <DockPanel Background="{DynamicResource Bg2Brush}">
+    <DockPanel Background="{DynamicResource ChromeSideBarBrush}">
         <Border DockPanel.Dock="Top" Padding="10,8" Height="34"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,0,0,1">
@@ -37,7 +38,7 @@
                 </Button>
                 <Button Grid.Column="3"
                         Command="{Binding ClearCommand}"
-                        ToolTip.Tip="Clear all"
+                        ToolTip.Tip="Clear this workspace's history"
                         Background="Transparent" BorderThickness="0"
                         Foreground="{DynamicResource Text2Brush}"
                         Width="22" Height="22" Padding="0" CornerRadius="3"
@@ -46,6 +47,18 @@
                     <TextBlock Text="🗑" FontSize="12" />
                 </Button>
             </Grid>
+        </Border>
+
+        <!-- Search/filter box. Filters the workspace's history by method or URL substring. -->
+        <Border DockPanel.Dock="Top" Padding="8,6"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <TextBox Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                     Watermark="Filter by method or URL…"
+                     FontSize="11"
+                     MinHeight="26"
+                     Padding="6,3"
+                     VerticalContentAlignment="Center" />
         </Border>
 
         <!-- Footer: load-more affordance + paging spinner. Docked Bottom so the ListBox keeps
@@ -75,13 +88,14 @@
             </Grid>
         </Border>
 
-        <TextBlock IsVisible="{Binding !Items.Count}"
-                   Text="No requests yet.&#10;&#10;Send a request and it'll show up here."
+        <TextBlock IsVisible="{Binding IsListEmpty}"
+                   Text="{Binding EmptyStateText}"
                    Foreground="{DynamicResource Text3Brush}"
                    FontSize="11" FontStyle="Italic"
                    TextWrapping="Wrap"
                    Padding="14,40,14,0"
-                   TextAlignment="Center" />
+                   TextAlignment="Center"
+                   IsHitTestVisible="False" />
 
         <ListBox x:Name="HistoryList"
                  ItemsSource="{Binding Items}"
@@ -105,6 +119,9 @@
                                 DoubleTapped="OnRow_DoubleTapped">
                             <Border.ContextMenu>
                                 <ContextMenu>
+                                    <MenuItem Header="Open as request" Tag="{Binding}" Click="OnOpenAsRequest_Click" />
+                                    <MenuItem Header="Save to collection…" Tag="{Binding}" Click="OnSaveToCollection_Click" />
+                                    <Separator />
                                     <MenuItem Header="Delete" Tag="{Binding}" Click="OnDelete_Click" />
                                 </ContextMenu>
                             </Border.ContextMenu>
@@ -126,7 +143,7 @@
                                            FontFamily="{StaticResource MonoFont}"
                                            FontSize="10"
                                            FontWeight="SemiBold"
-                                           Foreground="{DynamicResource StatusOkBrush}"
+                                           Foreground="{Binding StatusCode, Converter={x:Static conv:StatusCategoryToBrushConverter.Instance}}"
                                            VerticalAlignment="Center"
                                            Margin="6,0,0,0" />
 

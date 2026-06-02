@@ -11,6 +11,16 @@
     <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#ececec" />
 
+    <!-- Chrome surfaces — one tone per window region (VSCode-style). Mirrors VS Code Light
+         Modern: subtle #f0f0f0 chrome with slightly deeper #e8e8e8 activity/tab bars,
+         separated from the editor (Bg1 #f3f3f3) by the #e5e5e5 hairline borders. -->
+    <SolidColorBrush x:Key="ChromeTitleBarBrush" Color="#f0f0f0" />
+    <SolidColorBrush x:Key="ChromeActivityBarBrush" Color="#e8e8e8" />
+    <SolidColorBrush x:Key="ChromeSideBarBrush" Color="#f0f0f0" />
+    <SolidColorBrush x:Key="ChromeHeaderBarBrush" Color="#f0f0f0" />
+    <SolidColorBrush x:Key="ChromeTabBarBrush" Color="#e8e8e8" />
+    <SolidColorBrush x:Key="ChromeStatusBarBrush" Color="#f0f0f0" />
+
     <!-- Borders stepped up for visible field edges on white (audit §07.1). -->
     <SolidColorBrush x:Key="Border0Brush" Color="#e5e5e5" />
     <SolidColorBrush x:Key="Border1Brush" Color="#c4c4c4" />

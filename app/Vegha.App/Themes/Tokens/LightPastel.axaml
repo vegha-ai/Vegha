@@ -4,12 +4,25 @@
 
     <SolidColorBrush x:Key="Bg0Brush" Color="#f3eef5" />
     <SolidColorBrush x:Key="Bg1Brush" Color="#faf6fb" />
-    <SolidColorBrush x:Key="Bg2Brush" Color="#ffffff" />
-    <SolidColorBrush x:Key="Bg3Brush" Color="#fdf9ff" />
+    <!-- Bg2 is the elevated/card/popup surface — kept faintly tinted (not pure #fff) so
+         menus, flyouts, cards and dialog command bars read as pastel, not stark white. -->
+    <SolidColorBrush x:Key="Bg2Brush" Color="#f7f1f9" />
+    <SolidColorBrush x:Key="Bg3Brush" Color="#f2ecf6" />
     <SolidColorBrush x:Key="Bg4Brush" Color="#efe7f3" />
-    <SolidColorBrush x:Key="BgInputBrush" Color="#ffffff" />
-    <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
+    <!-- Inputs & editors use the pastel writing surfaces, not raw #fff. -->
+    <SolidColorBrush x:Key="BgInputBrush" Color="#efe7f4" />
+    <SolidColorBrush x:Key="BgTabActiveBrush" Color="#faf6fb" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#efe7f3" />
+
+    <!-- Chrome surfaces — one tone per window region (VSCode-style). Soft lavender steps
+         below the editor (Bg1 #faf6fb): deepest on the activity/tab bars, mid on the
+         side/header, lightest pastel on title/status. -->
+    <SolidColorBrush x:Key="ChromeTitleBarBrush" Color="#f3eef5" />
+    <SolidColorBrush x:Key="ChromeActivityBarBrush" Color="#ece2f1" />
+    <SolidColorBrush x:Key="ChromeSideBarBrush" Color="#f3edf6" />
+    <SolidColorBrush x:Key="ChromeHeaderBarBrush" Color="#f3edf6" />
+    <SolidColorBrush x:Key="ChromeTabBarBrush" Color="#ece2f1" />
+    <SolidColorBrush x:Key="ChromeStatusBarBrush" Color="#f3eef5" />
 
     <!-- Borders stepped up for visible field edges on white (audit §07.1). -->
     <SolidColorBrush x:Key="Border0Brush" Color="#e9deef" />
@@ -29,8 +42,8 @@
 
     <!-- Fluent input-state overrides (audit §04): keep the input background on hover/focus
          and use the accent border instead of Fluent's focused-state defaults. -->
-    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#ffffff" />
-    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#ffffff" />
+    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#efe7f4" />
+    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#efe7f4" />
     <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#a98fbb" />
     <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#a78bfa" />
 
@@ -52,7 +65,7 @@
     <SolidColorBrush x:Key="StatusErrSoftBrush" Color="#26f87171" />
     <SolidColorBrush x:Key="StatusInfoSoftBrush" Color="#266366f1" />
 
-    <SolidColorBrush x:Key="CodeBgBrush" Color="#fbf7fd" />
+    <SolidColorBrush x:Key="CodeBgBrush" Color="#faf6fb" />
 
     <!-- Syntax highlighting — pastel family. Consumed by EditorSyntaxTheme. -->
     <SolidColorBrush x:Key="CodeCommentBrush" Color="#a698b0" />

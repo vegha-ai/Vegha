@@ -15,17 +15,45 @@
         Background="{DynamicResource Bg1Brush}"
         FontFamily="{StaticResource UiFont}"
         FontSize="{DynamicResource AppFontSize}"
-        WindowStartupLocation="CenterOwner">
-    <!-- Uses the OS title bar for drag + close; RemoveMinimizeMaximize (called from
-         Opened) strips the min/max buttons on Windows so only the close X remains. -->
+        WindowStartupLocation="CenterOwner"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="36">
+    <!-- Themed title bar (drawn below) replaces the OS chrome so the header matches the
+         app palette on every variant. RemoveMinimizeMaximize (from Opened) keeps the
+         taskbar entry tidy; the custom ✕ button and Esc close the dialog. -->
 
     <!-- Explicit Grid rows for body + footer so the body's ScrollViewer is sized
          to exactly (window-height - footer-height). The previous DockPanel form
          occasionally left a sliver of the content pane sitting under the command
          bar — Grid rows make the allocation deterministic. -->
-    <Grid RowDefinitions="*,56">
+    <Grid RowDefinitions="36,*,56">
+        <!-- Themed title bar — logo + title double as the drag region; custom ✕ closes. -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource ChromeTitleBarBrush}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1"
+                PointerPressed="OnHeaderPressed">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                <Image Grid.Column="0"
+                       Source="avares://Vegha.App/Assets/logo.png"
+                       Height="16" Margin="12,0,0,0"
+                       VerticalAlignment="Center" IsHitTestVisible="False" />
+                <TextBlock Grid.Column="1" Text="Settings"
+                           Margin="8,0,0,0"
+                           FontSize="12" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text0Brush}"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="3" Classes="winCtrl close"
+                        Click="OnCancel_Click"
+                        ToolTip.Tip="Close">
+                    <TextBlock Text="✕" FontSize="11" />
+                </Button>
+            </Grid>
+        </Border>
+
         <!-- Body: left nav rail + right content pane -->
-        <Grid Grid.Row="0" ColumnDefinitions="220,*">
+        <Grid Grid.Row="1" ColumnDefinitions="220,*">
             <!-- Nav rail -->
             <Border Grid.Column="0"
                     Background="{DynamicResource Bg1Brush}"
@@ -97,7 +125,7 @@
         </Grid>
 
         <!-- Footer: Restore defaults | Cancel | Apply | Save -->
-        <Border Grid.Row="1"
+        <Border Grid.Row="2"
                 Background="{DynamicResource Bg2Brush}"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,1,0,0">

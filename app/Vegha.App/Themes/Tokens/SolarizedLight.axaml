@@ -4,12 +4,27 @@
 
     <SolidColorBrush x:Key="Bg0Brush" Color="#e6dfc5" />
     <SolidColorBrush x:Key="Bg1Brush" Color="#fdf6e3" />
-    <SolidColorBrush x:Key="Bg2Brush" Color="#ffffff" />
-    <SolidColorBrush x:Key="Bg3Brush" Color="#f7f0d8" />
+    <!-- Bg2 is the elevated/card/popup surface — kept warm off-white (not pure #fff) so
+         menus, flyouts, cards and dialog command bars read as solarized paper, not white. -->
+    <SolidColorBrush x:Key="Bg2Brush" Color="#f7f0dc" />
+    <SolidColorBrush x:Key="Bg3Brush" Color="#f1ead4" />
     <SolidColorBrush x:Key="Bg4Brush" Color="#eee8d5" />
-    <SolidColorBrush x:Key="BgInputBrush" Color="#ffffff" />
-    <SolidColorBrush x:Key="BgTabActiveBrush" Color="#ffffff" />
+    <!-- Inputs & editors get the solarized writing surfaces, not raw #fff: input fields
+         use a tinted inset (base2-ish) and the active tab lifts to the editor cream. -->
+    <SolidColorBrush x:Key="BgInputBrush" Color="#ece5cf" />
+    <SolidColorBrush x:Key="BgTabActiveBrush" Color="#fdf6e3" />
     <SolidColorBrush x:Key="BgTabInactiveBrush" Color="#eee8d5" />
+
+    <!-- Chrome surfaces — one tone per window region (VSCode-style) so the shell reads as
+         layered paper instead of one flat fill. Authentic Solarized Light values: activity
+         bar is the deepest beige, the editor-tab strip a touch lighter, and side/title/
+         status/header share base2 (#eee8d5); the editor (Bg1 #fdf6e3) stays the lightest. -->
+    <SolidColorBrush x:Key="ChromeTitleBarBrush" Color="#eee8d5" />
+    <SolidColorBrush x:Key="ChromeActivityBarBrush" Color="#ddd6c1" />
+    <SolidColorBrush x:Key="ChromeSideBarBrush" Color="#eee8d5" />
+    <SolidColorBrush x:Key="ChromeHeaderBarBrush" Color="#eee8d5" />
+    <SolidColorBrush x:Key="ChromeTabBarBrush" Color="#d9d2c2" />
+    <SolidColorBrush x:Key="ChromeStatusBarBrush" Color="#eee8d5" />
 
     <!-- Borders stepped up for visible field edges on cream (audit §07.1). -->
     <SolidColorBrush x:Key="Border0Brush" Color="#e6dec7" />
@@ -29,8 +44,8 @@
 
     <!-- Fluent input-state overrides (audit §04): keep the input background on hover/focus
          and use the accent border instead of Fluent's focused-state defaults. -->
-    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#ffffff" />
-    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#ffffff" />
+    <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#ece5cf" />
+    <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="#ece5cf" />
     <SolidColorBrush x:Key="TextControlBorderBrushPointerOver" Color="#a89f7f" />
     <SolidColorBrush x:Key="TextControlBorderBrushFocused" Color="#268bd2" />
 
@@ -52,7 +67,9 @@
     <SolidColorBrush x:Key="StatusErrSoftBrush" Color="#26dc322f" />
     <SolidColorBrush x:Key="StatusInfoSoftBrush" Color="#26268bd2" />
 
-    <SolidColorBrush x:Key="CodeBgBrush" Color="#fbf7eb" />
+    <!-- Editor surface = authentic Solarized editor.background (base3), clearly warm cream
+         so the request/response code panes read as paper instead of white. -->
+    <SolidColorBrush x:Key="CodeBgBrush" Color="#fdf6e3" />
 
     <!-- Syntax highlighting — Solarized family. Consumed by EditorSyntaxTheme. -->
     <SolidColorBrush x:Key="CodeCommentBrush" Color="#93a1a1" />

@@ -35,7 +35,7 @@
             <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
         </Style>
     </UserControl.Styles>
-    <DockPanel Background="{DynamicResource Bg2Brush}">
+    <DockPanel Background="{DynamicResource ChromeSideBarBrush}">
         <!-- Header — search/filter input + active-collection menu. The "+ create / open /
              import" cluster moved into the workspace header (AppTopBar) so it stays reachable
              from every sidebar mode. -->
@@ -139,7 +139,7 @@
         <TreeView Classes="compact"
                   ItemsSource="{Binding ActiveCollection.Children}"
                   IsVisible="{Binding ActiveCollection, Converter={x:Static ObjectConverters.IsNotNull}}"
-                  Background="{DynamicResource Bg2Brush}"
+                  Background="{DynamicResource ChromeSideBarBrush}"
                   BorderThickness="0"
                   Padding="0,4,18,4">
 
@@ -308,6 +308,16 @@
                             <TextBlock Text="…" FontSize="14" />
                         </Button>
                     </Grid>
+                </TreeDataTemplate>
+                <!-- "+ New request" affordance shown inside an empty folder. A plain link-styled
+                     row (no method label, no "..." menu); CollectionsPanel's tap handler routes a
+                     click to New Request scoped to the owning folder. -->
+                <TreeDataTemplate DataType="vm:NewRequestPlaceholderViewModel">
+                    <TextBlock Text="+ New request"
+                               FontSize="12" FontStyle="Italic"
+                               Foreground="{DynamicResource AccentBrush}"
+                               VerticalAlignment="Center"
+                               Cursor="Hand" />
                 </TreeDataTemplate>
                 <!-- Request leaf — method label colored by HTTP verb -->
                 <TreeDataTemplate DataType="vm:CollectionItemViewModel">

@@ -34,6 +34,12 @@ public partial class OpenTabsViewModel : ObservableObject
     [ObservableProperty]
     private string? _activeScope;
 
+    /// <summary>Active workspace (its folder path). Scratch tabs are tagged with the workspace
+    /// they were created in and only appear while that workspace is active — so quick "+" drafts
+    /// never leak across workspaces. Set by the host on startup and every workspace switch.</summary>
+    [ObservableProperty]
+    private string? _activeWorkspaceId;
+
     /// <summary>Which sidebar mode is active — drives a *kind* filter on the tab strip so
     /// diff tabs only appear in Source Control mode and request tabs only appear in the
     /// non-git modes. Set externally by <c>MainWindowViewModel</c> on every sidebar switch.</summary>
@@ -56,6 +62,13 @@ public partial class OpenTabsViewModel : ObservableObject
     private readonly Dictionary<string, string> _lastActiveByScope =
         new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Per-workspace memory of the last-active tab. Collection tabs are restored by
+    /// <see cref="_lastActiveByScope"/> on collection switch, but scratch tabs (no collection)
+    /// need their own per-workspace memory so returning to a workspace re-selects the draft the
+    /// user was on rather than snapping to the first one.</summary>
+    private readonly Dictionary<string, string> _lastActiveByWorkspace =
+        new(StringComparer.OrdinalIgnoreCase);
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CloseActiveTabCommand))]
     [NotifyPropertyChangedFor(nameof(IsResponsePaneApplicable))]
@@ -75,6 +88,11 @@ public partial class OpenTabsViewModel : ObservableObject
         // accurately, even when the user has opened tabs in another scope in the meantime.
         if (newValue is not null && !string.IsNullOrEmpty(newValue.CollectionPath))
             _lastActiveByScope[newValue.CollectionPath] = newValue.Id;
+
+        // Track per-workspace last-active too (covers scratch tabs, which have no collection)
+        // so a workspace round-trip returns to the same tab.
+        if (newValue is not null && !string.IsNullOrEmpty(ActiveWorkspaceId))
+            _lastActiveByWorkspace[ActiveWorkspaceId] = newValue.Id;
     }
 
     /// <summary>Fires when <see cref="Tabs"/> changes (open/close/reorder) so the host can persist.</summary>
@@ -130,6 +148,11 @@ public partial class OpenTabsViewModel : ObservableObject
         if (IsRunnerMode) return isRun;
         if (isDiff || isHistory || isRun) return false;
 
+        // Scratch ("+") tabs belong to a workspace, not a collection — they float across that
+        // workspace's collections but must NOT appear under any other workspace.
+        if (tab.IsScratch)
+            return string.Equals(tab.WorkspaceId, ActiveWorkspaceId, StringComparison.OrdinalIgnoreCase);
+
         // Untagged tabs (legacy persisted entries, scope-less drafts) float across every
         // collection scope — they have no collection to belong to. Tagged tabs are visible
         // only when their CollectionPath matches the active scope; if no scope is active
@@ -143,6 +166,29 @@ public partial class OpenTabsViewModel : ObservableObject
     partial void OnIsGitModeChanged(bool oldValue, bool newValue) => RefreshVisibleAndActiveTab();
     partial void OnIsHistoryModeChanged(bool oldValue, bool newValue) => RefreshVisibleAndActiveTab();
     partial void OnIsRunnerModeChanged(bool oldValue, bool newValue) => RefreshVisibleAndActiveTab();
+
+    partial void OnActiveWorkspaceIdChanged(string? oldValue, string? newValue)
+    {
+        // Remember the active tab for the workspace we're leaving so a round-trip restores it.
+        if (!string.IsNullOrEmpty(oldValue) && ActiveTab is { } at)
+            _lastActiveByWorkspace[oldValue] = at.Id;
+
+        RebuildVisibleTabs();
+
+        // Keep the current active tab if it's still visible (e.g. a collection tab whose scope
+        // hasn't been switched yet); otherwise restore the workspace's remembered active —
+        // crucial for scratch tabs, which OnActiveScopeChanged can't restore. Falls back to the
+        // first visible tab.
+        if (ActiveTab is not null && VisibleTabs.Contains(ActiveTab)) return;
+
+        RequestTabViewModel? next = null;
+        if (!string.IsNullOrEmpty(newValue)
+            && _lastActiveByWorkspace.TryGetValue(newValue, out var rememberedId))
+        {
+            next = VisibleTabs.FirstOrDefault(t => string.Equals(t.Id, rememberedId, StringComparison.OrdinalIgnoreCase));
+        }
+        ActiveTab = next ?? VisibleTabs.FirstOrDefault();
+    }
 
     private void RefreshVisibleAndActiveTab()
     {
@@ -244,22 +290,136 @@ public partial class OpenTabsViewModel : ObservableObject
         var editor = _editorFactory();
         // Wire the workspace context BEFORE LoadFromRequestItem so the initial inheritance
         // hints (refreshed during SetParentContext below) see the workspace layer.
-        if (WorkspaceContextProvider is not null) editor.WorkspaceContextProvider = WorkspaceContextProvider;
+        WireEditorProviders(editor);
         editor.LoadFromRequestItem(request, sourcePath);
+        var tab = new HttpRequestTabViewModel(editor, request, sourcePath, id) { CollectionPath = collectionPath };
+        tab.SetParentContext(collection, folderChain);
+        // Saving a draft (no file) bubbles up so the host can promote it into a collection.
+        editor.SaveAsRequested += (_, _) => SaveAsRequested?.Invoke(this, tab);
+        return tab;
+    }
+
+    /// <summary>Wires the workspace/env/history providers every editable request editor needs so
+    /// Send composes inherited vars + scripts, resolves <c>{{var}}</c> against the active
+    /// environment, and records history into the active workspace. Shared by the collection-tab
+    /// path and the history-replay path so a request opened from history runs exactly like the
+    /// original.</summary>
+    private void WireEditorProviders(RequestEditorViewModel editor)
+    {
+        if (WorkspaceContextProvider is not null) editor.WorkspaceContextProvider = WorkspaceContextProvider;
+        // Tag history rows with the workspace active at Send time so history stays per-workspace.
+        editor.HistoryWorkspaceIdProvider = () => ActiveWorkspaceId;
         var snapshot = EnvironmentSnapshotProvider?.Invoke();
         if (snapshot is not null) editor.EnvironmentVariables = snapshot;
         var secretNames = SecretNamesProvider?.Invoke();
         if (secretNames is not null) editor.SecretVariableNames = secretNames;
-        var tab = new HttpRequestTabViewModel(editor, request, sourcePath, id) { CollectionPath = collectionPath };
-        tab.SetParentContext(collection, folderChain);
+    }
+
+    /// <summary>Raised when the user saves a request that has no backing file (a "+" scratch
+    /// draft). The host handles it by promoting the tab into a collection.</summary>
+    public event EventHandler<HttpRequestTabViewModel>? SaveAsRequested;
+
+    /// <summary>Creates a new untitled scratch request in <paramref name="workspaceId"/> and opens
+    /// it. Scratch tabs are DB-backed drafts (no collection file); the display name auto-increments
+    /// (Untitled, Untitled 2, …) among that workspace's existing scratch tabs.</summary>
+    public HttpRequestTabViewModel CreateScratch(string? workspaceId)
+    {
+        var id = "scratch:" + Guid.NewGuid().ToString("N");
+        var name = NextUntitledName(workspaceId);
+        // Seed with a named RequestItem so the tab adopts that name (a null request would make
+        // the tab mirror the URL into its title instead — not what we want for a named draft).
+        var seed = new RequestItem { Name = name, Kind = RequestKind.Http, Method = "GET", Url = string.Empty };
+        var tab = BuildHttpTab(seed, sourcePath: null, id, collection: null, folderChain: null, collectionPath: null);
+        tab.WorkspaceId = workspaceId;
+        tab.IsScratch = true;
+        Tabs.Add(tab);
+        ActiveTab = tab;
         return tab;
     }
 
-    /// <summary>Opens an empty draft tab (the "+" button on the tab strip; "New Request" before the
-    /// user picks a folder). The optional <paramref name="collectionPath"/> stamps the draft so it
-    /// shows up only under the active collection's tab strip.</summary>
+    /// <summary>Next free "Untitled" / "Untitled N" display name among the scratch tabs already
+    /// open in <paramref name="workspaceId"/>.</summary>
+    public string NextUntitledName(string? workspaceId)
+    {
+        bool Taken(string candidate) => Tabs.Any(t =>
+            t.IsScratch
+            && string.Equals(t.WorkspaceId, workspaceId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(t.Name, candidate, StringComparison.OrdinalIgnoreCase));
+
+        if (!Taken("Untitled")) return "Untitled";
+        for (var i = 2; i < 100_000; i++)
+        {
+            var candidate = "Untitled " + i;
+            if (!Taken(candidate)) return candidate;
+        }
+        return "Untitled";
+    }
+
+    /// <summary>Reinstates a request tab from a persisted full-state blob (a dirty edit or a
+    /// scratch draft), preserving the exact in-progress content + dirty flag. The display
+    /// <paramref name="name"/> is taken from the saved row so in-memory renames survive.</summary>
+    public HttpRequestTabViewModel RestoreHttpTab(
+        RequestItem item, string id, string? sourcePath, string? collectionPath,
+        string? workspaceId, bool isScratch, bool isDirty, string name)
+    {
+        var existing = Tabs.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (existing is HttpRequestTabViewModel e) return e;
+
+        var tab = BuildHttpTab(item, sourcePath, id, collection: null, folderChain: null, collectionPath: collectionPath);
+        tab.WorkspaceId = workspaceId;
+        tab.IsScratch = isScratch;
+        tab.Name = name;
+        tab.Editor.IsDirty = isDirty; // mirrors onto tab.IsDirty via the editor->tab binding
+        Tabs.Add(tab);
+        return tab;
+    }
+
+    /// <summary>Full snapshot of every restorable tab for the session DB. Request + scratch tabs
+    /// carry a JSON state blob when dirty or scratch (so unsaved edits survive verbatim); clean
+    /// file-backed tabs store only their path and are rebuilt from disk. Transient kinds (runner,
+    /// diff, environment, workspace editor) are skipped.</summary>
+    public IReadOnlyList<TabFullSnapshot> FullSnapshot()
+    {
+        var rows = new List<TabFullSnapshot>();
+        for (var i = 0; i < Tabs.Count; i++)
+        {
+            var t = Tabs[i];
+            var isHistory = t is HistoryTabViewModel;
+            var restorable = isHistory
+                || (t is HttpRequestTabViewModel)
+                || (t is SoapRequestTabViewModel && !string.IsNullOrEmpty(t.SourcePath));
+            if (!restorable) continue;
+
+            string? blob = null;
+            if (!isHistory && t is HttpRequestTabViewModel http && (t.IsDirty || t.IsScratch))
+            {
+                try { blob = System.Text.Json.JsonSerializer.Serialize(http.Editor.BuildRequestItemFromVm()); }
+                catch { blob = null; }
+            }
+
+            rows.Add(new TabFullSnapshot(
+                Id: t.Id,
+                WorkspaceId: t.WorkspaceId,
+                CollectionPath: t.CollectionPath,
+                SourcePath: t.SourcePath,
+                Name: t.Name,
+                Kind: t.Kind,
+                OrderIndex: i,
+                IsActive: ReferenceEquals(t, ActiveTab),
+                IsDirty: t.IsDirty,
+                IsScratch: t.IsScratch,
+                StateBlob: blob));
+        }
+        return rows;
+    }
+
+    /// <summary>Opens an empty draft tab (legacy / fallback path when no collection is active).
+    /// The optional <paramref name="collectionPath"/> stamps the draft so it shows up only under
+    /// that collection's tab strip; when omitted it defaults to the <see cref="ActiveScope"/> so a
+    /// draft created while a collection is active doesn't leak into every other collection.</summary>
     public RequestTabViewModel OpenDraft(RequestKind kind = RequestKind.Http, string? collectionPath = null)
     {
+        collectionPath ??= ActiveScope;
         var id = "draft:" + Guid.NewGuid().ToString("N");
 
         RequestTabViewModel tab;
@@ -317,22 +477,53 @@ public partial class OpenTabsViewModel : ObservableObject
 
     private bool HasActiveTab() => ActiveTab is not null;
 
+    // The bulk close commands below operate on VISIBLE tabs (the active collection's scope) so a
+    // "Close All" from a tab's right-click menu only clears what the user can actually see — tabs
+    // belonging to other collections stay put. Each delegates to CloseTab so active-tab repointing
+    // happens uniformly. We snapshot the target list first because CloseTab mutates VisibleTabs as
+    // it goes.
+
     [RelayCommand]
     public void CloseAll()
     {
-        Tabs.Clear();
-        ActiveTab = null;
+        foreach (var t in VisibleTabs.ToList()) CloseTab(t);
     }
 
     [RelayCommand]
     public void CloseOthers(RequestTabViewModel? keep)
     {
         if (keep is null) return;
-        for (var i = Tabs.Count - 1; i >= 0; i--)
-        {
-            if (Tabs[i] != keep) Tabs.RemoveAt(i);
-        }
-        ActiveTab = keep;
+        foreach (var t in VisibleTabs.Where(t => !ReferenceEquals(t, keep)).ToList()) CloseTab(t);
+        if (Tabs.Contains(keep)) ActiveTab = keep;
+    }
+
+    /// <summary>Closes every visible tab positioned to the left of <paramref name="tab"/>.</summary>
+    [RelayCommand]
+    public void CloseToLeft(RequestTabViewModel? tab)
+    {
+        if (tab is null) return;
+        var idx = VisibleTabs.IndexOf(tab);
+        if (idx <= 0) return;
+        foreach (var t in VisibleTabs.Take(idx).ToList()) CloseTab(t);
+        if (Tabs.Contains(tab)) ActiveTab = tab;
+    }
+
+    /// <summary>Closes every visible tab positioned to the right of <paramref name="tab"/>.</summary>
+    [RelayCommand]
+    public void CloseToRight(RequestTabViewModel? tab)
+    {
+        if (tab is null) return;
+        var idx = VisibleTabs.IndexOf(tab);
+        if (idx < 0) return;
+        foreach (var t in VisibleTabs.Skip(idx + 1).ToList()) CloseTab(t);
+        if (Tabs.Contains(tab)) ActiveTab = tab;
+    }
+
+    /// <summary>Closes every visible tab with no unsaved changes, keeping the dirty ones.</summary>
+    [RelayCommand]
+    public void CloseSaved()
+    {
+        foreach (var t in VisibleTabs.Where(t => !t.IsDirty).ToList()) CloseTab(t);
     }
 
     [RelayCommand]
@@ -399,6 +590,10 @@ public partial class OpenTabsViewModel : ObservableObject
         if (existing is HistoryTabViewModel ht) { ActiveTab = ht; return ht; }
 
         var editor = _editorFactory();
+        // Wire the same workspace/env/history providers a normal request tab gets so clicking
+        // Send on a history replay resolves {{vars}} and records the new row into the active
+        // workspace — i.e. it truly re-runs the original request.
+        WireEditorProviders(editor);
         // Request side: prefer the persisted blob (full state) and fall back to method/url
         // when payload persistence was off when the row was recorded.
         if (!string.IsNullOrEmpty(payload.RequestBlob))
@@ -429,6 +624,63 @@ public partial class OpenTabsViewModel : ObservableObject
         Tabs.Add(tab);
         ActiveTab = tab;
         return tab;
+    }
+
+    /// <summary>Promotes a history entry into a fresh, editable scratch tab — the same kind the
+    /// "+" button creates — hydrated with the entry's full request snapshot (and its recorded
+    /// response, for reference). Unlike <see cref="OpenHistoryTab"/>'s read-only replay marker,
+    /// the result is a real draft scoped to <paramref name="workspaceId"/>: it survives sidebar
+    /// mode switches, can be freely edited and re-sent, and can be saved into a collection via
+    /// the tab's "Save to collection…" action. This is the History → "open as request" path.</summary>
+    public HttpRequestTabViewModel OpenHistoryAsScratch(HistoryReplayPayload payload, string? workspaceId)
+    {
+        var id = "scratch:" + Guid.NewGuid().ToString("N");
+        // Seed with a named item so the tab gets a stable title (BuildHttpTab mirrors the URL
+        // into the title only for null-request drafts; a history draft already knows its URL).
+        var seed = new RequestItem
+        {
+            Name = ScratchNameFromUrl(payload.Row.Url) ?? NextUntitledName(workspaceId),
+            Kind = RequestKind.Http,
+            Method = payload.Row.Method,
+            Url = payload.Row.Url,
+        };
+        var tab = BuildHttpTab(seed, sourcePath: null, id, collection: null, folderChain: null, collectionPath: null);
+        tab.WorkspaceId = workspaceId;
+        tab.IsScratch = true;
+
+        // Hydrate the full request state from the persisted snapshot (auth/body/headers/vars/…).
+        if (!string.IsNullOrEmpty(payload.RequestBlob))
+            tab.Editor.ApplyRequestBlob(payload.RequestBlob);
+
+        // Show the recorded response too so the draft opens with context, mirroring OpenHistoryTab.
+        tab.Editor.ResponseStatusCode = payload.Row.StatusCode;
+        tab.Editor.ResponseBody = payload.ResponseBody ?? string.Empty;
+        tab.Editor.ResponseElapsedMilliseconds = payload.Row.DurationMs;
+        tab.Editor.ErrorMessage = payload.Row.ErrorMessage;
+        tab.Editor.HasResponse = payload.Row.StatusCode != 0 || !string.IsNullOrEmpty(payload.ResponseBody);
+        // A scratch draft is persisted by virtue of IsScratch; keep it non-dirty so closing it
+        // (it's a throwaway draft) doesn't trigger the unsaved-changes prompt.
+        tab.Editor.IsDirty = false;
+
+        Tabs.Add(tab);
+        ActiveTab = tab;
+        return tab;
+    }
+
+    /// <summary>Short, human display name for a history-derived draft: host + path of the URL,
+    /// trimmed. Returns null when the URL can't be parsed so the caller can fall back to
+    /// "Untitled".</summary>
+    private static string? ScratchNameFromUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            var path = string.IsNullOrEmpty(uri.AbsolutePath) || uri.AbsolutePath == "/"
+                ? uri.Host
+                : uri.Host + uri.AbsolutePath;
+            return path.Length > 40 ? path[..40] + "…" : path;
+        }
+        return url.Length > 40 ? url[..40] + "…" : url;
     }
 
     /// <summary>Opens (or activates) a tab editing the given environment. Saves go
@@ -582,3 +834,20 @@ public sealed record TabSnapshot(
     RequestKind Kind,
     bool IsActive,
     string? CollectionPath = null);
+
+/// <summary>Full per-tab snapshot for the session DB — adds workspace, ordering, dirty/scratch
+/// flags, and an optional full-state JSON blob to <see cref="TabSnapshot"/>. The host maps this
+/// to the persistence layer's row type (keeping the ViewModels project free of a persistence
+/// dependency).</summary>
+public sealed record TabFullSnapshot(
+    string Id,
+    string? WorkspaceId,
+    string? CollectionPath,
+    string? SourcePath,
+    string Name,
+    RequestKind Kind,
+    int OrderIndex,
+    bool IsActive,
+    bool IsDirty,
+    bool IsScratch,
+    string? StateBlob);

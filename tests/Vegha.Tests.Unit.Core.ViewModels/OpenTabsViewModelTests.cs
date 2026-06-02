@@ -130,6 +130,185 @@ public class OpenTabsViewModelTests
     }
 
     [Fact]
+    public void OpenDraft_DefaultsCollectionPath_ToActiveScope()
+    {
+        // A draft created while a collection is active should belong to that scope, not float
+        // into every collection's tab strip (the original cross-collection leak).
+        var vm = NewVm();
+        vm.OpenOrActivate(MakeRequest("a"), "/A/a.bru", collectionPath: "/A");
+        vm.ActiveScope = "/A";
+
+        var draft = vm.OpenDraft();
+        draft.CollectionPath.Should().Be("/A");
+    }
+
+    [Fact]
+    public void CreateScratch_TagsWorkspace_AndScopesVisibility()
+    {
+        var vm = NewVm();
+        vm.ActiveWorkspaceId = "/ws/a";
+        var s = vm.CreateScratch("/ws/a");
+
+        s.IsScratch.Should().BeTrue();
+        s.WorkspaceId.Should().Be("/ws/a");
+        s.Name.Should().Be("Untitled");
+        vm.VisibleTabs.Should().Contain(s);
+
+        // Switching to another workspace hides the scratch tab (no cross-workspace leak).
+        vm.ActiveWorkspaceId = "/ws/b";
+        vm.VisibleTabs.Should().NotContain(s);
+    }
+
+    [Fact]
+    public void SavingDirtyScratch_EnablesSave_AndRaisesSaveAsRequested()
+    {
+        var vm = NewVm();
+        vm.ActiveWorkspaceId = "/ws/a";
+        var s = vm.CreateScratch("/ws/a");
+
+        s.Editor.SaveCommand.CanExecute(null).Should().BeFalse("a pristine draft has nothing to save");
+
+        s.Editor.Url = "https://typed/"; // marks the editor dirty
+        s.Editor.IsDirty.Should().BeTrue();
+        s.Editor.SaveCommand.CanExecute(null).Should().BeTrue("a dirty draft can be saved (promoted)");
+
+        HttpRequestTabViewModel? promoted = null;
+        vm.SaveAsRequested += (_, t) => promoted = t;
+        s.Editor.SaveCommand.Execute(null);
+
+        promoted.Should().BeSameAs(s, "saving a fileless draft asks the host to promote it to a collection");
+    }
+
+    [Fact]
+    public void WorkspaceSwitch_RestoresLastActiveScratchTab()
+    {
+        var vm = NewVm();
+        vm.ActiveWorkspaceId = "/ws/a";
+        vm.CreateScratch("/ws/a");                 // Untitled
+        var u2 = vm.CreateScratch("/ws/a");        // Untitled 2 — now active
+        vm.ActiveTab.Should().Be(u2);
+
+        // Leave to another workspace and come back.
+        vm.ActiveWorkspaceId = "/ws/b";
+        vm.ActiveWorkspaceId = "/ws/a";
+
+        vm.ActiveTab.Should().Be(u2, "returning to a workspace re-selects the tab that was active there");
+    }
+
+    [Fact]
+    public void CreateScratch_IncrementsUntitledNames_PerWorkspace()
+    {
+        var vm = NewVm();
+        vm.ActiveWorkspaceId = "/ws/a";
+        vm.CreateScratch("/ws/a").Name.Should().Be("Untitled");
+        vm.CreateScratch("/ws/a").Name.Should().Be("Untitled 2");
+        // A different workspace numbers independently.
+        vm.CreateScratch("/ws/b").Name.Should().Be("Untitled");
+    }
+
+    [Fact]
+    public void FullSnapshot_BlobsDirtyAndScratch_NotCleanFileTabs()
+    {
+        var vm = NewVm();
+        vm.ActiveWorkspaceId = "/ws/a";
+        var scratch = vm.CreateScratch("/ws/a");
+        var clean = vm.OpenOrActivate(MakeRequest("a"), "/A/a.bru", collectionPath: "/A");
+        var dirty = vm.OpenOrActivate(MakeRequest("b"), "/A/b.bru", collectionPath: "/A");
+        ((HttpRequestTabViewModel)dirty).Editor.IsDirty = true;
+
+        var rows = vm.FullSnapshot();
+        rows.Single(r => r.Id == scratch.Id).StateBlob.Should().NotBeNullOrEmpty("scratch tabs persist full state");
+        rows.Single(r => r.Id == dirty.Id).StateBlob.Should().NotBeNullOrEmpty("dirty tabs persist full state");
+        rows.Single(r => r.Id == clean.Id).StateBlob.Should().BeNull("clean file tabs restore from disk");
+    }
+
+    [Fact]
+    public void RestoreHttpTab_ReinstatesDirtyState_AndName()
+    {
+        var vm = NewVm();
+        var item = MakeRequest("orig", url: "https://restored/");
+        var tab = vm.RestoreHttpTab(item, id: "scratch:1", sourcePath: null, collectionPath: null,
+            workspaceId: "/ws/a", isScratch: true, isDirty: true, name: "My Draft");
+
+        tab.Name.Should().Be("My Draft");
+        tab.IsScratch.Should().BeTrue();
+        tab.IsDirty.Should().BeTrue();
+        ((HttpRequestTabViewModel)tab).Editor.Url.Should().Be("https://restored/");
+    }
+
+    [Fact]
+    public void CloseToLeft_ClosesVisibleTabsBefore_KeepingTabActive()
+    {
+        var vm = NewVm();
+        vm.OpenOrActivate(MakeRequest("a"), "/A/a.bru", collectionPath: "/A");
+        vm.OpenOrActivate(MakeRequest("b"), "/A/b.bru", collectionPath: "/A");
+        var c = vm.OpenOrActivate(MakeRequest("c"), "/A/c.bru", collectionPath: "/A");
+        vm.ActiveScope = "/A";
+
+        vm.CloseToLeft(c);
+
+        vm.VisibleTabs.Select(t => t.Name).Should().BeEquivalentTo(new[] { "c" });
+        vm.ActiveTab.Should().Be(c);
+    }
+
+    [Fact]
+    public void CloseToRight_ClosesVisibleTabsAfter_KeepingTabActive()
+    {
+        var vm = NewVm();
+        var a = vm.OpenOrActivate(MakeRequest("a"), "/A/a.bru", collectionPath: "/A");
+        vm.OpenOrActivate(MakeRequest("b"), "/A/b.bru", collectionPath: "/A");
+        vm.OpenOrActivate(MakeRequest("c"), "/A/c.bru", collectionPath: "/A");
+        vm.ActiveScope = "/A";
+
+        vm.CloseToRight(a);
+
+        vm.VisibleTabs.Select(t => t.Name).Should().BeEquivalentTo(new[] { "a" });
+        vm.ActiveTab.Should().Be(a);
+    }
+
+    [Fact]
+    public void CloseSaved_ClosesCleanTabs_KeepsDirty()
+    {
+        var vm = NewVm();
+        vm.OpenOrActivate(MakeRequest("a"), "/A/a.bru", collectionPath: "/A");
+        var b = vm.OpenOrActivate(MakeRequest("b"), "/A/b.bru", collectionPath: "/A");
+        vm.ActiveScope = "/A";
+        b.IsDirty = true;
+
+        vm.CloseSaved();
+
+        vm.VisibleTabs.Should().ContainSingle().Which.Should().Be(b);
+    }
+
+    [Fact]
+    public void CloseOthers_StaysWithinScope_LeavesOtherCollectionsTabs()
+    {
+        var vm = NewVm();
+        var a1 = vm.OpenOrActivate(MakeRequest("a1"), "/A/a1.bru", collectionPath: "/A");
+        vm.OpenOrActivate(MakeRequest("a2"), "/A/a2.bru", collectionPath: "/A");
+        vm.OpenOrActivate(MakeRequest("b1"), "/B/b1.bru", collectionPath: "/B");
+        vm.ActiveScope = "/A";
+
+        vm.CloseOthers(a1);
+
+        vm.Tabs.Select(t => t.Name).Should().BeEquivalentTo(new[] { "a1", "b1" });
+        vm.ActiveTab.Should().Be(a1);
+    }
+
+    [Fact]
+    public void CloseAll_OnlyClosesVisibleScope()
+    {
+        var vm = NewVm();
+        vm.OpenOrActivate(MakeRequest("a1"), "/A/a1.bru", collectionPath: "/A");
+        vm.OpenOrActivate(MakeRequest("b1"), "/B/b1.bru", collectionPath: "/B");
+        vm.ActiveScope = "/A";
+
+        vm.CloseAll();
+
+        vm.Tabs.Select(t => t.Name).Should().BeEquivalentTo(new[] { "b1" });
+    }
+
+    [Fact]
     public async Task LoadFromStoreAsync_RestoresTabs_AndActiveSelection()
     {
         var dir = Path.Combine(Path.GetTempPath(), "vegha-restore-" + Guid.NewGuid().ToString("N"));

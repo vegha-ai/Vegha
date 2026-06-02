@@ -39,7 +39,7 @@
     </UserControl.Styles>
 
     <Panel>
-    <Border Background="{DynamicResource Bg2Brush}"
+    <Border Background="{DynamicResource ChromeStatusBarBrush}"
             BorderBrush="{DynamicResource Border0Brush}"
             BorderThickness="0,1,0,0"
             Padding="6,0">
@@ -98,12 +98,8 @@
                 </StackPanel>
             </Button>
 
-            <!-- Environment indicator. Kept lightweight: just shows the active env name. -->
-            <TextBlock Grid.Column="2"
-                       Text="{Binding Collections.ActiveEnvironment.Name, StringFormat='🌐 {0}', FallbackValue='', TargetNullValue=''}"
-                       FontSize="11" Foreground="{DynamicResource Text2Brush}"
-                       VerticalAlignment="Center" Margin="6,0,14,0"
-                       IsVisible="{Binding Collections.ActiveEnvironment, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            <!-- (Environment name removed from the footer — the active env is surfaced in the
+                 top bar's environment picker, so duplicating it here was redundant.) -->
 
             <!-- Center: transient status text (set by import / load / failure paths via
                  CollectionsViewModel.StatusMessage). Accent-tinted pill so it stands out

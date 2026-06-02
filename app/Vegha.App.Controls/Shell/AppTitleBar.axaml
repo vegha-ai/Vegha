@@ -9,7 +9,7 @@
              x:Name="Root"
              x:DataType="vm:MainWindowViewModel"
              Height="32">
-    <Border Background="{DynamicResource Bg0Brush}"
+    <Border Background="{DynamicResource ChromeTitleBarBrush}"
             BorderBrush="{DynamicResource Border0Brush}"
             BorderThickness="0,0,0,1">
         <!-- NOTE: PointerPressed for window drag/maximize used to live on this outer Border —

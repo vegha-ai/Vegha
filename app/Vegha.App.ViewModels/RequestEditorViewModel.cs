@@ -104,6 +104,11 @@ public partial class RequestEditorViewModel : ObservableObject
     /// workspace switch flows through without re-binding every open tab.</summary>
     public Func<Vegha.Core.Requests.RequestComposition.WorkspaceContext>? WorkspaceContextProvider { get; set; }
 
+    /// <summary>Supplies the active workspace's id (its folder path) so a recorded history row is
+    /// tagged with the workspace it was sent from. Pulled fresh on every Send so a workspace
+    /// switch flows through without re-binding open tabs. Null → the row is recorded unscoped.</summary>
+    public Func<string?>? HistoryWorkspaceIdProvider { get; set; }
+
     private Vegha.Core.Requests.RequestComposition.WorkspaceContext CurrentWorkspaceContext()
         => WorkspaceContextProvider?.Invoke()
            ?? Vegha.Core.Requests.RequestComposition.WorkspaceContext.Empty;
@@ -1207,29 +1212,59 @@ public partial class RequestEditorViewModel : ObservableObject
     }
 
     /// <summary>JSON snapshot of the full editor state, persisted on every Send for the
-    /// History → Replay full-snapshot path. <see cref="ApplyRequestBlob"/> is the inverse.</summary>
+    /// History → Replay full-snapshot path. Serializes the same <see cref="RequestItem"/> the
+    /// session-tab store uses, so EVERY request facet round-trips — method, URL, params,
+    /// headers, body (all modes incl. multipart + file), auth credentials, request vars,
+    /// scripts, settings and SOAP config. <see cref="ApplyRequestBlob"/> is the inverse.</summary>
     public string SerializeRequestBlob()
     {
-        var blob = new
+        try
         {
-            method = Method,
-            url = Url,
-            headers = Headers.Select(h => new { h.Name, h.Value, h.IsActive }),
-            body = new { type = BodyType, content = BodyContent, graphql = new { query = GraphQLQuery, vars = GraphQLVariables } },
-            auth = AuthType,
-            preRequestScript = PreRequestScript,
-            postResponseScript = PostResponseScript,
-            tests = TestsScript,
-            docs = Docs,
-            vars = Variables.Select(v => new { v.Name, v.Value, v.IsActive }),
-        };
-        return System.Text.Json.JsonSerializer.Serialize(blob,
-            new System.Text.Json.JsonSerializerOptions { WriteIndented = false });
+            return System.Text.Json.JsonSerializer.Serialize(BuildRequestItemFromVm());
+        }
+        catch
+        {
+            // Should not happen, but never let a serialization hiccup break the Send path.
+            return "{}";
+        }
     }
 
     /// <summary>Restores a full snapshot persisted by <see cref="SerializeRequestBlob"/>.
-    /// Best-effort: missing fields fall back to defaults; bad JSON returns false.</summary>
+    /// Accepts both the current <see cref="RequestItem"/> shape (PascalCase keys) and the
+    /// legacy hand-rolled shape (lowercase keys) emitted by older builds, so history recorded
+    /// before this change still replays. Best-effort: bad JSON returns false.</summary>
     public bool ApplyRequestBlob(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+
+        // Current format: a serialized RequestItem. Detect it by the PascalCase keys System.Text.Json
+        // emits (Method/Url/Body) which the legacy lowercase format never had.
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.ValueKind == System.Text.Json.JsonValueKind.Object
+                && (root.TryGetProperty("Method", out _)
+                    || root.TryGetProperty("Url", out _)
+                    || root.TryGetProperty("Body", out _)))
+            {
+                var item = System.Text.Json.JsonSerializer.Deserialize<RequestItem>(json);
+                if (item is not null)
+                {
+                    LoadFromRequestItem(item, sourcePath: null);
+                    return true;
+                }
+            }
+        }
+        catch { /* fall through to the legacy parser */ }
+
+        return ApplyLegacyRequestBlob(json);
+    }
+
+    /// <summary>Restores the pre-RequestItem blob shape (lowercase keys, auth captured only as a
+    /// type string). Kept so history rows written by older builds still open and replay; new
+    /// rows always use the full <see cref="RequestItem"/> snapshot.</summary>
+    private bool ApplyLegacyRequestBlob(string json)
     {
         _loading = true;
         try
@@ -1257,6 +1292,18 @@ public partial class RequestEditorViewModel : ObservableObject
                 {
                     if (gql.TryGetProperty("query", out var q)) GraphQLQuery = q.GetString() ?? string.Empty;
                     if (gql.TryGetProperty("vars", out var gv)) GraphQLVariables = gv.GetString() ?? string.Empty;
+                }
+            }
+            // Legacy request vars were serialized but never restored before — restore them now.
+            if (root.TryGetProperty("vars", out var vs) && vs.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                Variables.Clear();
+                foreach (var vv in vs.EnumerateArray())
+                {
+                    var name = vv.TryGetProperty("Name", out var n) ? n.GetString() ?? "" : "";
+                    var val = vv.TryGetProperty("Value", out var v) ? v.GetString() ?? "" : "";
+                    var enabled = !vv.TryGetProperty("IsActive", out var a) || a.GetBoolean();
+                    if (!string.IsNullOrEmpty(name)) Variables.Add(new KvEntry(name, val, enabled));
                 }
             }
             if (root.TryGetProperty("auth", out var at)) AuthType = at.GetString() ?? "none";
@@ -1855,7 +1902,8 @@ public partial class RequestEditorViewModel : ObservableObject
                         result.Body,
                         result.ErrorMessage,
                         sendToken,
-                        requestBlob).ConfigureAwait(true);
+                        requestBlob,
+                        HistoryWorkspaceIdProvider?.Invoke()).ConfigureAwait(true);
                 }
                 catch (Exception histEx)
                 {
@@ -1942,11 +1990,23 @@ public partial class RequestEditorViewModel : ObservableObject
         catch { /* swallow — ticker is best-effort UI candy */ }
     }
 
-    /// <summary>Saves the current request as .bru text to <see cref="SourcePath"/>.</summary>
+    /// <summary>Raised when Save is invoked on a request that has no file yet (a "+" scratch
+    /// draft). The host turns this into the "Save to collection…" flow — the editor itself can't
+    /// pick a destination. File-backed requests save in place and never raise this.</summary>
+    public event EventHandler? SaveAsRequested;
+
+    /// <summary>Saves the current request as .bru text to <see cref="SourcePath"/>, or — when the
+    /// request isn't backed by a file (a scratch draft) — asks the host to promote it into a
+    /// collection via <see cref="SaveAsRequested"/>.</summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
-        if (string.IsNullOrEmpty(SourcePath)) return;
+        if (string.IsNullOrEmpty(SourcePath))
+        {
+            // No on-disk home yet → let the host run the Save-to-collection flow.
+            SaveAsRequested?.Invoke(this, EventArgs.Empty);
+            return;
+        }
 
         var item = BuildRequestItemFromVm();
         var bru = BruEmitter.Emit(item);
@@ -1962,7 +2022,9 @@ public partial class RequestEditorViewModel : ObservableObject
         }
     }
 
-    private bool CanSave() => !string.IsNullOrEmpty(SourcePath) && IsDirty;
+    // Enabled whenever there are unsaved edits. A file-backed request saves in place; a scratch
+    // draft (no SourcePath) routes to the host's Save-to-collection flow.
+    private bool CanSave() => IsDirty;
 
     [RelayCommand]
     private void AddHeader() => Headers.Add(new KvEntry());

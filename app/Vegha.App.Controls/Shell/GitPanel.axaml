@@ -108,7 +108,7 @@
         </Style>
     </UserControl.Styles>
 
-    <DockPanel Background="{DynamicResource Bg2Brush}">
+    <DockPanel Background="{DynamicResource ChromeSideBarBrush}">
         <!-- ============== HEADER ============== -->
         <Border DockPanel.Dock="Top" Padding="10,6,8,6"
                 BorderBrush="{DynamicResource Border0Brush}"

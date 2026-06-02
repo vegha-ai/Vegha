@@ -12,7 +12,7 @@
          and auto-size to their content width — which made the raw editor visibly narrow,
          pushing its vertical scrollbar inward and trailing a "right edge" line through the
          text. All six children share the cell; IsVisible bindings ensure only one paints. -->
-    <Grid Background="{DynamicResource Bg2Brush}">
+    <Grid Background="{DynamicResource CodeBgBrush}">
         <!-- (The body-type dropdown + Prettify live on the sub-tab header row in
              RequestWorkspace.axaml so they sit on the same line as Body / Headers / Auth /
              etc., right-aligned. They appear only when the Body sub-tab is active.) -->
