@@ -145,7 +145,7 @@ jobs:
           MAC_NOTARY_PASSWORD: ${{ secrets.MAC_NOTARY_PASSWORD }}
         run: |
           set -euo pipefail
-          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep 'Developer ID Application' | head -n1 | awk -F'"' '{print $2}')"
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep 'Developer ID Application' | head -n1 | awk -F'"' '{print $2}' || true)"
           if [ -z "$IDENTITY" ]; then
             echo "::warning::No Developer ID Application identity found; skipping codesign."
             exit 0
