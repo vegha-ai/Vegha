@@ -1194,10 +1194,16 @@ public partial class MainWindow : Window
         var collections = App.Services.GetService<CollectionsViewModel>();
         if (collections is null) return;
 
-        // The bundled sample sits at <app-base>/samples/petstore. We copy it to
-        // %LocalAppData%/Vegha/samples/petstore so user edits don't pollute
-        // the install. If the copy already exists, just open it as-is.
+        // The bundled sample sits next to the executable in dev builds, but in a
+        // macOS .app bundle it lives in Contents/Resources/ (codesign requires
+        // data files out of Contents/MacOS/). Check both locations.
         var src = Path.Combine(AppContext.BaseDirectory, "samples", "petstore");
+        if (!Directory.Exists(src))
+        {
+            var resourcesSrc = Path.Combine(AppContext.BaseDirectory, "..", "Resources", "samples", "petstore");
+            if (Directory.Exists(resourcesSrc))
+                src = Path.GetFullPath(resourcesSrc);
+        }
         if (!Directory.Exists(src))
         {
             // Sample missing — surface via status, don't crash.
