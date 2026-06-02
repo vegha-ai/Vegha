@@ -89,7 +89,7 @@ dotnet publish "$PROJECT_PATH" \
     --configuration "$CONFIGURATION" \
     --runtime "$RUNTIME" \
     --self-contained true \
-    -p:PublishSingleFile=false \
+    -p:PublishSingleFile=true \
     -p:PublishReadyToRun=true \
     --output "$PUBLISH_DIR"
 
@@ -105,6 +105,13 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp -R "$PUBLISH_DIR"/* "$MACOS_DIR/"
 chmod +x "$MACOS_DIR/Vegha.App"
+
+# Move data directories out of MacOS/ into Resources/ where they belong.
+# codesign applies strict code-object rules to everything in MacOS/ and rejects
+# unsignable data files (.bru, .json, etc). Resources/ is for app data.
+for datadir in samples; do
+    [[ -d "$MACOS_DIR/$datadir" ]] && mv "$MACOS_DIR/$datadir" "$RESOURCES_DIR/$datadir"
+done
 
 # ----------------------------------------------------------------------------
 # 3. Generate Vegha.icns from Assets/logo.png
@@ -188,12 +195,18 @@ cs() {
     codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$@" "$target"
 }
 
-# Sign every nested binary first (bottom-up): native libs AND managed .dll
-# assemblies. codesign verifies the apphost's bundle and refuses to sign it
-# if any subcomponent is unsigned.
+# Strip debug symbols — .pdb files are not signable and have no place in a
+# release bundle. codesign treats any file referenced by the apphost as a
+# nested code object and fails if it cannot sign it.
+find "$MACOS_DIR" -name "*.pdb" -delete
+
+# Sign every nested native binary first (bottom-up).
+# With PublishSingleFile=true, managed .dll assemblies and runtimeconfig.json
+# are embedded inside the Vegha.App binary — only .dylib/.so files remain
+# as separate signable objects.
 while IFS= read -r -d '' f; do
     cs "$f"
-done < <(find "$MACOS_DIR" -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.dll" \) -print0)
+done < <(find "$MACOS_DIR" -type f \( -name "*.dylib" -o -name "*.so" \) -print0)
 
 # Sign the main apphost executable.
 cs "$MACOS_DIR/Vegha.App" --entitlements "$ENTITLEMENTS_PATH"
