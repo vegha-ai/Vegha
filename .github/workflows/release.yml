@@ -131,6 +131,8 @@ jobs:
           P12="$RUNNER_TEMP/codesign.p12"
           echo "$MAC_DEVELOPER_ID_BASE64" | base64 --decode > "$P12"
           security import "$P12" -k "$KEYCHAIN_PATH" -P "$MAC_DEVELOPER_ID_PASSWORD" -T /usr/bin/codesign
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer \
+            -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           rm "$P12"
