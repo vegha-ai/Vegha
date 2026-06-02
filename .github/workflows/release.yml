@@ -152,7 +152,22 @@ jobs:
           fi
           for app in releases/${{ matrix.rid }}/*.app; do
             [ -e "$app" ] || continue
-            codesign --deep --force --options runtime --timestamp --sign "$IDENTITY" "$app"
+            MACOS_DIR="$app/Contents/MacOS"
+            RESOURCES_DIR="$app/Contents/Resources"
+            mkdir -p "$RESOURCES_DIR"
+            # Strip unsignable files
+            find "$MACOS_DIR" -name "*.pdb" -delete
+            # Move data dirs to Resources/ — codesign rejects non-Mach-O files in MacOS/
+            for datadir in samples; do
+              [[ -d "$MACOS_DIR/$datadir" ]] && mv "$MACOS_DIR/$datadir" "$RESOURCES_DIR/$datadir"
+            done
+            # Sign dylibs first (inside-out), then the executable, then the bundle
+            while IFS= read -r -d '' f; do
+              codesign --force --timestamp --options runtime --sign "$IDENTITY" "$f"
+            done < <(find "$MACOS_DIR" -type f \( -name "*.dylib" -o -name "*.so" \) -print0)
+            codesign --force --timestamp --options runtime --sign "$IDENTITY" "$MACOS_DIR/$(basename "${app%.app}")" 2>/dev/null || \
+            codesign --force --timestamp --options runtime --sign "$IDENTITY" "$MACOS_DIR/"*.App 2>/dev/null || true
+            codesign --force --timestamp --options runtime --sign "$IDENTITY" "$app"
           done
           for pkg in releases/${{ matrix.rid }}/*.pkg releases/${{ matrix.rid }}/*.dmg; do
             [ -e "$pkg" ] || continue

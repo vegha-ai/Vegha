@@ -65,11 +65,16 @@ function Invoke-Pack([string] $rid) {
     Write-Host "=== Packing $PackId $Version for $rid ===" -ForegroundColor Cyan
 
     Write-Host "Publishing self-contained to $publishDir..."
+    # PublishSingleFile=true on macOS/Linux embeds managed assemblies and
+    # runtimeconfig.json into the executable so codesign has no unsignable
+    # subcomponents to trip over. Windows uses false (single-file + Velopack
+    # delta patching requires loose assemblies on Windows).
+    $singleFile = if ($rid.StartsWith('win-')) { 'false' } else { 'true' }
     & dotnet publish $projectPath `
         --configuration $Configuration `
         --runtime $rid `
         --self-contained true `
-        -p:PublishSingleFile=false `
+        -p:PublishSingleFile=$singleFile `
         -p:PublishReadyToRun=true `
         --output $publishDir
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $rid" }
