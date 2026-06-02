@@ -136,6 +136,12 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           rm "$P12"
+          echo "=== All identities in custom keychain ==="
+          security find-identity -v "$KEYCHAIN_PATH" || true
+          echo "=== Codesigning identities in custom keychain ==="
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true
+          echo "=== Codesigning identities in all keychains ==="
+          security find-identity -v -p codesigning || true
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
 
       - name: Codesign + notarize (macOS)
