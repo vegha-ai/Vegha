@@ -50,6 +50,11 @@ public static class RequestPipeline
         IReadOnlyDictionary<string, string> RuntimeVariableMutations,
         /// <summary>Console output from scripts. Useful for the runner's per-request detail pane.</summary>
         IReadOnlyList<ConsoleMessage> ConsoleMessages,
+        /// <summary>Environment-variable changes the post-response script made via
+        /// <c>bru.setEnvVar</c>, as added/changed deltas vs the run's environment snapshot. The
+        /// runner threads these forward so request N's extracted token reaches request N+1.
+        /// Deletions (<c>bru.deleteEnvVar</c>) are not surfaced here — vanishingly rare in a run.</summary>
+        IReadOnlyDictionary<string, string> EnvVarMutations,
         /// <summary>Transport/script error message. Null on a clean HTTP exchange even when
         /// the response carries a 4xx/5xx — the runner classifies pass/fail by tests + status.</summary>
         string? ErrorMessage)
@@ -164,6 +169,7 @@ public static class RequestPipeline
 
         // 7. Post-response script + tests. Combined-run, mirrors editor behavior.
         IReadOnlyList<TestOutcome> tests = Array.Empty<TestOutcome>();
+        IReadOnlyDictionary<string, string> envVarMutations = EmptyVars;
         if (!string.IsNullOrWhiteSpace(composed.PostResponseScript) ||
             !string.IsNullOrWhiteSpace(composed.TestsScript))
         {
@@ -187,6 +193,7 @@ public static class RequestPipeline
 
             consoleAll.AddRange(post.ConsoleMessages);
             tests = post.TestOutcomes;
+            envVarMutations = EnvVarDelta(inputs.EnvironmentVariables, post.EnvVarMutations);
 
             foreach (var (k, v) in post.RuntimeVariables) scriptVars[k] = v;
 
@@ -205,6 +212,7 @@ public static class RequestPipeline
                     Tests: tests,
                     RuntimeVariableMutations: scriptVars,
                     ConsoleMessages: consoleAll,
+                    EnvVarMutations: envVarMutations,
                     ErrorMessage: post.ErrorMessage);
             }
         }
@@ -222,6 +230,7 @@ public static class RequestPipeline
             Tests: tests,
             RuntimeVariableMutations: scriptVars,
             ConsoleMessages: consoleAll,
+            EnvVarMutations: envVarMutations,
             ErrorMessage: httpResult.ErrorMessage);
     }
 
@@ -251,7 +260,28 @@ public static class RequestPipeline
             Tests: Array.Empty<TestOutcome>(),
             RuntimeVariableMutations: new Dictionary<string, string>(),
             ConsoleMessages: console,
+            EnvVarMutations: EmptyVars,
             ErrorMessage: error);
+
+    /// <summary>Shared empty env-var bag for results with no script mutations.</summary>
+    private static readonly IReadOnlyDictionary<string, string> EmptyVars =
+        new Dictionary<string, string>();
+
+    /// <summary>Added/changed env vars in <paramref name="after"/> relative to
+    /// <paramref name="before"/>. The post-response env bag is a copy of the run snapshot with
+    /// the script's <c>setEnvVar</c> changes layered on, so a key-by-key diff isolates them.</summary>
+    private static IReadOnlyDictionary<string, string> EnvVarDelta(
+        IReadOnlyDictionary<string, string> before,
+        IReadOnlyDictionary<string, string> after)
+    {
+        Dictionary<string, string>? delta = null;
+        foreach (var (key, value) in after)
+        {
+            if (!before.TryGetValue(key, out var old) || !string.Equals(old, value, StringComparison.Ordinal))
+                (delta ??= new Dictionary<string, string>(StringComparer.Ordinal))[key] = value;
+        }
+        return delta ?? EmptyVars;
+    }
 
     private static string ComposeUrl(string baseUrl, IList<KvPair> queryParams,
         IReadOnlyDictionary<string, string> vars)

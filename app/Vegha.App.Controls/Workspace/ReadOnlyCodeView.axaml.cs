@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using AvaloniaEdit;
+using AvaloniaEdit.Editing;
 using AvaloniaEdit.Highlighting;
 
 namespace Vegha.App.Controls.Workspace;
@@ -53,6 +55,19 @@ public partial class ReadOnlyCodeView : UserControl
     {
         InitializeComponent();
         _editor = this.FindControl<TextEditor>("Editor")!;
+
+        // Theme text selection to match the request-pane editors (VariableAwareTextEditor):
+        // the shared translucent accent SelectionBrush with the text keeping its own foreground,
+        // instead of AvaloniaEdit's default saturated opaque-blue-over-white. GetResourceObservable
+        // resolves lazily against the live theme and re-emits on theme switch.
+        _editor.TextArea.Bind(
+            TextArea.SelectionBrushProperty,
+            this.GetResourceObservable("SelectionBrush"));
+        _editor.TextArea.SelectionForeground = null;
+
+        // Find (Ctrl+F) match highlight — same legible translucent amber as the request editors.
+        _editor.SearchResultsBrush = new SolidColorBrush(Color.Parse("#66FBBF24"));
+
         // Push the initial WordWrap value imperatively — relying on the XAML binding alone
         // proved unreliable (AvaloniaEdit didn't always pick up the inherited value on
         // first layout, so long single-line responses still showed horizontally even

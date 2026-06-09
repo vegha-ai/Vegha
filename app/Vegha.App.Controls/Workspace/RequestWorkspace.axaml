@@ -12,6 +12,88 @@
         <!-- URL bar -->
         <ws:RequestEditor DockPanel.Dock="Top" />
 
+        <!-- Run & inspect output — shared across the script tabs; shows console output,
+             resulting variables, and test results from the last "▶ Run". -->
+        <Border DockPanel.Dock="Bottom"
+                IsVisible="{Binding IsInspectPanelOpen}"
+                Background="{DynamicResource Bg2Brush}"
+                BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,1,0,0"
+                MaxHeight="260">
+            <DockPanel>
+                <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="12,8,8,6">
+                    <TextBlock Text="{Binding InspectTitle}" FontWeight="SemiBold" FontSize="12"
+                               VerticalAlignment="Center" Foreground="{DynamicResource Text0Brush}" />
+                    <Button Grid.Column="1" Classes="tertiary" Content="✕" Padding="8,2"
+                            Command="{Binding CloseInspectPanelCommand}" ToolTip.Tip="Close" />
+                </Grid>
+                <ScrollViewer>
+                    <StackPanel Margin="12,0,12,10" Spacing="10">
+                        <TextBlock Text="{Binding InspectMessage}"
+                                   IsVisible="{Binding InspectMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Foreground="{DynamicResource StatusErrBrush}"
+                                   FontSize="11" TextWrapping="Wrap" />
+
+                        <!-- Console -->
+                        <StackPanel Spacing="3" IsVisible="{Binding InspectHasConsole}">
+                            <TextBlock Text="Console" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text2Brush}" />
+                            <ItemsControl ItemsSource="{Binding InspectConsole}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ConsoleLineRow">
+                                        <TextBlock FontFamily="{StaticResource MonoFont}" FontSize="11" TextWrapping="Wrap">
+                                            <Run Text="{Binding Level}" Foreground="{DynamicResource Text3Brush}" />
+                                            <Run Text="{Binding Text}" Foreground="{DynamicResource Text1Brush}" />
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <!-- Variables -->
+                        <StackPanel Spacing="3" IsVisible="{Binding InspectHasVariables}">
+                            <TextBlock Text="Variables" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text2Brush}" />
+                            <ItemsControl ItemsSource="{Binding InspectVariables}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:InspectVarRow">
+                                        <Grid ColumnDefinitions="92,Auto,*" Margin="0,1">
+                                            <TextBlock Grid.Column="0" Text="{Binding Scope}" FontSize="10"
+                                                       Foreground="{DynamicResource Text3Brush}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontFamily="{StaticResource MonoFont}"
+                                                       FontSize="11" Foreground="{DynamicResource AccentBrush}" Margin="0,0,8,0" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Value}" FontFamily="{StaticResource MonoFont}"
+                                                       FontSize="11" Foreground="{DynamicResource Text1Brush}" TextWrapping="Wrap" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <!-- Tests -->
+                        <StackPanel Spacing="3" IsVisible="{Binding InspectHasTests}">
+                            <TextBlock Text="Tests" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text2Brush}" />
+                            <ItemsControl ItemsSource="{Binding InspectTests}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:TestResultRow">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,1">
+                                            <TextBlock Text="✓" FontWeight="Bold" Foreground="{DynamicResource StatusOkBrush}"
+                                                       IsVisible="{Binding Passed}" />
+                                            <TextBlock Text="✗" FontWeight="Bold" Foreground="{DynamicResource StatusErrBrush}"
+                                                       IsVisible="{Binding !Passed}" />
+                                            <TextBlock Text="{Binding Name}" FontSize="12" Foreground="{DynamicResource Text0Brush}" />
+                                            <TextBlock Text="{Binding FailureMessage}" FontSize="11"
+                                                       Foreground="{DynamicResource StatusErrBrush}" IsVisible="{Binding !Passed}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
         <!-- Sub-tabs with trailing tools docked to the right of the header strip via the
              TabControl.Tag slot (re-templated in Styles.axaml). The tools are only visible
              when Body is the active sub-tab; the Tag content presenter still reserves no
@@ -153,22 +235,39 @@
                     <Border DockPanel.Dock="Top" Padding="14,8"
                             BorderBrush="{DynamicResource Border0Brush}"
                             BorderThickness="0,0,0,1">
-                        <StackPanel Spacing="6">
-                            <TextBlock FontSize="10" FontStyle="Italic"
-                                       Foreground="{DynamicResource Text3Brush}"
-                                       TextWrapping="Wrap"
-                                       Text="Runs before the request is sent. bru.{setVar/getVar/setEnvVar/getCollectionVar/setNextRequest/sendRequest/interpolate/sleep/cookies.jar/utils.minifyJson}. req.{setHeader/setMethod/setUrl/setBody/getHost/getPath/getQueryString/getPathParams/headerList.add/upsert/remove/each/filter/map}. Built-ins: _ (lodash-lite), axios, console, {{$randomUUID}} / {{$timestamp}} / {{$randomInt}} dynamic vars." />
-                            <ws:InheritedBanner IsVisible="{Binding IsPreRequestScriptInherited}"
-                                                InheritedFrom="{Binding PreRequestScriptInheritedFrom}"
-                                                OverrideCommand="{Binding OverrideInheritedPreRequestScriptCommand}" />
-                        </StackPanel>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="6">
+                                <TextBlock FontSize="10" FontStyle="Italic"
+                                           Foreground="{DynamicResource Text3Brush}"
+                                           TextWrapping="Wrap"
+                                           Text="Runs before the request is sent. bru.{setVar/getVar/setEnvVar/getCollectionVar/setNextRequest/sendRequest/interpolate/sleep/cookies.jar/utils.minifyJson}. req.{setHeader/setMethod/setUrl/setBody/getHost/getPath/getQueryString/getPathParams/headerList.add/upsert/remove/each/filter/map}. Built-ins: _ (lodash-lite), axios, console, {{$randomUUID}} / {{$timestamp}} / {{$randomInt}} dynamic vars. Ctrl+Space for autocomplete." />
+                                <ws:InheritedBanner IsVisible="{Binding IsPreRequestScriptInherited}"
+                                                    InheritedFrom="{Binding PreRequestScriptInheritedFrom}"
+                                                    OverrideCommand="{Binding OverrideInheritedPreRequestScriptCommand}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="tertiary" Content="▶ Run"
+                                    VerticalAlignment="Top" Margin="8,0,0,0"
+                                    Command="{Binding RunPreRequestInspectCommand}"
+                                    ToolTip.Tip="Run this script in isolation and inspect console + variables" />
+                        </Grid>
+                    </Border>
+                    <Border DockPanel.Dock="Bottom" IsVisible="{Binding #PreScriptEditor.HasError}"
+                            Background="{DynamicResource Bg2Brush}"
+                            BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,1,0,0"
+                            Padding="12,4">
+                        <TextBlock Text="{Binding #PreScriptEditor.ErrorSummary}"
+                                   Foreground="{DynamicResource StatusErrBrush}"
+                                   FontFamily="{StaticResource MonoFont}" FontSize="11" TextWrapping="Wrap" />
                     </Border>
                     <ws:VariableAwareTextEditor
+                        x:Name="PreScriptEditor"
                         Text="{Binding PreRequestScript, Mode=TwoWay}"
                         Variables="{Binding ResolvedVariablesSnapshot}"
                         SingleLine="False"
                         ShowLineNumbers="True"
                         SyntaxHighlightingName="JavaScript"
+                        CompletionMode="Script"
+                        ScriptKind="PreRequest"
                         Bordered="False"
                         Watermark="// pre-request script (JavaScript)" />
                 </DockPanel>
@@ -191,22 +290,39 @@
                     <Border DockPanel.Dock="Top" Padding="14,8"
                             BorderBrush="{DynamicResource Border0Brush}"
                             BorderThickness="0,0,0,1">
-                        <StackPanel Spacing="6">
-                            <TextBlock FontSize="10" FontStyle="Italic"
-                                       Foreground="{DynamicResource Text3Brush}"
-                                       TextWrapping="Wrap"
-                                       Text="Runs after the response, before the Tests block. Same bru / res / req surface as Tests; mutations to runtime / env vars are visible inside test('...') blocks below. Use for token extraction, header inspection, chained-request prep." />
-                            <ws:InheritedBanner IsVisible="{Binding IsPostResponseScriptInherited}"
-                                                InheritedFrom="{Binding PostResponseScriptInheritedFrom}"
-                                                OverrideCommand="{Binding OverrideInheritedPostResponseScriptCommand}" />
-                        </StackPanel>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="6">
+                                <TextBlock FontSize="10" FontStyle="Italic"
+                                           Foreground="{DynamicResource Text3Brush}"
+                                           TextWrapping="Wrap"
+                                           Text="Runs after the response, before the Tests block. Same bru / res / req surface as Tests; mutations to runtime / env vars are visible inside test('...') blocks below. Use for token extraction, header inspection, chained-request prep. Ctrl+Space for autocomplete." />
+                                <ws:InheritedBanner IsVisible="{Binding IsPostResponseScriptInherited}"
+                                                    InheritedFrom="{Binding PostResponseScriptInheritedFrom}"
+                                                    OverrideCommand="{Binding OverrideInheritedPostResponseScriptCommand}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="tertiary" Content="▶ Run"
+                                    VerticalAlignment="Top" Margin="8,0,0,0"
+                                    Command="{Binding RunPostResponseInspectCommand}"
+                                    ToolTip.Tip="Run against the last response and inspect console + variables" />
+                        </Grid>
+                    </Border>
+                    <Border DockPanel.Dock="Bottom" IsVisible="{Binding #PostScriptEditor.HasError}"
+                            Background="{DynamicResource Bg2Brush}"
+                            BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,1,0,0"
+                            Padding="12,4">
+                        <TextBlock Text="{Binding #PostScriptEditor.ErrorSummary}"
+                                   Foreground="{DynamicResource StatusErrBrush}"
+                                   FontFamily="{StaticResource MonoFont}" FontSize="11" TextWrapping="Wrap" />
                     </Border>
                     <ws:VariableAwareTextEditor
+                        x:Name="PostScriptEditor"
                         Text="{Binding PostResponseScript, Mode=TwoWay}"
                         Variables="{Binding ResolvedVariablesSnapshot}"
                         SingleLine="False"
                         ShowLineNumbers="True"
                         SyntaxHighlightingName="JavaScript"
+                        CompletionMode="Script"
+                        ScriptKind="PostResponse"
                         Bordered="False"
                         Watermark="// post-response script (JavaScript)&#x0A;// e.g. bru.setEnvVar('token', res.getBody().access_token);" />
                 </DockPanel>
@@ -229,22 +345,39 @@
                     <Border DockPanel.Dock="Top" Padding="14,8"
                             BorderBrush="{DynamicResource Border0Brush}"
                             BorderThickness="0,0,0,1">
-                        <StackPanel Spacing="6">
-                            <TextBlock FontSize="10" FontStyle="Italic"
-                                       Foreground="{DynamicResource Text3Brush}"
-                                       TextWrapping="Wrap"
-                                       Text="Runs after Post-response. Use test('name', fn) and expect(actual). Jest matchers: .not, toBe / toEqual / toContain / toHaveLength / toMatch / toBeTruthy / toBeFalsy / toBeGreaterThan(OrEqual) / toBeLessThan(OrEqual) / toBeNull / toBeDefined / toMatchSchema / toThrow. Chai chains: .to.equal / .to.have.property / .to.have.status / .to.be.true / .to.contain." />
-                            <ws:InheritedBanner IsVisible="{Binding IsTestsScriptInherited}"
-                                                InheritedFrom="{Binding TestsScriptInheritedFrom}"
-                                                OverrideCommand="{Binding OverrideInheritedTestsScriptCommand}" />
-                        </StackPanel>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="6">
+                                <TextBlock FontSize="10" FontStyle="Italic"
+                                           Foreground="{DynamicResource Text3Brush}"
+                                           TextWrapping="Wrap"
+                                           Text="Runs after Post-response. Use test('name', fn) and expect(actual). Jest matchers: .not, toBe / toEqual / toContain / toHaveLength / toMatch / toBeTruthy / toBeFalsy / toBeGreaterThan(OrEqual) / toBeLessThan(OrEqual) / toBeNull / toBeDefined / toMatchSchema / toThrow. Chai chains: .to.equal / .to.have.property / .to.have.status / .to.be.true / .to.contain. Ctrl+Space for autocomplete." />
+                                <ws:InheritedBanner IsVisible="{Binding IsTestsScriptInherited}"
+                                                    InheritedFrom="{Binding TestsScriptInheritedFrom}"
+                                                    OverrideCommand="{Binding OverrideInheritedTestsScriptCommand}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="tertiary" Content="▶ Run"
+                                    VerticalAlignment="Top" Margin="8,0,0,0"
+                                    Command="{Binding RunTestsInspectCommand}"
+                                    ToolTip.Tip="Run tests against the last response and inspect results" />
+                        </Grid>
+                    </Border>
+                    <Border DockPanel.Dock="Bottom" IsVisible="{Binding #TestsScriptEditor.HasError}"
+                            Background="{DynamicResource Bg2Brush}"
+                            BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,1,0,0"
+                            Padding="12,4">
+                        <TextBlock Text="{Binding #TestsScriptEditor.ErrorSummary}"
+                                   Foreground="{DynamicResource StatusErrBrush}"
+                                   FontFamily="{StaticResource MonoFont}" FontSize="11" TextWrapping="Wrap" />
                     </Border>
                     <ws:VariableAwareTextEditor
+                        x:Name="TestsScriptEditor"
                         Text="{Binding TestsScript, Mode=TwoWay}"
                         Variables="{Binding ResolvedVariablesSnapshot}"
                         SingleLine="False"
                         ShowLineNumbers="True"
                         SyntaxHighlightingName="JavaScript"
+                        CompletionMode="Script"
+                        ScriptKind="Tests"
                         Bordered="False"
                         Watermark="// tests (JavaScript)&#x0A;// test('status is 200', () => { expect(res.getStatus()).to.equal(200); });" />
                 </DockPanel>

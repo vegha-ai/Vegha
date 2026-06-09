@@ -65,12 +65,17 @@ function Invoke-Pack([string] $rid) {
     Write-Host "=== Packing $PackId $Version for $rid ===" -ForegroundColor Cyan
 
     Write-Host "Publishing self-contained to $publishDir..."
+    # -p:Version stamps the SAME version into the assembly (About dialog + status-bar version)
+    # that we hand to `vpk pack --packVersion` below, so the displayed version always matches
+    # the version the updater compares. Without it the build would carry Directory.Build.props's
+    # version while Velopack packaged a different one.
     & dotnet publish $projectPath `
         --configuration $Configuration `
         --runtime $rid `
         --self-contained true `
         -p:PublishSingleFile=false `
         -p:PublishReadyToRun=true `
+        -p:Version=$Version `
         --output $publishDir
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $rid" }
 
@@ -85,6 +90,11 @@ function Invoke-Pack([string] $rid) {
         '--packDir', $publishDir
         '--mainExe', $mainExe
         '--outputDir', $outputDir
+        # One Velopack channel per RID (win-x64 / win-arm64 / osx-arm64 / linux-x64) so every
+        # platform's feed (releases.<channel>.json + *.nupkg) can live in a single GitHub
+        # Release without colliding. The app selects its channel via ExplicitChannel
+        # (VelopackUpdateService.CurrentRidChannel) — these two MUST stay in lockstep.
+        '--channel', $rid
     )
     if ($SignParams -and $rid.StartsWith('win-')) {
         Write-Host "Authenticode signing enabled (vpk --signParams)."

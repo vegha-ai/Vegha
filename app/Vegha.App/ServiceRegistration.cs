@@ -22,10 +22,16 @@ internal static class ServiceRegistration
 
         // Settings dialog VM — transient so each open gets a fresh in-memory snapshot
         // independent of the persisted state until Save commits.
-        services.AddTransient<SettingsWindowViewModel>(sp => new SettingsWindowViewModel(
-            store: sp.GetRequiredService<AppSettingsStore>(),
-            shortcutRows: KeyboardShortcutsCatalog.All,
-            secretProviderFactory: Vegha.App.Secrets.SecretProviderRegistrar.TryCreate));
+        services.AddTransient<SettingsWindowViewModel>(sp =>
+        {
+            var updates = sp.GetService<Vegha.App.ViewModels.Services.IUpdateService>();
+            return new SettingsWindowViewModel(
+                store: sp.GetRequiredService<AppSettingsStore>(),
+                shortcutRows: KeyboardShortcutsCatalog.All,
+                secretProviderFactory: Vegha.App.Secrets.SecretProviderRegistrar.TryCreate,
+                appVersion: updates?.CurrentVersion,
+                updatesSupported: updates?.IsSupported ?? false);
+        });
 
         services.AddTransient<WelcomeViewModel>();
         services.AddSingleton<GrpcWorkspaceViewModel>();
@@ -152,6 +158,19 @@ internal static class ServiceRegistration
             sp.GetRequiredService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>(),
             sp.GetRequiredService<CollectionsViewModel>(),
             sp.GetService<Vegha.Core.Persistence.RecentItemsStore>()));
+
+        // In-app auto-update. The Direct-download flavor self-updates via Velopack; the
+        // Microsoft Store (MSIX) and Mac App Store (MAS) flavors get a no-op so the update
+        // banner + "Check for Updates" stay hidden (those stores own their update lifecycle).
+        // The guard mirrors Program.cs's Velopack gate — VEGHA_MSIX / VEGHA_MAS are defined by
+        // Directory.Build.props from $(VeghaFlavor).
+#if VEGHA_MSIX || VEGHA_MAS
+        services.AddSingleton<Vegha.App.ViewModels.Services.IUpdateService, Vegha.App.Services.NullUpdateService>();
+#else
+        services.AddSingleton<Vegha.App.ViewModels.Services.IUpdateService, Vegha.App.Services.VelopackUpdateService>();
+#endif
+        services.AddSingleton<UpdateViewModel>();
+
         services.AddSingleton<MainWindowViewModel>();
         return services;
     }

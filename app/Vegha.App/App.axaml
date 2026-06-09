@@ -13,6 +13,10 @@
                      ThemeService reads AppSettings.ThemeMode + ThemeVariant{Light,Dark}
                      and swaps this slot to the matching variant. -->
                 <ResourceInclude Source="avares://Vegha.App/Themes/Tokens/Dark.axaml" />
+                <!-- Custom ControlTheme for AvaloniaEdit's Find/Replace panel (crisp, themed icons).
+                     Merged after the token palette so its DynamicResource brushes resolve, and in
+                     Application.Resources so it overrides AvaloniaEdit's default SearchPanel theme. -->
+                <ResourceInclude Source="avares://Vegha.App/Themes/SearchPanelTheme.axaml" />
             </ResourceDictionary.MergedDictionaries>
             <conv:HexToBrushConverter x:Key="HexToBrushConverter" />
             <conv:RatioToWidthConverter x:Key="RatioToWidthConverter" />

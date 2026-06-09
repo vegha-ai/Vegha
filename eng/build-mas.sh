@@ -44,9 +44,14 @@ echo "==> Patching Info.plist with version $VERSION"
 
 echo "==> Restoring + publishing Vegha.App (osx-arm64, self-contained, MAS flavor)"
 dotnet restore
+# VeghaFlavor=MAS makes Directory.Build.props define the VEGHA_MAS compile symbol
+# (same mechanism Pack-Msix.ps1 uses for MSIX). This keeps the flavor guards in
+# Program.cs (Velopack disabled) and AboutDialog (shows "Mac App Store") in sync —
+# both read the all-caps VEGHA_MAS. Do NOT pass -p:DefineConstants here: that
+# overrides the property wholesale and defined a mismatched mixed-case symbol.
 dotnet publish app/Vegha.App/Vegha.App.csproj \
   -c Release -r osx-arm64 --self-contained true \
-  -p:DefineConstants=Vegha_MAS \
+  -p:VeghaFlavor=MAS \
   -p:PublishReadyToRun=true \
   -o publish/osx-arm64
 

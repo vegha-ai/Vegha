@@ -16,8 +16,21 @@ using AvaloniaEdit.Editing;
 using AvaloniaEdit.Highlighting;
 using AvaloniaEdit.Rendering;
 using Vegha.App.Controls.Icons;
+using Vegha.Core.Scripting;
+using CoreScriptKind = Vegha.Core.Scripting.ScriptKind;
 
 namespace Vegha.App.Controls.Workspace;
+
+/// <summary>Autocomplete behavior for a <see cref="VariableAwareTextEditor"/>.</summary>
+public enum EditorCompletionMode
+{
+    /// <summary>No autocomplete.</summary>
+    None,
+    /// <summary><c>{{var}}</c> popup on typing <c>{{</c> (URL / KV value fields).</summary>
+    Variables,
+    /// <summary>JavaScript object/member autocomplete + syntax squiggles (script editors).</summary>
+    Script,
+}
 
 /// <summary>
 /// Text editor that highlights <c>{{name}}</c> variable tokens, shows their resolved values on hover,
@@ -118,6 +131,28 @@ public partial class VariableAwareTextEditor : UserControl
     public static readonly StyledProperty<string?> WarningTipProperty =
         AvaloniaProperty.Register<VariableAwareTextEditor, string?>(nameof(WarningTip));
 
+    /// <summary>Autocomplete behavior. Default <see cref="EditorCompletionMode.Variables"/> keeps
+    /// the existing <c>{{var}}</c> popup for URL/KV fields; script editors set
+    /// <see cref="EditorCompletionMode.Script"/> for JS object/member completion + squiggles.</summary>
+    public static readonly StyledProperty<EditorCompletionMode> CompletionModeProperty =
+        AvaloniaProperty.Register<VariableAwareTextEditor, EditorCompletionMode>(
+            nameof(CompletionMode), defaultValue: EditorCompletionMode.Variables);
+
+    /// <summary>Which script slot this editor edits — gates which globals (e.g. <c>res</c>) the
+    /// script autocomplete offers. Only meaningful when <see cref="CompletionMode"/> is Script.</summary>
+    public static readonly StyledProperty<CoreScriptKind> ScriptKindProperty =
+        AvaloniaProperty.Register<VariableAwareTextEditor, CoreScriptKind>(
+            nameof(ScriptKind), defaultValue: CoreScriptKind.PreRequest);
+
+    /// <summary>First syntax error as a one-line summary (e.g. "Line 3, col 8: …"), or null when
+    /// clean. Set internally as diagnostics update; hosts bind a small error strip to it.</summary>
+    public static readonly StyledProperty<string?> ErrorSummaryProperty =
+        AvaloniaProperty.Register<VariableAwareTextEditor, string?>(nameof(ErrorSummary));
+
+    /// <summary>True when the script has at least one syntax error — for binding an error strip's visibility.</summary>
+    public static readonly StyledProperty<bool> HasErrorProperty =
+        AvaloniaProperty.Register<VariableAwareTextEditor, bool>(nameof(HasError));
+
     public string Text
     {
         get => GetValue(TextProperty);
@@ -184,6 +219,30 @@ public partial class VariableAwareTextEditor : UserControl
         set => SetValue(WarningTipProperty, value);
     }
 
+    public EditorCompletionMode CompletionMode
+    {
+        get => GetValue(CompletionModeProperty);
+        set => SetValue(CompletionModeProperty, value);
+    }
+
+    public CoreScriptKind ScriptKind
+    {
+        get => GetValue(ScriptKindProperty);
+        set => SetValue(ScriptKindProperty, value);
+    }
+
+    public string? ErrorSummary
+    {
+        get => GetValue(ErrorSummaryProperty);
+        set => SetValue(ErrorSummaryProperty, value);
+    }
+
+    public bool HasError
+    {
+        get => GetValue(HasErrorProperty);
+        set => SetValue(HasErrorProperty, value);
+    }
+
     private TextEditor _editor = null!;
     private CompletionWindow? _completionWindow;
     private bool _suppressTextSync;
@@ -191,6 +250,16 @@ public partial class VariableAwareTextEditor : UserControl
     private ToggleButton? _eyeToggle;
     private Border? _warningGlyph;
     private StackPanel? _trailingGroup;
+    private SquiggleRenderer? _squiggleRenderer;
+    private DispatcherTimer? _diagnosticsTimer;
+    private int _diagnosticsToken;
+    private IReadOnlyList<ScriptDiagnostic> _diagnostics = Array.Empty<ScriptDiagnostic>();
+
+    /// <summary>Current syntax diagnostics (empty when clean / not in script mode).</summary>
+    public IReadOnlyList<ScriptDiagnostic> Diagnostics => _diagnostics;
+
+    /// <summary>Raised on the UI thread after the diagnostics set changes — hosts bind an error strip.</summary>
+    public event EventHandler? DiagnosticsChanged;
 
     public VariableAwareTextEditor()
     {
@@ -219,6 +288,18 @@ public partial class VariableAwareTextEditor : UserControl
         // {{var}} placeholders pass through unmasked so the user can identify which variable
         // is wired up (and hover to see its resolved value).
         _editor.TextArea.TextView.ElementGenerators.Add(new PasswordMaskGenerator(this));
+
+        // Script-mode syntax squiggles. The renderer is always attached but only paints when
+        // diagnostics are present (Script mode), so URL/KV fields are unaffected. Parsing is
+        // debounced + offloaded; results are applied back on the UI thread.
+        _squiggleRenderer = new SquiggleRenderer(UnresolvedBrush);
+        _editor.TextArea.TextView.BackgroundRenderers.Add(_squiggleRenderer);
+        _diagnosticsTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+        _diagnosticsTimer.Tick += (_, _) => { _diagnosticsTimer!.Stop(); RunDiagnostics(); };
+
+        // Find (Ctrl+F) match highlight: a translucent amber that stays legible on both light and
+        // dark editor backgrounds (AvaloniaEdit's default rendered dark-on-dark in our theme).
+        _editor.SearchResultsBrush = new SolidColorBrush(Color.Parse("#66FBBF24"));
 
         // Re-colorize whenever the active theme variant flips, so the static
         // VariableBrush / UnresolvedBrush picks up the new palette and the
@@ -360,6 +441,13 @@ public partial class VariableAwareTextEditor : UserControl
                 finally { _suppressTextSync = false; }
             }
             UpdateWatermark();
+            // Text set via binding suppresses the editor's TextChanged, so re-analyze here so a
+            // script loaded with pre-existing errors squiggles immediately, not only after typing.
+            if (CompletionMode == EditorCompletionMode.Script) ScheduleDiagnostics();
+        }
+        else if (change.Property == CompletionModeProperty)
+        {
+            if (CompletionMode == EditorCompletionMode.Script) ScheduleDiagnostics();
         }
         else if (change.Property == VariablesProperty)
         {
@@ -594,6 +682,7 @@ public partial class VariableAwareTextEditor : UserControl
         var t = _editor.Document.Text;
         if (Text != t) Text = t;
         UpdateWatermark();
+        if (CompletionMode == EditorCompletionMode.Script) ScheduleDiagnostics();
     }
 
     private void UpdateWatermark()
@@ -605,6 +694,15 @@ public partial class VariableAwareTextEditor : UserControl
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
+        // Ctrl+Space → script autocomplete (member list if after `obj.`, else top-level objects).
+        if (CompletionMode == EditorCompletionMode.Script
+            && e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            ShowScriptCompletion();
+            e.Handled = true;
+            return;
+        }
+
         if (SingleLine && e.Key == Key.Enter)
         {
             e.Handled = true;
@@ -621,14 +719,21 @@ public partial class VariableAwareTextEditor : UserControl
 
     private void OnTextEntered(object? sender, TextInputEventArgs e)
     {
-        // Open the completion window when the user has just typed the second '{' of "{{".
-        if (e.Text == "{")
+        // Variables mode: open the completion window after the second '{' of "{{".
+        if (CompletionMode == EditorCompletionMode.Variables && e.Text == "{")
         {
             var caret = _editor.CaretOffset;
             if (caret >= 2 && _editor.Document.GetCharAt(caret - 2) == '{')
             {
                 ShowCompletion();
             }
+            return;
+        }
+
+        // Script mode: open member completion after a '.'.
+        if (CompletionMode == EditorCompletionMode.Script && e.Text == ".")
+        {
+            ShowScriptCompletion();
         }
     }
 
@@ -650,6 +755,121 @@ public partial class VariableAwareTextEditor : UserControl
         window.Show();
     }
 
+    // ---- Script autocomplete + diagnostics ----
+
+    /// <summary>Opens JS autocomplete: member list when the caret follows <c>obj.</c>, otherwise
+    /// the top-level object list for the current <see cref="ScriptKind"/>.</summary>
+    private void ShowScriptCompletion()
+    {
+        if (CompletionMode != EditorCompletionMode.Script) return;
+
+        var doc = _editor.Document;
+        var caret = _editor.CaretOffset;
+
+        // Extent of the identifier currently being typed (the filter prefix / replace segment).
+        var wordStart = caret;
+        while (wordStart > 0 && IsIdentChar(doc.GetCharAt(wordStart - 1))) wordStart--;
+
+        IEnumerable<ICompletionData> items;
+        if (wordStart > 0 && doc.GetCharAt(wordStart - 1) == '.')
+        {
+            var expr = ExtractAccessExpression(doc, wordStart - 1);
+            var obj = ScriptApiCatalog.Resolve(expr, ScriptKind);
+            if (obj is null || obj.Members.Count == 0) return;
+            items = obj.Members.Select(m => (ICompletionData)new ScriptMemberCompletionData(m));
+        }
+        else
+        {
+            items = ScriptApiCatalog.TopLevel(ScriptKind).Select(o => (ICompletionData)new ScriptObjectCompletionData(o));
+        }
+
+        OpenCompletionWindow(items, wordStart, caret);
+    }
+
+    private void OpenCompletionWindow(IEnumerable<ICompletionData> items, int startOffset, int caret)
+    {
+        var list = items.ToList();
+        if (list.Count == 0) return;
+
+        // AvaloniaEdit reuses a single window; close any open one so a member popup can replace an
+        // object popup (and vice-versa) without the stale-window guard blocking it.
+        _completionWindow?.Close();
+
+        var window = new CompletionWindow(_editor.TextArea)
+        {
+            StartOffset = startOffset,
+            EndOffset = caret,
+        };
+        foreach (var d in list) window.CompletionList.CompletionData.Add(d);
+        window.Closed += (_, _) => _completionWindow = null;
+        _completionWindow = window;
+        window.Show();
+    }
+
+    /// <summary>Walks backwards from the dot at <paramref name="dotOffset"/> to capture the full
+    /// member-access expression (identifiers, dots, and balanced call parens) so chains like
+    /// <c>expect(res.getStatus())</c> or <c>bru.runner</c> resolve correctly.</summary>
+    private static string ExtractAccessExpression(TextDocument doc, int dotOffset)
+    {
+        var i = dotOffset - 1;
+        var depth = 0;
+        while (i >= 0)
+        {
+            var c = doc.GetCharAt(i);
+            if (c is ')' or ']') { depth++; i--; continue; }
+            if (c is '(' or '[')
+            {
+                if (depth == 0) break;
+                depth--; i--; continue;
+            }
+            if (depth > 0) { i--; continue; }       // inside parens — consume everything
+            if (IsIdentChar(c) || c == '.') { i--; continue; }
+            break;
+        }
+        var start = i + 1;
+        return doc.GetText(start, dotOffset - start).Trim();
+    }
+
+    private static bool IsIdentChar(char c) => char.IsLetterOrDigit(c) || c == '_' || c == '$';
+
+    /// <summary>Restarts the debounce timer that drives background syntax analysis.</summary>
+    private void ScheduleDiagnostics()
+    {
+        _diagnosticsTimer?.Stop();
+        _diagnosticsTimer?.Start();
+    }
+
+    /// <summary>Parses the current text off the UI thread and applies the resulting squiggles back
+    /// on the UI thread, dropping results superseded by a newer edit.</summary>
+    private void RunDiagnostics()
+    {
+        if (CompletionMode != EditorCompletionMode.Script) return;
+        var text = _editor.Document.Text;
+        var token = ++_diagnosticsToken;
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            var diags = ScriptDiagnostics.Analyze(text);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (token != _diagnosticsToken) return;
+                _diagnostics = diags;
+                _squiggleRenderer?.SetDiagnostics(diags, _editor.TextArea.TextView);
+                if (diags.Count > 0)
+                {
+                    var d = diags[0];
+                    ErrorSummary = $"Line {d.Line}, col {d.Column + 1}: {d.Message}";
+                    HasError = true;
+                }
+                else
+                {
+                    ErrorSummary = null;
+                    HasError = false;
+                }
+                DiagnosticsChanged?.Invoke(this, EventArgs.Empty);
+            });
+        });
+    }
+
     private void OnPointerHover(object? sender, PointerEventArgs e)
     {
         var pos = _editor.TextArea.TextView.GetPosition(e.GetPosition(_editor.TextArea.TextView) + _editor.TextArea.TextView.ScrollOffset);
@@ -662,6 +882,21 @@ public partial class VariableAwareTextEditor : UserControl
         var lineText = _editor.Document.GetText(docLine.Offset, docLine.Length);
         var col = pos.Value.Column - 1;
         if (col < 0) return;
+
+        // Script mode: show the syntax-error message when hovering over a squiggle.
+        if (CompletionMode == EditorCompletionMode.Script && _diagnostics.Count > 0)
+        {
+            var hoverOffset = docLine.Offset + col;
+            foreach (var d in _diagnostics)
+            {
+                if (hoverOffset >= d.Offset && hoverOffset <= d.Offset + d.Length)
+                {
+                    ToolTip.SetTip(_editor, d.Message);
+                    ToolTip.SetIsOpen(_editor, true);
+                    return;
+                }
+            }
+        }
 
         // Find {{...}} containing the column.
         foreach (Match m in VarRegex.Matches(lineText))
@@ -769,6 +1004,66 @@ public partial class VariableAwareTextEditor : UserControl
             textArea.Document.Replace(completionSegment, _name + "}}");
         }
     }
+
+    /// <summary>Completion entry for a top-level script object (<c>bru</c>, <c>res</c>, …).</summary>
+    private sealed class ScriptObjectCompletionData : ICompletionData
+    {
+        private readonly ScriptObject _obj;
+        public ScriptObjectCompletionData(ScriptObject obj) => _obj = obj;
+
+        public global::Avalonia.Media.IImage? Image => null;
+        public string Text => _obj.Name;
+        public object Content => MonoRow(_obj.Name, FontWeight.SemiBold);
+        public object Description => _obj.Description;
+        public double Priority => 0;
+
+        public void Complete(TextArea textArea, ISegment completionSegment, EventArgs insertionRequestEventArgs) =>
+            textArea.Document.Replace(completionSegment, _obj.Name);
+    }
+
+    /// <summary>Completion entry for a member of a script object. Methods insert <c>name()</c> with
+    /// the caret placed inside the parens when the method takes arguments.</summary>
+    private sealed class ScriptMemberCompletionData : ICompletionData
+    {
+        private readonly ScriptMember _member;
+        public ScriptMemberCompletionData(ScriptMember member) => _member = member;
+
+        public global::Avalonia.Media.IImage? Image => null;
+        public string Text => _member.Name;
+        public object Content => MonoRow(_member.Signature, FontWeight.Normal);
+        public object Description => _member.Description;
+        public double Priority => 0;
+
+        public void Complete(TextArea textArea, ISegment completionSegment, EventArgs insertionRequestEventArgs)
+        {
+            if (_member.Kind == ScriptMemberKind.Method)
+            {
+                textArea.Document.Replace(completionSegment, _member.Name + "()");
+                // Place the caret between the parens when the method takes args; otherwise after them.
+                var hasParams = HasParams(_member.Signature);
+                textArea.Caret.Offset = completionSegment.Offset + _member.Name.Length + (hasParams ? 1 : 2);
+            }
+            else
+            {
+                textArea.Document.Replace(completionSegment, _member.Name);
+            }
+        }
+
+        private static bool HasParams(string signature)
+        {
+            var open = signature.IndexOf('(');
+            return open >= 0 && open + 1 < signature.Length && signature[open + 1] != ')';
+        }
+    }
+
+    /// <summary>Monospace popup row shared by the script completion entries.</summary>
+    private static Control MonoRow(string text, FontWeight weight) => new TextBlock
+    {
+        Text = text,
+        FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, monospace"),
+        FontSize = 12,
+        FontWeight = weight,
+    };
 
     /// <summary>Emits <see cref="MaskedVisualLineText"/> elements over any run of characters
     /// that lies OUTSIDE a <c>{{name}}</c> placeholder when the editor is in password mode and

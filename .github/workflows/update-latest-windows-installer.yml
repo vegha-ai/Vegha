@@ -174,7 +174,9 @@ jobs:
 
           # Velopack auto-update feed: the RELEASES index, the JSON manifests,
           # and the version-stamped full package. Clients poll these to update.
-          foreach ($pat in 'RELEASES', 'releases.win.json', 'assets.win.json', '*-full.nupkg') {
+          # Per-RID channel: Pack-Installer packs win-x64 under the "win-x64" channel,
+          # so the manifests are releases.win-x64.json / assets.win-x64.json.
+          foreach ($pat in 'RELEASES', 'releases.win-x64.json', 'assets.win-x64.json', '*-full.nupkg') {
             Get-ChildItem $rel -Filter $pat -ErrorAction SilentlyContinue |
               ForEach-Object { Copy-Item $_.FullName (Join-Path 'staged' $_.Name) }
           }

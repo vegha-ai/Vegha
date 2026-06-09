@@ -237,3 +237,67 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: release/*
+
+      # ============================================================
+      # In-app auto-update feeds — one Velopack channel per RID, published into
+      # the SAME Release created above. Each platform's feed files
+      # (releases.<channel>.json + *.nupkg) are channel-named, so all four
+      # coexist without colliding; the client (VelopackUpdateService) selects its
+      # channel via ExplicitChannel == its RID. `vpk upload github --merge`
+      # appends to the existing Release. We upload the feed files only (not the
+      # installers), so these never clash with the stable website-facing
+      # installer names staged above.
+      # ============================================================
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk
+
+      - name: Publish Velopack update feeds (per-channel)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          version="${{ steps.ver.outputs.version }}"
+          tag="v${version}"
+
+          # artifact suffix -> Velopack channel (== RID). Keep in lockstep with the
+          # package matrix and eng/Pack-Installer.ps1's `vpk pack --channel`.
+          declare -A chan=(
+            [windows-x64]=win-x64
+            [windows-arm64]=win-arm64
+            [macos-arm64]=osx-arm64
+            [linux-x64]=linux-x64
+          )
+
+          for suffix in "${!chan[@]}"; do
+            ch="${chan[$suffix]}"
+            src="artifacts/vegha-${version}-${suffix}"
+            if [ ! -d "$src" ]; then
+              echo "::warning::Artifact dir $src missing — skipping $ch feed."
+              continue
+            fi
+            # Feed-only staging: channel manifest + packages, NOT the installers.
+            feed="feed/$ch"; mkdir -p "$feed"
+            cp "$src"/releases.${ch}.json "$feed"/ 2>/dev/null || true
+            cp "$src"/assets.${ch}.json   "$feed"/ 2>/dev/null || true
+            cp "$src"/*.nupkg             "$feed"/ 2>/dev/null || true
+            if [ ! -e "$feed/releases.${ch}.json" ]; then
+              echo "::warning::No releases.${ch}.json in $src — was it packed with --channel $ch? Skipping."
+              continue
+            fi
+            echo "Uploading $ch feed -> release $tag"
+            vpk upload github \
+              --repoUrl "https://github.com/${{ github.repository }}" \
+              --token "$GITHUB_TOKEN" \
+              --channel "$ch" \
+              --merge \
+              --tag "$tag" \
+              --releaseName "Vegha v${version}" \
+              -o "$feed"
+          done

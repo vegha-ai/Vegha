@@ -336,55 +336,59 @@
                         </StackPanel>
                     </TabItem.Header>
                     <ScrollViewer Background="{DynamicResource Bg2Brush}">
-                        <ItemsControl ItemsSource="{Binding TestResults}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:TestResultRow">
-                                    <Border BorderBrush="{DynamicResource Border0Brush}"
-                                            BorderThickness="0,0,0,1"
-                                            Padding="12,8">
-                                        <Grid ColumnDefinitions="20,*,Auto">
-                                            <TextBlock Grid.Column="0" FontSize="13" FontWeight="Bold"
-                                                       VerticalAlignment="Center">
-                                                <TextBlock.Text>
-                                                    <MultiBinding StringFormat="{}{0}">
-                                                        <Binding Path="Passed" Converter="{x:Static ObjectConverters.Equal}" ConverterParameter="True" />
-                                                    </MultiBinding>
-                                                </TextBlock.Text>
-                                            </TextBlock>
-                                            <StackPanel Grid.Column="1">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
-                                                               Foreground="{DynamicResource StatusOkBrush}"
-                                                               IsVisible="{Binding Passed}" />
-                                                    <TextBlock Text="✗" FontSize="13" FontWeight="Bold"
-                                                               Foreground="{DynamicResource StatusErrBrush}"
-                                                               IsVisible="{Binding !Passed}" />
-                                                    <TextBlock Text="{Binding Name}"
-                                                               FontSize="12"
-                                                               Foreground="{DynamicResource Text0Brush}"
-                                                               VerticalAlignment="Center" />
+                        <StackPanel>
+                            <!-- Bruno-style summary: Tests (N), Passed: X, Failed: Y -->
+                            <Border Padding="12,8" IsVisible="{Binding HasTestResults}"
+                                    BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,0,0,1">
+                                <TextBlock FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text0Brush}">
+                                    <Run Text="Tests (" /><Run Text="{Binding TestResults.Count}" /><Run Text="),  Passed: " /><Run
+                                        Text="{Binding TestsPassedCount}" Foreground="{DynamicResource StatusOkBrush}" /><Run Text="   Failed: " /><Run
+                                        Text="{Binding TestsFailedCount}" Foreground="{DynamicResource StatusErrBrush}" />
+                                </TextBlock>
+                            </Border>
+                            <ItemsControl ItemsSource="{Binding TestResults}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:TestResultRow">
+                                        <Border BorderBrush="{DynamicResource Border0Brush}"
+                                                BorderThickness="0,0,0,1"
+                                                Padding="12,8">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <StackPanel Grid.Column="0">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
+                                                                   Foreground="{DynamicResource StatusOkBrush}"
+                                                                   IsVisible="{Binding Passed}" />
+                                                        <TextBlock Text="✗" FontSize="13" FontWeight="Bold"
+                                                                   Foreground="{DynamicResource StatusErrBrush}"
+                                                                   IsVisible="{Binding !Passed}" />
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   FontSize="12"
+                                                                   Foreground="{DynamicResource Text0Brush}"
+                                                                   VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                    <SelectableTextBlock Text="{Binding FailureMessage}"
+                                                                         FontFamily="{StaticResource MonoFont}"
+                                                                         FontSize="11"
+                                                                         Foreground="{DynamicResource StatusErrBrush}"
+                                                                         Margin="20,2,0,0"
+                                                                         TextWrapping="Wrap"
+                                                                         IsVisible="{Binding !Passed}" />
                                                 </StackPanel>
-                                                <SelectableTextBlock Text="{Binding FailureMessage}"
-                                                                     FontFamily="{StaticResource MonoFont}"
-                                                                     FontSize="11"
-                                                                     Foreground="{DynamicResource StatusErrBrush}"
-                                                                     Margin="20,2,0,0"
-                                                                     TextWrapping="Wrap"
-                                                                     IsVisible="{Binding !Passed}" />
-                                            </StackPanel>
-                                            <TextBlock Grid.Column="2"
-                                                       FontFamily="{StaticResource MonoFont}"
-                                                       FontSize="10"
-                                                       Foreground="{DynamicResource Text3Brush}"
-                                                       VerticalAlignment="Center">
-                                                <Run Text="{Binding DurationMs, StringFormat={}{0:F1}}" />
-                                                <Run Text=" ms" />
-                                            </TextBlock>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                                <TextBlock Grid.Column="1"
+                                                           FontFamily="{StaticResource MonoFont}"
+                                                           FontSize="10"
+                                                           Foreground="{DynamicResource Text3Brush}"
+                                                           VerticalAlignment="Center">
+                                                    <Run Text="{Binding DurationMs, StringFormat={}{0:F1}}" />
+                                                    <Run Text=" ms" />
+                                                </TextBlock>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </ScrollViewer>
                 </TabItem>
 

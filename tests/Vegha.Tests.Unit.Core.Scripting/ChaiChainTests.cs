@@ -76,6 +76,24 @@ public class ChaiChainTests
     }
 
     [Fact]
+    public void ChaiJsonBody_AssertsPropertyExistenceAndPaths()
+    {
+        var resp = new ResponseApi(200, "OK", "{\"access_token\":\"abc\",\"data\":{\"id\":42}}", 0,
+            new[] { new KeyValuePair<string, string>("Content-Type", "application/json") });
+        var script = """
+            test('has access_token', () => { expect(res.getBody()).to.have.jsonBody('access_token'); });
+            test('nested path', () => { expect(res.getBody()).to.have.jsonBody('data.id'); });
+            test('missing key fails', () => { expect(res.getBody()).to.have.jsonBody('refresh_token'); });
+        """;
+        var r = _host.RunPostResponse(null, script, resp, NoVars);
+        r.IsSuccess.Should().BeTrue();
+        r.TestOutcomes.Should().HaveCount(3);
+        r.TestOutcomes[0].Passed.Should().BeTrue();
+        r.TestOutcomes[1].Passed.Should().BeTrue();
+        r.TestOutcomes[2].Passed.Should().BeFalse();
+    }
+
+    [Fact]
     public void ChaiDeepEqual_ComparesObjectGraphs()
     {
         var resp = new ResponseApi(200, "OK", "{\"a\":[1,2,3]}", 0,

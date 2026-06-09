@@ -211,6 +211,38 @@ public class RequestEditorViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SendCommand_PostResponseScript_SetEnvVar_RaisesEnvVarMutation()
+    {
+        // Regression: a post-response script that extracts a token via bru.setEnvVar must surface
+        // the change so the host can apply it to the active environment — otherwise the next
+        // request resolves {{access_token}} as unset.
+        _server.Given(Request.Create().WithPath("/token").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithBody("{\"access_token\":\"zVd7kPHFs2y2AwDx17e2TEa4ATDA\"}"));
+
+        Vegha.App.ViewModels.EnvVarMutationEventArgs? captured = null;
+        _vm.EnvironmentVariablesMutated += (_, e) => captured = e;
+
+        _vm.Method = "POST";
+        _vm.Url = $"{_server.Url}/token";
+        _vm.PostResponseScript = """
+            var jsonData = JSON.parse(res.getBodyAsText());
+            if (jsonData) {
+                bru.setEnvVar("access_token", jsonData.access_token);
+            }
+            """;
+
+        await _vm.SendCommand.ExecuteAsync(null);
+
+        _vm.ResponseStatusCode.Should().Be(200);
+        captured.Should().NotBeNull();
+        captured!.Updated.Should().ContainKey("access_token")
+            .WhoseValue.Should().Be("zVd7kPHFs2y2AwDx17e2TEa4ATDA");
+        captured.Removed.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task SendCommand_PreRequestScript_CanSetVarUsedInUrl()
     {
         _server.Given(Request.Create()

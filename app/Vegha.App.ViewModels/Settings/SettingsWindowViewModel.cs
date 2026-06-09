@@ -24,6 +24,7 @@ public partial class SettingsWindowViewModel : ObservableObject
     public SecretManagerSettingsViewModel SecretManager { get; }
     public RequestDefaultsSettingsViewModel RequestDefaults { get; }
     public EditorSettingsViewModel Editor { get; }
+    public UpdatesSettingsViewModel Updates { get; }
     public ShortcutsSettingsViewModel Shortcuts { get; }
 
     /// <summary>Raised after a successful save so the host (MainWindow) can re-apply
@@ -36,7 +37,9 @@ public partial class SettingsWindowViewModel : ObservableObject
     public SettingsWindowViewModel(
         AppSettingsStore store,
         IEnumerable<ShortcutRow> shortcutRows,
-        Func<SecretProviderConfig, ISecretProvider?>? secretProviderFactory = null)
+        Func<SecretProviderConfig, ISecretProvider?>? secretProviderFactory = null,
+        string? appVersion = null,
+        bool updatesSupported = false)
     {
         _store = store;
 
@@ -45,6 +48,7 @@ public partial class SettingsWindowViewModel : ObservableObject
         SecretManager = new SecretManagerSettingsViewModel(secretProviderFactory);
         RequestDefaults = new RequestDefaultsSettingsViewModel();
         Editor = new EditorSettingsViewModel();
+        Updates = new UpdatesSettingsViewModel(string.IsNullOrWhiteSpace(appVersion) ? "—" : appVersion, updatesSupported);
         Shortcuts = new ShortcutsSettingsViewModel(shortcutRows);
 
         Pages.Add(Appearance);
@@ -52,6 +56,7 @@ public partial class SettingsWindowViewModel : ObservableObject
         Pages.Add(SecretManager);
         Pages.Add(RequestDefaults);
         Pages.Add(Editor);
+        Pages.Add(Updates);
         Pages.Add(Shortcuts);
 
         var current = _store.Load();

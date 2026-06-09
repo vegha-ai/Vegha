@@ -339,6 +339,18 @@ public partial class MainWindow : Window
                 };
             }
         }, global::Avalonia.Threading.DispatcherPriority.Background);
+
+        // === DEFERRED block C: auto-update checker ===
+        // Past first paint so the GitHub feed poll never delays startup. Hides the
+        // "Check for Updates…" menu item on builds that can't self-update (store flavors +
+        // uninstalled dev runs), then kicks the silent startup check + periodic poll. The VM
+        // honors the AutoCheckForUpdates setting and is a no-op when unsupported.
+        global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (DataContext is not MainWindowViewModel mwvm) return;
+            MenuCheckUpdates.IsVisible = mwvm.Update.IsSupported;
+            mwvm.Update.StartBackgroundChecks();
+        }, global::Avalonia.Threading.DispatcherPriority.Background);
     }
 
     private void UpdateCreateCollectionDefault(WorkspaceItemViewModel? ws)
@@ -1310,6 +1322,18 @@ public partial class MainWindow : Window
         var dlg = new AboutDialog();
         await dlg.ShowDialog(this);
     }
+
+    /// <summary>Help → "Check for Updates…". Runs an interactive check whose phases surface in
+    /// the update banner (checking → downloading → restart, or up-to-date / failed).</summary>
+    private async void OnMenuCheckUpdates_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel vm)
+            await vm.Update.CheckNowCommand.ExecuteAsync(null);
+    }
+
+    /// <summary>Update banner → "Release notes": open the GitHub releases page in the browser.</summary>
+    private void OnUpdateReleaseNotes_Click(object? sender, RoutedEventArgs e)
+        => HelpDialog.OpenUrl(UpdateViewModel.ReleaseNotesUrl);
 
     /// <summary>If any open tabs are dirty, prompt the user before letting the window close.
     /// Cancel keeps the app running; Discard exits without saving; Save iterates dirty tabs and

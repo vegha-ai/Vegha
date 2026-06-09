@@ -496,6 +496,49 @@ public sealed class ChaiChain
         return this;
     }
 
+    /// <summary>Asserts against a parsed JSON body (Bruno parity for
+    /// <c>expect(res.getBody()).to.have.jsonBody(...)</c>):
+    /// <list type="bullet">
+    /// <item>string arg → the body has that property (dotted paths like <c>data.token</c> supported);</item>
+    /// <item>object arg → the body deep-equals it;</item>
+    /// <item>no arg → the body is a non-null JSON value.</item>
+    /// </list></summary>
+    public ChaiChain jsonBody(object? keyOrExpected = null)
+    {
+        if (keyOrExpected is null)
+        {
+            CheckBool(_actual is not null,
+                "expected a JSON body",
+                "expected no JSON body");
+            return this;
+        }
+        if (keyOrExpected is string key)
+        {
+            var (found, _) = TryReadPath(_actual, key);
+            CheckBool(found,
+                $"expected JSON body to have property '{key}'",
+                $"expected JSON body NOT to have property '{key}'");
+            return this;
+        }
+        CheckBool(DeepEqual(_actual, keyOrExpected),
+            $"expected JSON body to equal {Format(keyOrExpected)}",
+            $"expected JSON body NOT to equal {Format(keyOrExpected)}");
+        return this;
+    }
+
+    /// <summary>Reads a dotted property path (<c>a.b.c</c>) off a parsed-JSON object graph.</summary>
+    private static (bool Found, object? Value) TryReadPath(object? target, string path)
+    {
+        var current = target;
+        foreach (var segment in path.Split('.'))
+        {
+            var (found, value) = TryReadProperty(current, segment);
+            if (!found) return (false, null);
+            current = value;
+        }
+        return (true, current);
+    }
+
     public ChaiChain contain(object? needle) => CheckContain(needle);
     public ChaiChain include(object? needle) => CheckContain(needle);
     public ChaiChain contains(object? needle) => CheckContain(needle);

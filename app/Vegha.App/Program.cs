@@ -19,13 +19,16 @@ class Program
     {
         TraceStartupReset();
         Trace("Main:enter");
-#if !Vegha_MSIX && !Vegha_MAS
+#if !VEGHA_MSIX && !VEGHA_MAS
         // Velopack must run before Avalonia: if the EXE was launched as part of
         // an install/update step (--squirrel-install, --veloapp-uninstall, etc.)
         // the runtime exits here without showing UI.
-        // The Microsoft Store (Vegha_MSIX) and Mac App Store (Vegha_MAS)
+        // The Microsoft Store (VEGHA_MSIX) and Mac App Store (VEGHA_MAS)
         // flavors route updates through their respective Store channels — Velopack
-        // is disabled at compile time on both.
+        // is disabled at compile time on both. These symbols are defined by
+        // Directory.Build.props from $(VeghaFlavor); the casing MUST match it
+        // (an earlier mixed-case "Vegha_MSIX" guard never matched, so Velopack
+        // wrongly ran in Store builds).
         VelopackApp.Build().Run();
 #endif
         Trace("Main:post-velopack");

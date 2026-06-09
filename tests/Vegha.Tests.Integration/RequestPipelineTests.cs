@@ -39,6 +39,7 @@ public class RequestPipelineTests : IAsyncLifetime
         BodyConfig? body = null, AuthConfig? auth = null,
         IList<KvPair>? headers = null, IList<KvPair>? queryParams = null,
         string? preScript = null, string? testsScript = null,
+        string? postScript = null,
         IReadOnlyDictionary<string, string>? envVars = null,
         IReadOnlyDictionary<string, string>? iterVars = null)
     {
@@ -50,6 +51,7 @@ public class RequestPipelineTests : IAsyncLifetime
             Body = body ?? new BodyConfig(),
             Auth = auth,
             PreRequestScript = preScript,
+            PostResponseScript = postScript,
             Tests = testsScript,
         };
         var collection = new Collection { Name = "c", Requests = new List<RequestItem> { request } };
@@ -118,6 +120,31 @@ public class RequestPipelineTests : IAsyncLifetime
         result.ErrorMessage.Should().BeNull();
         result.StatusCode.Should().Be(200);
         result.RuntimeVariableMutations.Should().ContainKey("token").WhoseValue.Should().Be("abc123");
+    }
+
+    [Fact]
+    public async Task PostResponse_setEnvVar_surfaces_in_EnvVarMutations()
+    {
+        // Mirrors the token-extraction pattern: POST a token endpoint, pull access_token out
+        // of the JSON body in the post-response script, and stash it via bru.setEnvVar. The
+        // runner threads EnvVarMutations forward so {{access_token}} resolves in the next request.
+        _server.Given(Request.Create().WithPath("/token").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithBody("{\"access_token\":\"zVd7kPHFs2y2AwDx17e2TEa4ATDA\"}"));
+
+        var inputs = BuildInputs("POST", _server.Urls[0] + "/token",
+            postScript: """
+                var jsonData = JSON.parse(res.getBodyAsText());
+                if (jsonData) {
+                    bru.setEnvVar("access_token", jsonData.access_token);
+                }
+                """);
+        var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+        result.ErrorMessage.Should().BeNull();
+        result.StatusCode.Should().Be(200);
+        result.EnvVarMutations.Should().ContainKey("access_token")
+            .WhoseValue.Should().Be("zVd7kPHFs2y2AwDx17e2TEa4ATDA");
     }
 
     [Fact]
