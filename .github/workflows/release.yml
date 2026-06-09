@@ -78,9 +78,53 @@ jobs:
           fi
 
       - name: Install Velopack CLI
+        if: matrix.os != 'macos-14'
         run: dotnet tool install -g vpk
 
-      - name: Build Velopack installer
+      # macOS uses pack-mac.sh which handles publish → sign → notarize → dmg
+      # in the correct order. Velopack (Pack-Installer.ps1) packages AFTER publish
+      # which means the app is already bundled before signing — too late to sign.
+      - name: Build macOS DMG (sign + notarize)
+        if: matrix.os == 'macos-14' && env.MAC_DEVELOPER_ID_BASE64 != ''
+        env:
+          MAC_DEVELOPER_ID_BASE64: ${{ secrets.MAC_DEVELOPER_ID_BASE64 }}
+          MAC_DEVELOPER_ID_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_PASSWORD }}
+          MAC_NOTARY_APPLE_ID: ${{ secrets.MAC_NOTARY_APPLE_ID }}
+          MAC_NOTARY_TEAM_ID: ${{ secrets.MAC_NOTARY_TEAM_ID }}
+          MAC_NOTARY_PASSWORD: ${{ secrets.MAC_NOTARY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Import signing identity into a temp keychain
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASS="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 7200 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          P12="$RUNNER_TEMP/codesign.p12"
+          echo "$MAC_DEVELOPER_ID_BASE64" | base64 --decode > "$P12"
+          security import "$P12" -k "$KEYCHAIN_PATH" -P "$MAC_DEVELOPER_ID_PASSWORD" -T /usr/bin/codesign
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDCA.cer \
+            -o "$RUNNER_TEMP/DeveloperIDCA.cer"
+          security import "$RUNNER_TEMP/DeveloperIDCA.cer" -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          rm "$P12"
+          # Store notarytool credentials
+          xcrun notarytool store-credentials vegha-notary \
+            --apple-id "$MAC_NOTARY_APPLE_ID" \
+            --team-id "$MAC_NOTARY_TEAM_ID" \
+            --password "$MAC_NOTARY_PASSWORD"
+          # Run pack-mac.sh — publish → sign → dmg → notarize → staple
+          chmod +x eng/pack-mac.sh
+          ./eng/pack-mac.sh --version ${{ steps.ver.outputs.version }}
+
+      - name: Build macOS DMG (unsigned, no secrets)
+        if: matrix.os == 'macos-14' && env.MAC_DEVELOPER_ID_BASE64 == ''
+        run: |
+          ./eng/pack-mac.sh --version ${{ steps.ver.outputs.version }} --skip-notarize
+
+      - name: Build Velopack installer (Windows + Linux)
+        if: matrix.os != 'macos-14'
         shell: pwsh
         run: |
           ./eng/Pack-Installer.ps1 `
@@ -111,58 +155,6 @@ jobs:
             & $signtool sign /f $pfxPath /p $env:WIN_SIGN_PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 $f.FullName
           }
           Remove-Item $pfxPath -Force
-
-      # ============================================================
-      # macOS: codesign + notarize via notarytool, staple ticket.
-      # Only runs when MAC_DEVELOPER_ID_BASE64 is set.
-      # ============================================================
-      - name: Import signing identity (macOS)
-        if: startsWith(matrix.os, 'macos-') && env.MAC_DEVELOPER_ID_BASE64 != ''
-        env:
-          MAC_DEVELOPER_ID_BASE64: ${{ secrets.MAC_DEVELOPER_ID_BASE64 }}
-          MAC_DEVELOPER_ID_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_PASSWORD }}
-        run: |
-          set -euo pipefail
-          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
-          KEYCHAIN_PASS="$(uuidgen)"
-          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 7200 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
-          P12="$RUNNER_TEMP/codesign.p12"
-          echo "$MAC_DEVELOPER_ID_BASE64" | base64 --decode > "$P12"
-          security import "$P12" -k "$KEYCHAIN_PATH" -P "$MAC_DEVELOPER_ID_PASSWORD" -T /usr/bin/codesign
-          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
-          rm "$P12"
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> $GITHUB_ENV
-
-      - name: Codesign + notarize (macOS)
-        if: startsWith(matrix.os, 'macos-') && env.MAC_DEVELOPER_ID_BASE64 != ''
-        env:
-          MAC_DEVELOPER_ID_BASE64: ${{ secrets.MAC_DEVELOPER_ID_BASE64 }}
-          MAC_NOTARY_APPLE_ID: ${{ secrets.MAC_NOTARY_APPLE_ID }}
-          MAC_NOTARY_TEAM_ID: ${{ secrets.MAC_NOTARY_TEAM_ID }}
-          MAC_NOTARY_PASSWORD: ${{ secrets.MAC_NOTARY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep 'Developer ID Application' | head -n1 | awk -F'"' '{print $2}')"
-          if [ -z "$IDENTITY" ]; then
-            echo "::warning::No Developer ID Application identity found; skipping codesign."
-            exit 0
-          fi
-          for app in releases/${{ matrix.rid }}/*.app; do
-            [ -e "$app" ] || continue
-            codesign --deep --force --options runtime --timestamp --sign "$IDENTITY" "$app"
-          done
-          for pkg in releases/${{ matrix.rid }}/*.pkg releases/${{ matrix.rid }}/*.dmg; do
-            [ -e "$pkg" ] || continue
-            xcrun notarytool submit "$pkg" \
-              --apple-id "$MAC_NOTARY_APPLE_ID" \
-              --team-id "$MAC_NOTARY_TEAM_ID" \
-              --password "$MAC_NOTARY_PASSWORD" \
-              --wait
-            xcrun stapler staple "$pkg" || true
-          done
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
@@ -222,7 +214,7 @@ jobs:
 
           stage "artifacts/vegha-*-windows-x64/*Setup.exe"   "Vegha-win-x64-Setup.exe"
           stage "artifacts/vegha-*-windows-arm64/*Setup.exe" "Vegha-win-arm64-Setup.exe"
-          stage "artifacts/vegha-*-macos-arm64/*.pkg"        "Vegha-osx-arm64.pkg"
+          stage "artifacts/vegha-*-macos-arm64/*.dmg"        "Vegha-osx-arm64.dmg"
           stage "artifacts/vegha-*-linux-x64/*.AppImage"     "Vegha-linux-x64.AppImage"
 
           ( cd release && sha256sum * > SHA256SUMS.txt )

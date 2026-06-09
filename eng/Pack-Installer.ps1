@@ -65,15 +65,16 @@ function Invoke-Pack([string] $rid) {
     Write-Host "=== Packing $PackId $Version for $rid ===" -ForegroundColor Cyan
 
     Write-Host "Publishing self-contained to $publishDir..."
-    # -p:Version stamps the SAME version into the assembly (About dialog + status-bar version)
-    # that we hand to `vpk pack --packVersion` below, so the displayed version always matches
-    # the version the updater compares. Without it the build would carry Directory.Build.props's
-    # version while Velopack packaged a different one.
+    # PublishSingleFile=true on macOS/Linux embeds managed assemblies and
+    # runtimeconfig.json into the executable so codesign has no unsignable
+    # subcomponents to trip over. Windows uses false (single-file + Velopack
+    # delta patching requires loose assemblies on Windows).
+    $singleFile = if ($rid.StartsWith('win-')) { 'false' } else { 'true' }
     & dotnet publish $projectPath `
         --configuration $Configuration `
         --runtime $rid `
         --self-contained true `
-        -p:PublishSingleFile=false `
+        -p:PublishSingleFile=$singleFile `
         -p:PublishReadyToRun=true `
         -p:Version=$Version `
         --output $publishDir
