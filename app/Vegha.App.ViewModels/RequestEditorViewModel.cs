@@ -337,6 +337,40 @@ public partial class RequestEditorViewModel : ObservableObject
 
     public ObservableCollection<TestResultRow> TestResults { get; } = new();
 
+    /// <summary>True when there is at least one test result — drives the summary header's visibility.</summary>
+    public bool HasTestResults => TestResults.Count > 0;
+    /// <summary>Number of passed tests in <see cref="TestResults"/> (for the Bruno-style summary).</summary>
+    public int TestsPassedCount => TestResults.Count(t => t.Passed);
+    /// <summary>Number of failed tests in <see cref="TestResults"/> (for the Bruno-style summary).</summary>
+    public int TestsFailedCount => TestResults.Count(t => !t.Passed);
+
+    // ---- Run & inspect (run a script in isolation against the last response) ----
+
+    /// <summary>Console output captured from the most recent "Run &amp; inspect".</summary>
+    public ObservableCollection<ConsoleLineRow> InspectConsole { get; } = new();
+
+    /// <summary>Variables produced by the most recent run, grouped by scope.</summary>
+    public ObservableCollection<InspectVarRow> InspectVariables { get; } = new();
+
+    /// <summary>Test outcomes from the most recent Tests run.</summary>
+    public ObservableCollection<TestResultRow> InspectTests { get; } = new();
+
+    /// <summary>True while the run-output panel is visible.</summary>
+    [ObservableProperty]
+    private bool _isInspectPanelOpen;
+
+    /// <summary>Heading for the run-output panel (e.g. "Pre-request run").</summary>
+    [ObservableProperty]
+    private string _inspectTitle = string.Empty;
+
+    /// <summary>Status / error / hint line for the run-output panel (e.g. script error, "send first").</summary>
+    [ObservableProperty]
+    private string? _inspectMessage;
+
+    [ObservableProperty] private bool _inspectHasConsole;
+    [ObservableProperty] private bool _inspectHasVariables;
+    [ObservableProperty] private bool _inspectHasTests;
+
     [ObservableProperty]
     private string _method = "GET";
 
@@ -1336,6 +1370,12 @@ public partial class RequestEditorViewModel : ObservableObject
     /// Lets variable-aware editors refresh their colorizer / autocomplete snapshot.</summary>
     public event EventHandler? VariablesSnapshotChanged;
 
+    /// <summary>Raised after a Send when a pre-request or post-response script changed environment
+    /// variables via <c>bru.setEnvVar</c> / <c>bru.deleteEnvVar</c>. Carries only the deltas so the
+    /// host can fold them into the active environment and re-broadcast to open tabs — this is what
+    /// makes a token extracted in a post-response script visible to the next request.</summary>
+    public event EventHandler<EnvVarMutationEventArgs>? EnvironmentVariablesMutated;
+
     private IReadOnlyDictionary<string, string> _environmentVariables = new Dictionary<string, string>();
 
     /// <summary>External variables (e.g. active environment) merged in at Send time. Request vars win.</summary>
@@ -1388,6 +1428,14 @@ public partial class RequestEditorViewModel : ObservableObject
         };
         PostResponseVariables.CollectionChanged += (_, _) =>
             OnPropertyChanged(nameof(VarsTotalCount));
+
+        // Keep the test-results summary (Tests (N), Passed: X, Failed: Y) in sync.
+        TestResults.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasTestResults));
+            OnPropertyChanged(nameof(TestsPassedCount));
+            OnPropertyChanged(nameof(TestsFailedCount));
+        };
 
         // Every request-side collection feeds the dirty flag: any add / remove of a row,
         // and any edit of a row's properties (Name / Value / Enabled / etc.), must enable
@@ -1505,6 +1553,38 @@ public partial class RequestEditorViewModel : ObservableObject
         Vegha.Core.Requests.RequestComposition.Composed composed) =>
         composed.Vars;
 
+    /// <summary>Computes the env-var deltas a script produced — comparing the script's resulting
+    /// env bag (<paramref name="after"/>) against the snapshot it ran against (<paramref name="before"/>)
+    /// — and raises <see cref="EnvironmentVariablesMutated"/> when there's anything to apply. The
+    /// script bag is a copy of <paramref name="before"/> with <c>setEnvVar</c> changes layered on and
+    /// <c>deleteEnvVar</c> entries removed, so a key-by-key diff recovers exactly what the user changed.</summary>
+    private void RaiseEnvVarMutations(
+        IReadOnlyDictionary<string, string> before,
+        IReadOnlyDictionary<string, string> after)
+    {
+        if (EnvironmentVariablesMutated is null) return;
+
+        Dictionary<string, string>? updated = null;
+        foreach (var (key, value) in after)
+        {
+            if (!before.TryGetValue(key, out var old) || !string.Equals(old, value, StringComparison.Ordinal))
+                (updated ??= new Dictionary<string, string>(StringComparer.Ordinal))[key] = value;
+        }
+
+        List<string>? removed = null;
+        foreach (var key in before.Keys)
+        {
+            if (!after.ContainsKey(key))
+                (removed ??= new List<string>()).Add(key);
+        }
+
+        if (updated is null && removed is null) return;
+
+        EnvironmentVariablesMutated.Invoke(this, new EnvVarMutationEventArgs(
+            (IReadOnlyDictionary<string, string>?)updated ?? new Dictionary<string, string>(),
+            (IReadOnlyCollection<string>?)removed ?? Array.Empty<string>()));
+    }
+
     [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendAsync(CancellationToken cancellationToken)
     {
@@ -1532,6 +1612,9 @@ public partial class RequestEditorViewModel : ObservableObject
                 return;
             }
             scriptVars = scriptResult.RuntimeVariables;
+            // Persist any bru.setEnvVar / deleteEnvVar the pre-request script performed so the
+            // change outlives this request (and reaches sibling tabs), matching Bruno.
+            RaiseEnvVarMutations(EnvironmentVariables, scriptResult.EnvVarMutations);
         }
 
         // Resolve all template placeholders before executing.
@@ -1936,6 +2019,11 @@ public partial class RequestEditorViewModel : ObservableObject
 
                 if (!post.IsSuccess && string.IsNullOrEmpty(ErrorMessage))
                     ErrorMessage = post.ErrorMessage;
+
+                // Surface bru.setEnvVar / deleteEnvVar mutations so the host folds them into the
+                // active environment and re-broadcasts. Without this, a token extracted here is
+                // dropped and {{access_token}} resolves as unset on the next request.
+                RaiseEnvVarMutations(EnvironmentVariables, post.EnvVarMutations);
             }
         }
         catch (OperationCanceledException)
@@ -1971,6 +2059,146 @@ public partial class RequestEditorViewModel : ObservableObject
     }
 
     private bool CanCancelSend() => IsSending;
+
+    // ---- Run & inspect ----------------------------------------------------------------
+    // Runs a single script slot (pre-request / post-response / tests) in isolation against the
+    // current variables and the LAST captured response, surfacing console output, the resulting
+    // variables, and test results. Mutations are NOT persisted to the environment — env-var
+    // changes show as a preview only. Reuses the same JintHost the Send path uses.
+
+    /// <summary>Runs the pre-request script and shows its console output + variable mutations.</summary>
+    [RelayCommand]
+    private void RunPreRequestInspect()
+    {
+        var composed = ComposeWithInheritance();
+        if (string.IsNullOrWhiteSpace(composed.PreRequestScript))
+        {
+            ShowInspectHint("Pre-request run", "No pre-request script to run.");
+            return;
+        }
+
+        var requestVars = BuildVariableLookup(Variables);
+        var result = _scriptHost.RunPreRequest(
+            composed.PreRequestScript!,
+            EnvironmentVariables,
+            requestVars: requestVars);
+
+        PopulateInspectResults(
+            "Pre-request run",
+            result.IsSuccess, result.ErrorMessage,
+            result.ConsoleMessages, result.RuntimeVariables, result.EnvVarMutations,
+            testOutcomes: null);
+    }
+
+    /// <summary>Runs the post-response script against the last response.</summary>
+    [RelayCommand]
+    private void RunPostResponseInspect() => RunPostOrTestsInspect("Post-response run", includeTests: false);
+
+    /// <summary>Runs the tests script against the last response.</summary>
+    [RelayCommand]
+    private void RunTestsInspect() => RunPostOrTestsInspect("Tests run", includeTests: true);
+
+    private void RunPostOrTestsInspect(string title, bool includeTests)
+    {
+        var composed = ComposeWithInheritance();
+        var script = includeTests ? composed.TestsScript : composed.PostResponseScript;
+        if (string.IsNullOrWhiteSpace(script))
+        {
+            ShowInspectHint(title, includeTests ? "No tests to run." : "No post-response script to run.");
+            return;
+        }
+        if (!HasResponse)
+        {
+            ShowInspectHint(title, "Send the request first — post-response and tests need the last response.");
+            return;
+        }
+
+        var resApi = new ResponseApi(
+            ResponseStatusCode,
+            ResponseStatusText,
+            ResponseBody,
+            ResponseElapsedMilliseconds,
+            ResponseHeaders.Select(h => new KeyValuePair<string, string>(h.Name, h.Value)),
+            Url);
+
+        var requestVars = BuildVariableLookup(Variables);
+        var result = _scriptHost.RunPostResponse(
+            postScript: includeTests ? null : composed.PostResponseScript,
+            testsScript: includeTests ? composed.TestsScript : null,
+            response: resApi,
+            envVars: EnvironmentVariables,
+            requestVars: requestVars);
+
+        PopulateInspectResults(
+            title,
+            result.IsSuccess, result.ErrorMessage,
+            result.ConsoleMessages, result.RuntimeVariables, result.EnvVarMutations,
+            result.TestOutcomes);
+    }
+
+    /// <summary>Closes the run-output panel.</summary>
+    [RelayCommand]
+    private void CloseInspectPanel() => IsInspectPanelOpen = false;
+
+    private void ShowInspectHint(string title, string message)
+    {
+        InspectConsole.Clear();
+        InspectVariables.Clear();
+        InspectTests.Clear();
+        InspectHasConsole = false;
+        InspectHasVariables = false;
+        InspectHasTests = false;
+        InspectTitle = title;
+        InspectMessage = message;
+        IsInspectPanelOpen = true;
+    }
+
+    private void PopulateInspectResults(
+        string title,
+        bool success,
+        string? errorMessage,
+        IReadOnlyList<ConsoleMessage> console,
+        IReadOnlyDictionary<string, string> runtimeVars,
+        IReadOnlyDictionary<string, string> envMutations,
+        IReadOnlyList<TestOutcome>? testOutcomes)
+    {
+        InspectTitle = title;
+        InspectMessage = success ? null : errorMessage ?? "Script failed.";
+
+        InspectConsole.Clear();
+        foreach (var m in console) InspectConsole.Add(new ConsoleLineRow(m.Level, m.Text));
+
+        InspectVariables.Clear();
+        foreach (var (k, v) in runtimeVars.OrderBy(p => p.Key, StringComparer.Ordinal))
+            InspectVariables.Add(new InspectVarRow("Runtime", k, v));
+        // Env-var mutations as a preview diff (not persisted by inspect).
+        foreach (var (k, v) in EnvVarDelta(EnvironmentVariables, envMutations)
+            .OrderBy(p => p.Key, StringComparer.Ordinal))
+            InspectVariables.Add(new InspectVarRow("Env (preview)", k, v));
+
+        InspectTests.Clear();
+        if (testOutcomes is not null)
+            foreach (var t in testOutcomes)
+                InspectTests.Add(new TestResultRow(t.Name, t.Passed, t.FailureMessage, t.DurationMs));
+
+        InspectHasConsole = InspectConsole.Count > 0;
+        InspectHasVariables = InspectVariables.Count > 0;
+        InspectHasTests = InspectTests.Count > 0;
+        IsInspectPanelOpen = true;
+    }
+
+    /// <summary>Added/changed env vars in <paramref name="after"/> vs <paramref name="before"/> —
+    /// the script's setEnvVar deltas, for display only.</summary>
+    private static IReadOnlyDictionary<string, string> EnvVarDelta(
+        IReadOnlyDictionary<string, string> before,
+        IReadOnlyDictionary<string, string> after)
+    {
+        var delta = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (k, v) in after)
+            if (!before.TryGetValue(k, out var old) || !string.Equals(old, v, StringComparison.Ordinal))
+                delta[k] = v;
+        return delta;
+    }
 
     /// <summary>Pumps <see cref="SendingElapsedSeconds"/> ~10×/s for the busy overlay.
     /// Exits when the linked token cancels (request finished or user clicked Cancel).
@@ -3285,6 +3513,12 @@ public sealed record ResponseCookieRow(
 }
 
 public sealed record TestResultRow(string Name, bool Passed, string? FailureMessage, double DurationMs);
+
+/// <summary>One console line in the run-output panel.</summary>
+public sealed record ConsoleLineRow(string Level, string Text);
+
+/// <summary>One variable row in the run-output panel, grouped by <paramref name="Scope"/>.</summary>
+public sealed record InspectVarRow(string Scope, string Name, string Value);
 
 /// <summary>One row in the Timeline subtab. <c>WidthRatio</c> is the phase's share of the total bar width (0..1).</summary>
 public sealed record TimelinePhase(string Name, double DurationMs, double WidthRatio, string ColorHex);

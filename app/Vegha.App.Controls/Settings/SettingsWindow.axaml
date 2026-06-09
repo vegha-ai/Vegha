@@ -116,6 +116,9 @@
                         <DataTemplate DataType="vm:EditorSettingsViewModel">
                             <pages:EditorPage />
                         </DataTemplate>
+                        <DataTemplate DataType="vm:UpdatesSettingsViewModel">
+                            <pages:UpdatesPage />
+                        </DataTemplate>
                         <DataTemplate DataType="vm:ShortcutsSettingsViewModel">
                             <pages:ShortcutsPage />
                         </DataTemplate>

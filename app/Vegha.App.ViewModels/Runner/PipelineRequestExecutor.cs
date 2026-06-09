@@ -70,6 +70,11 @@ public sealed class PipelineRequestExecutor
             // Capture runtime-var mutations for the next request in this same iteration.
             foreach (var (k, v) in outputs.RuntimeVariableMutations)
                 carriedVars[k] = v;
+            // Carry bru.setEnvVar mutations forward the same way (as an iteration overlay) so a
+            // token extracted in request N's post-response resolves via {{token}} in request N+1.
+            // The overlay beats env at compose time, so the fresh value wins over the snapshot.
+            foreach (var (k, v) in outputs.EnvVarMutations)
+                carriedVars[k] = v;
 
             var status = ClassifyResult(outputs);
             return new RequestRunResult(

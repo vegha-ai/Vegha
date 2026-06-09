@@ -6,6 +6,7 @@
         xmlns:tabs="using:Vegha.App.ViewModels.Tabs"
         xmlns:shell="using:Vegha.App.Controls.Shell"
         xmlns:ws="using:Vegha.App.Controls.Workspace"
+        xmlns:icons="using:Vegha.App.Controls.Icons"
         mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="900"
         x:Class="Vegha.App.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -32,12 +33,13 @@
         <KeyBinding Gesture="Ctrl+NumPad0" Command="{Binding ResetZoomCommand}" />
     </Window.KeyBindings>
 
-    <!-- Row 0: title bar (32). Row 1: main content (the workspace area now hosts the env
-         picker bar at its top — used to sit in its own 40px row). Row 2: status bar (22).
+    <!-- Row 0: title bar (32). Row 1: auto-update banner (Auto — collapses to 0 when hidden).
+         Row 2: main content (the workspace area now hosts the env picker bar at its top — used
+         to sit in its own 40px row). Row 3: status bar (22).
          Interface zoom is applied imperatively in code-behind via ZoomHost.Attach — the
          transform target can't be bound from XAML because ScaleTransform isn't a Control
          and doesn't inherit DataContext. -->
-    <Grid RowDefinitions="32,*,22">
+    <Grid RowDefinitions="32,Auto,*,22">
 
         <!-- Title bar with embedded hamburger menu (File / Edit / View / Help).
              The MenuFlyout is defined inline so the Click handlers resolve to
@@ -79,18 +81,78 @@
                         <MenuItem Header="Documentation" Click="OnMenuDocs_Click" />
                         <MenuItem Header="Keyboard shortcuts" Click="OnMenuShortcuts_Click" />
                         <Separator />
+                        <!-- Hidden in code-behind (OnLoaded) on builds that can't self-update:
+                             store flavors and uninstalled dev runs. -->
+                        <MenuItem x:Name="MenuCheckUpdates" Header="Check for Updates…"
+                                  Click="OnMenuCheckUpdates_Click" />
                         <MenuItem Header="About Vegha" Click="OnMenuAbout_Click" />
                     </MenuItem>
                 </MenuFlyout>
             </shell:AppTitleBar.HamburgerMenu>
         </shell:AppTitleBar>
 
-        <!-- Row 1: Main content
+        <!-- Row 1: auto-update banner. Hidden (zero-height) until the update VM reveals it —
+             on the Direct-download flavor only. Mirrors VS Code: a silent background download
+             then a single "restart to update" prompt. During a manual Help → "Check for
+             Updates…" it also shows the checking / up-to-date / failed phases. -->
+        <Border Grid.Row="1"
+                IsVisible="{Binding Update.IsBannerVisible}"
+                Background="{DynamicResource AccentSoftBrush}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="14,8">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
+                <icons:Icon Grid.Column="0" Kind="CloudDownload" Size="16"
+                            Foreground="{DynamicResource AccentBrush}"
+                            VerticalAlignment="Center" Margin="0,0,10,0" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="{Binding Update.StatusMessage}"
+                               Foreground="{DynamicResource Text0Brush}"
+                               FontSize="12"
+                               TextTrimming="CharacterEllipsis" />
+                    <ProgressBar IsVisible="{Binding Update.IsDownloading}"
+                                 Minimum="0" Maximum="100"
+                                 Value="{Binding Update.DownloadProgress}"
+                                 Height="3" Margin="0,2,0,0"
+                                 MaxWidth="320" HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <Button Grid.Column="2" Classes="primary"
+                        Content="Restart now"
+                        Command="{Binding Update.RestartNowCommand}"
+                        IsVisible="{Binding Update.IsReadyToRestart}"
+                        FontSize="12" Padding="12,5" Margin="8,0,0,0" />
+                <Button Grid.Column="3"
+                        Content="Later"
+                        Command="{Binding Update.LaterCommand}"
+                        IsVisible="{Binding Update.IsReadyToRestart}"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource Text1Brush}"
+                        FontSize="12" Padding="10,5" Margin="4,0,0,0"
+                        ToolTip.Tip="Install when you close Vegha" />
+                <Button Grid.Column="4"
+                        Content="Release notes"
+                        Click="OnUpdateReleaseNotes_Click"
+                        IsVisible="{Binding Update.IsReadyToRestart}"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource Text2Brush}"
+                        FontSize="12" Padding="10,5" Margin="4,0,0,0" />
+                <Button Grid.Column="5"
+                        Content="✕"
+                        Command="{Binding Update.LaterCommand}"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="{DynamicResource Text2Brush}"
+                        FontSize="12" Padding="8,5" Margin="4,0,0,0"
+                        ToolTip.Tip="Dismiss" />
+            </Grid>
+        </Border>
+
+        <!-- Row 2: Main content
              cols: ActivityRail | Sidebar | ColSplitter | MainWorkspace | ColSplitter | RightPanel
              rows: 0 = WorkspaceHeader (collection + env pickers, always visible to the right of
              the activity rail), 1 = sidebar panels + workspace content.
              Min/max constraints on Grid.Column enforce splitter bounds. -->
-        <Grid Grid.Row="1" x:Name="MainContentGrid">
+        <Grid Grid.Row="2" x:Name="MainContentGrid">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="44" />
                 <ColumnDefinition Width="280" MinWidth="200" MaxWidth="480" />
@@ -247,6 +309,6 @@
                 IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).ActiveSidebarSection, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=environments}" />
         </Grid>
 
-        <shell:AppStatusBar Grid.Row="2" />
+        <shell:AppStatusBar Grid.Row="3" />
     </Grid>
 </Window>

@@ -76,6 +76,7 @@ function Invoke-Pack([string] $rid) {
         --self-contained true `
         -p:PublishSingleFile=$singleFile `
         -p:PublishReadyToRun=true `
+        -p:Version=$Version `
         --output $publishDir
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $rid" }
 
@@ -90,6 +91,11 @@ function Invoke-Pack([string] $rid) {
         '--packDir', $publishDir
         '--mainExe', $mainExe
         '--outputDir', $outputDir
+        # One Velopack channel per RID (win-x64 / win-arm64 / osx-arm64 / linux-x64) so every
+        # platform's feed (releases.<channel>.json + *.nupkg) can live in a single GitHub
+        # Release without colliding. The app selects its channel via ExplicitChannel
+        # (VelopackUpdateService.CurrentRidChannel) — these two MUST stay in lockstep.
+        '--channel', $rid
     )
     if ($SignParams -and $rid.StartsWith('win-')) {
         Write-Host "Authenticode signing enabled (vpk --signParams)."

@@ -250,6 +250,19 @@ public partial class OpenTabsViewModel : ObservableObject
     /// workspace context applies.</summary>
     public Func<Vegha.Core.Requests.RequestComposition.WorkspaceContext>? WorkspaceContextProvider { get; set; }
 
+    /// <summary>External sink for <c>bru.setEnvVar</c> / <c>deleteEnvVar</c> mutations a tab's script
+    /// performed on Send — set by CollectionsViewModel so the change is folded into the active
+    /// environment and re-broadcast to every open tab. Every editor this VM builds is subscribed
+    /// to its <see cref="RequestEditorViewModel.EnvironmentVariablesMutated"/> through this sink.</summary>
+    public Action<EnvVarMutationEventArgs>? EnvVarMutationSink { get; set; }
+
+    /// <summary>Subscribes a freshly-built editor's env-mutation event to the host sink. Idempotent
+    /// per editor — each editor instance is built once, so a single subscription is correct.</summary>
+    private void SubscribeEnvMutations(RequestEditorViewModel editor)
+    {
+        editor.EnvironmentVariablesMutated += (_, e) => EnvVarMutationSink?.Invoke(e);
+    }
+
     /// <summary>Opens the request in a new tab, or activates the existing tab if it's already open.
     /// Optional <paramref name="collection"/> + <paramref name="folderChain"/> let the editor
     /// resolve inheritance (Collection → Folder → Request) at execution time. The
@@ -307,6 +320,7 @@ public partial class OpenTabsViewModel : ObservableObject
     private void WireEditorProviders(RequestEditorViewModel editor)
     {
         if (WorkspaceContextProvider is not null) editor.WorkspaceContextProvider = WorkspaceContextProvider;
+        SubscribeEnvMutations(editor);
         // Tag history rows with the workspace active at Send time so history stays per-workspace.
         editor.HistoryWorkspaceIdProvider = () => ActiveWorkspaceId;
         var snapshot = EnvironmentSnapshotProvider?.Invoke();
@@ -434,6 +448,7 @@ public partial class OpenTabsViewModel : ObservableObject
         {
             var editor = _editorFactory();
             if (WorkspaceContextProvider is not null) editor.WorkspaceContextProvider = WorkspaceContextProvider;
+            SubscribeEnvMutations(editor);
             // Seed env vars on the empty draft so a user typing {{var}} into a new request
             // sees it resolve immediately, not after the next env-change event.
             var snapshot = EnvironmentSnapshotProvider?.Invoke();

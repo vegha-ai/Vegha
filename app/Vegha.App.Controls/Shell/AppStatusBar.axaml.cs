@@ -114,4 +114,13 @@ public partial class AppStatusBar : UserControl
         var dialog = new CookiesDialog(vm.Cookies);
         await dialog.ShowDialog(owner);
     }
+
+    private async void OnVersionButton_Click(object? sender, RoutedEventArgs e)
+    {
+        var owner = TopLevel.GetTopLevel(this) as global::Avalonia.Controls.Window;
+        if (owner is null) return;
+
+        var dialog = new AboutDialog();
+        await dialog.ShowDialog(owner);
+    }
 }

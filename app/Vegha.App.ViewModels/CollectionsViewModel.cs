@@ -204,6 +204,13 @@ public partial class CollectionsViewModel : ObservableObject
         _uiContext = System.Threading.SynchronizationContext.Current;
 
         Roots.CollectionChanged += OnRootsCollectionChanged;
+
+        // Fold bru.setEnvVar / deleteEnvVar mutations from request scripts back into the active
+        // environment. The legacy single editor reports directly; tab editors report through
+        // OpenTabs' sink (every editor it builds is subscribed).
+        _requestEditor.EnvironmentVariablesMutated += (_, e) => ApplyScriptEnvVarMutations(e);
+        if (_openTabs is not null)
+            _openTabs.EnvVarMutationSink = ApplyScriptEnvVarMutations;
     }
 
     private void OnRootsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -779,6 +786,81 @@ public partial class CollectionsViewModel : ObservableObject
             tab.Editor.EnvironmentVariables = snapshot;
             tab.Editor.SecretVariableNames = secretNames;
         }
+    }
+
+    /// <summary>Applies env-var mutations a request script performed (<c>bru.setEnvVar</c> /
+    /// <c>deleteEnvVar</c>) to the active environment in memory, then re-broadcasts to open tabs so
+    /// the next request resolves the new values. Changes are NOT written to the <c>.bru</c> file —
+    /// they live for the session until the user explicitly saves the environment (Bruno-style
+    /// runtime override). Updates target the variable wherever it already lives (collection env
+    /// first, then the workspace/global env); brand-new variables land in the active collection env,
+    /// or the global env when no collection env is active. A no-op when no environment is active.</summary>
+    public void ApplyScriptEnvVarMutations(EnvVarMutationEventArgs mutations)
+    {
+        if (mutations is null || mutations.IsEmpty) return;
+
+        var newVarTarget = ActiveEnvironment ?? ActiveGlobalEnvironment;
+        var changed = false;
+
+        foreach (var (name, value) in mutations.Updated)
+        {
+            if (string.IsNullOrEmpty(name)) continue;
+            if (TrySetExistingVar(ActiveEnvironment, name, value)
+                || TrySetExistingVar(ActiveGlobalEnvironment, name, value))
+            {
+                changed = true;
+                continue;
+            }
+            if (newVarTarget is not null)
+            {
+                newVarTarget.Variables.Add(new KvPair(name, value));
+                changed = true;
+            }
+        }
+
+        foreach (var name in mutations.Removed)
+        {
+            if (string.IsNullOrEmpty(name)) continue;
+            changed |= RemoveVar(ActiveEnvironment, name);
+            changed |= RemoveVar(ActiveGlobalEnvironment, name);
+        }
+
+        if (changed) PushEnvironmentToOpenTabs();
+    }
+
+    /// <summary>Replaces the value of an existing enabled-or-not variable by name (KvPair is
+    /// immutable, so the list entry is swapped, preserving Enabled / Description). Returns false
+    /// when the variable isn't present, letting the caller fall through to the next scope.</summary>
+    private static bool TrySetExistingVar(DomainEnv? env, string name, string value)
+    {
+        if (env is null) return false;
+        var vars = env.Variables;
+        for (var i = 0; i < vars.Count; i++)
+        {
+            if (string.Equals(vars[i].Name, name, StringComparison.Ordinal))
+            {
+                vars[i] = vars[i] with { Value = value };
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>Removes every entry matching <paramref name="name"/> from an env's variables.</summary>
+    private static bool RemoveVar(DomainEnv? env, string name)
+    {
+        if (env is null) return false;
+        var vars = env.Variables;
+        var removedAny = false;
+        for (var i = vars.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(vars[i].Name, name, StringComparison.Ordinal))
+            {
+                vars.RemoveAt(i);
+                removedAny = true;
+            }
+        }
+        return removedAny;
     }
 
     /// <summary>Flattens an env's enabled variables into a name→value dict, deduping by

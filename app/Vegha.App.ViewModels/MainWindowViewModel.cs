@@ -26,6 +26,10 @@ public partial class MainWindowViewModel : ObservableObject
     public CodegenViewModel Codegen { get; }
     public WorkspacesViewModel Workspaces { get; }
 
+    /// <summary>Backs the auto-update banner + Help → "Check for Updates…". A no-op on the
+    /// store flavors (its <see cref="UpdateViewModel.IsSupported"/> is false there).</summary>
+    public UpdateViewModel Update { get; }
+
     // Non-paint VMs: lazy — only resolved when the user clicks the corresponding activity
     // rail tab (or any other binding touches the property). DI singleton ctors that touch
     // filesystem / SQLite / git repo state stay off the cold-startup critical path.
@@ -96,7 +100,8 @@ public partial class MainWindowViewModel : ObservableObject
         OpenTabsViewModel openTabs,
         CollectionsViewModel collections,
         CodegenViewModel codegen,
-        WorkspacesViewModel workspaces)
+        WorkspacesViewModel workspaces,
+        UpdateViewModel update)
     {
         _seedEditor = seedEditor;
         OpenTabs = openTabs;
@@ -107,6 +112,7 @@ public partial class MainWindowViewModel : ObservableObject
         Collections = collections;
         Codegen = codegen;
         Workspaces = workspaces;
+        Update = update;
 
         _history = new Lazy<HistoryViewModel>(() => (HistoryViewModel)services.GetService(typeof(HistoryViewModel))!);
         _cookies = new Lazy<CookiesViewModel>(() => (CookiesViewModel)services.GetService(typeof(CookiesViewModel))!);

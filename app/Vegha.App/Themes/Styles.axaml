@@ -1,7 +1,8 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Vegha.App.ViewModels"
-        xmlns:cmn="using:Vegha.App.Controls.Common">
+        xmlns:cmn="using:Vegha.App.Controls.Common"
+        xmlns:search="using:AvaloniaEdit.Search">
     <!-- Compact TreeView template: small chevron + 10px indent per level.
          The chevron is a plain Path (not a ToggleButton) so it doesn't carry Fluent's
          IsChecked accent background, and so single-click on the row toggles via the
@@ -577,6 +578,50 @@
     <!-- Multi-line inputs (commit messages, notes, descriptions) keep top-aligned text. -->
     <Style Selector="TextBox[AcceptsReturn=True]">
         <Setter Property="VerticalContentAlignment" Value="Top" />
+    </Style>
+
+    <!-- AvaloniaEdit Find/Replace panel (Ctrl+F). The default Fluent theme renders a light-gray
+         chrome box that clashes with the app on both variants. Re-skin via styles (the template
+         uses TemplateBinding Background/BorderBrush and the toolbar icons bind to each button's
+         Foreground) so it matches the surrounding editor without retemplating. -->
+    <Style Selector="search|SearchPanel">
+        <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+    </Style>
+    <!-- Toolbar buttons + match-case/whole-word/regex toggles: transparent over the panel,
+         themed icon color (Path fill binds to Foreground), with app hover / checked accents. -->
+    <Style Selector="search|SearchPanel Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <Style Selector="search|SearchPanel ToggleButton">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="3" />
+    </Style>
+    <Style Selector="search|SearchPanel Button:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <Style Selector="search|SearchPanel ToggleButton:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <!-- Active match-case / whole-word / regex toggle: accent outline (VS Code style), not a fill. -->
+    <Style Selector="search|SearchPanel ToggleButton:checked">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <Style Selector="search|SearchPanel ToggleButton:checked:pointerover">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
     </Style>
 
     <!-- Generic Button rounding so buttons have a consistent radius across dialogs. -->

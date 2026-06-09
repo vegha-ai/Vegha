@@ -1,0 +1,128 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:search="using:AvaloniaEdit.Search">
+    <!--
+      Sleek single-line Find/Replace widget for AvaloniaEdit (VS Code style). The stock Fluent
+      template hardcodes large Path icons (Fill+Stroke, 16px) as local values that styles can't
+      override, so we supply our own ControlTheme. All functional wiring is reproduced verbatim
+      from AvaloniaEdit's template — named parts (PART_searchTextBox / PART_replaceTextBox /
+      PART_MessageView / PART_MessageContent / Expander), SearchCommands, and the
+      SearchPattern / MatchCase / WholeWords / UseRegex bindings — only the visuals change.
+      Match count ("4 of 5" / "X matches" / "No matches found!") is rendered by AvaloniaEdit into
+      PART_MessageContent, here placed inline. Square 26px icon buttons match the search box height.
+      Button / toggle chrome (bg / fg / hover / checked accent-outline) lives in Styles.axaml.
+    -->
+    <ControlTheme x:Key="{x:Type search:SearchPanel}" TargetType="search:SearchPanel">
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+        <Setter Property="Focusable" Value="True" />
+        <Setter Property="Margin" Value="0 6 18 0" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Name="PART_Border"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        Background="{TemplateBinding Background}"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Padding="6,4">
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                        <!-- Replace-mode expander chevron -->
+                        <ToggleButton Name="Expander"
+                                      Grid.Column="0" Grid.Row="0"
+                                      VerticalAlignment="Center"
+                                      Height="26" Width="22" Padding="0" MinWidth="0"
+                                      Margin="0,0,4,0"
+                                      IsVisible="{Binding !TextEditor.IsReadOnly, RelativeSource={RelativeSource TemplatedParent}}"
+                                      IsChecked="{Binding IsReplaceMode, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                      ToolTip.Tip="Toggle Replace">
+                            <TextBlock Text="&#x203A;" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </ToggleButton>
+
+                        <!-- Find row: [ textbox (Aa ab .*) ]  count  ↑ ↓  ✕ -->
+                        <StackPanel Grid.Column="1" Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBox Name="PART_searchTextBox"
+                                     Watermark="Find"
+                                     Width="220" Height="26"
+                                     VerticalContentAlignment="Center"
+                                     Text="{Binding SearchPattern, RelativeSource={RelativeSource TemplatedParent}}">
+                                <TextBox.InnerRightContent>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,3,0" VerticalAlignment="Center">
+                                        <ToggleButton IsChecked="{Binding $parent[search:SearchPanel].MatchCase, Mode=TwoWay}"
+                                                      ToolTip.Tip="Match case"
+                                                      Height="20" MinWidth="0" Padding="4,0" VerticalAlignment="Center">
+                                            <TextBlock Text="Aa" FontSize="11" VerticalAlignment="Center" />
+                                        </ToggleButton>
+                                        <ToggleButton IsChecked="{Binding $parent[search:SearchPanel].WholeWords, Mode=TwoWay}"
+                                                      ToolTip.Tip="Match whole word"
+                                                      Height="20" MinWidth="0" Padding="4,0" Margin="2,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="ab" FontSize="11" TextDecorations="Underline" VerticalAlignment="Center" />
+                                        </ToggleButton>
+                                        <ToggleButton IsChecked="{Binding $parent[search:SearchPanel].UseRegex, Mode=TwoWay}"
+                                                      ToolTip.Tip="Use regular expression"
+                                                      Height="20" MinWidth="0" Padding="4,0" Margin="2,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text=".*" FontSize="11" VerticalAlignment="Center" />
+                                        </ToggleButton>
+                                    </StackPanel>
+                                </TextBox.InnerRightContent>
+                            </TextBox>
+
+                            <!-- Inline match count ("4 of 5" / "X matches" / "No matches found!") -->
+                            <StackPanel Name="PART_MessageView" IsVisible="False"
+                                        Orientation="Horizontal" VerticalAlignment="Center"
+                                        Margin="8,0,2,0">
+                                <TextBlock Name="PART_MessageContent" FontSize="11"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource Text3Brush}" />
+                            </StackPanel>
+
+                            <Button Height="26" Width="26" Padding="0" MinWidth="0" Margin="6,0,0,0"
+                                    Command="{x:Static search:SearchCommands.FindPrevious}"
+                                    ToolTip.Tip="Previous (Shift+Enter)">
+                                <TextBlock Text="&#x2191;" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Button>
+                            <Button Height="26" Width="26" Padding="0" MinWidth="0" Margin="2,0,0,0"
+                                    Command="{x:Static search:SearchCommands.FindNext}"
+                                    ToolTip.Tip="Next (Enter)">
+                                <TextBlock Text="&#x2193;" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Button>
+                            <Button Height="26" Width="26" Padding="0" MinWidth="0" Margin="6,0,0,0"
+                                    Command="{x:Static search:SearchCommands.CloseSearchPanel}"
+                                    ToolTip.Tip="Close (Esc)">
+                                <TextBlock Text="&#x2715;" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Button>
+                        </StackPanel>
+
+                        <!-- Replace row (only when the expander is toggled) -->
+                        <StackPanel Name="ReplaceButtons"
+                                    Grid.Column="1" Grid.Row="1"
+                                    Orientation="Horizontal" VerticalAlignment="Center"
+                                    Margin="0,5,0,0"
+                                    IsVisible="{Binding #Expander.IsChecked}">
+                            <TextBox Name="PART_replaceTextBox"
+                                     Watermark="Replace"
+                                     Width="220" Height="26"
+                                     VerticalContentAlignment="Center"
+                                     IsVisible="{Binding IsReplaceMode, RelativeSource={RelativeSource TemplatedParent}}"
+                                     Text="{Binding ReplacePattern, RelativeSource={RelativeSource TemplatedParent}}" />
+                            <Button Height="26" Padding="8,0" MinWidth="0" Margin="6,0,0,0"
+                                    Command="{x:Static search:SearchCommands.ReplaceNext}"
+                                    ToolTip.Tip="Replace next">
+                                <TextBlock Text="Replace" FontSize="11" VerticalAlignment="Center" />
+                            </Button>
+                            <Button Height="26" Padding="8,0" MinWidth="0" Margin="2,0,0,0"
+                                    Command="{x:Static search:SearchCommands.ReplaceAll}"
+                                    ToolTip.Tip="Replace all">
+                                <TextBlock Text="All" FontSize="11" VerticalAlignment="Center" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+    </ControlTheme>
+</ResourceDictionary>

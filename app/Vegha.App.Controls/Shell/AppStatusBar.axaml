@@ -43,7 +43,7 @@
             BorderBrush="{DynamicResource Border0Brush}"
             BorderThickness="0,1,0,0"
             Padding="6,0">
-        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto">
             <!-- Branch indicator (left). VSCode-style: ⑂ <branch>[*]. Clicking opens a popup
                  listing local branches. Hidden when the active collection isn't a git repo. -->
             <Button x:Name="BranchButton" Grid.Column="0" Classes="statusItem"
@@ -125,15 +125,24 @@
                 </StackPanel>
             </Border>
 
-            <!-- Cookies button (bottom-right). Opens a modal cookie manager dialog
-                 (Bruno-style: list + add/edit/delete). The activity-rail no longer
-                 hosts a Cookies entry — the status-bar corner is the single entry point. -->
+            <!-- Cookies button. Opens a modal cookie manager dialog (Bruno-style:
+                 list + add/edit/delete). The activity-rail no longer hosts a Cookies
+                 entry — the status bar is the single entry point. -->
             <Button Grid.Column="4" Classes="statusItem"
                     Click="OnCookiesButton_Click"
                     ToolTip.Tip="Cookies">
                 <icons:Icon Kind="Cookie" Size="14"
                             Foreground="{DynamicResource Text2Brush}"
                             VerticalAlignment="Center" />
+            </Button>
+
+            <!-- App version (bottom-right corner). Reads the running version from the update
+                 VM (falls back to the assembly version on store/dev builds). Click → About. -->
+            <Button Grid.Column="5" Classes="statusItem"
+                    Click="OnVersionButton_Click"
+                    ToolTip.Tip="About Vegha">
+                <TextBlock Text="{Binding Update.CurrentVersion, StringFormat='v{0}'}"
+                           FontSize="11" VerticalAlignment="Center" />
             </Button>
         </Grid>
     </Border>

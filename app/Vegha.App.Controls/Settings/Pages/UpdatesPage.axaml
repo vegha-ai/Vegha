@@ -1,0 +1,77 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels.Settings"
+             mc:Ignorable="d" d:DesignWidth="780"
+             x:Class="Vegha.App.Controls.Settings.Pages.UpdatesPage"
+             x:DataType="vm:UpdatesSettingsViewModel">
+    <StackPanel Spacing="28" MaxWidth="820">
+        <TextBlock Text="Updates"
+                   FontSize="20" FontWeight="SemiBold"
+                   Foreground="{DynamicResource Text0Brush}" />
+
+        <!-- Current version -->
+        <StackPanel Spacing="14">
+            <TextBlock Text="VERSION"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text2Brush}" />
+            <Grid ColumnDefinitions="160,*">
+                <TextBlock Grid.Column="0" Text="Installed version"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <TextBlock Grid.Column="1" Text="{Binding CurrentVersion}"
+                           VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text0Brush}" />
+            </Grid>
+        </StackPanel>
+
+        <!-- Managed-by-store note (store flavors / dev runs that can't self-update) -->
+        <Border IsVisible="{Binding IsNotSupported}"
+                Background="{DynamicResource Bg3Brush}"
+                CornerRadius="4" Padding="14,12">
+            <TextBlock TextWrapping="Wrap"
+                       FontSize="12"
+                       Foreground="{DynamicResource Text1Brush}"
+                       Text="This build receives updates through its distribution channel (the Microsoft Store, Mac App Store, or your package manager) and updates automatically. The options below apply to the direct-download build." />
+        </Border>
+
+        <!-- Automatic updates -->
+        <StackPanel Spacing="14" IsEnabled="{Binding IsSupported}">
+            <TextBlock Text="AUTOMATIC UPDATES"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text2Brush}" />
+            <CheckBox Content="Automatically check for updates"
+                      IsChecked="{Binding AutoCheck, Mode=TwoWay}" />
+            <TextBlock TextWrapping="Wrap"
+                       FontSize="11"
+                       Foreground="{DynamicResource Text2Brush}"
+                       Text="Vegha checks on launch and periodically, downloads new versions in the background, then offers to restart and finish updating. You can always check manually from Help → Check for Updates." />
+        </StackPanel>
+
+        <!-- Release channel -->
+        <StackPanel Spacing="14" IsEnabled="{Binding IsSupported}">
+            <TextBlock Text="CHANNEL"
+                       FontSize="10" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text2Brush}" />
+            <StackPanel Spacing="8">
+                <RadioButton GroupName="UpdateChannel"
+                             Content="Stable"
+                             IsChecked="{Binding IsStable, Mode=TwoWay}" />
+                <TextBlock Margin="26,0,0,0"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text2Brush}"
+                           Text="Recommended. Only fully released versions." />
+                <RadioButton GroupName="UpdateChannel"
+                             Content="Beta"
+                             Margin="0,6,0,0"
+                             IsChecked="{Binding IsBeta, Mode=TwoWay}" />
+                <TextBlock Margin="26,0,0,0"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text2Brush}"
+                           Text="Get pre-release builds earlier. May be less stable." />
+            </StackPanel>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

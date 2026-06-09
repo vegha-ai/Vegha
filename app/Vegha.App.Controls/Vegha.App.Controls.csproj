@@ -24,6 +24,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Vegha.App.ViewModels\Vegha.App.ViewModels.csproj" />
     <ProjectReference Include="..\Vegha.Core.Domain\Vegha.Core.Domain.csproj" />
+    <!-- Script autocomplete catalog + syntax diagnostics live in Core.Scripting; the editor
+         control (VariableAwareTextEditor) consumes them directly. -->
+    <ProjectReference Include="..\Vegha.Core.Scripting\Vegha.Core.Scripting.csproj" />
   </ItemGroup>
 
   <ItemGroup>

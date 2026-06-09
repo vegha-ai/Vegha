@@ -62,6 +62,7 @@ jobs:
             --packAuthors "Vegha contributors" `
             --packDir publish/v1 `
             --mainExe Vegha.App.exe `
+            --channel win-x64 `
             --outputDir releases/feed
 
       # ---- Install 1.0.0 into a scratch location ----
@@ -97,6 +98,7 @@ jobs:
             --packAuthors "Vegha contributors" `
             --packDir publish/v2 `
             --mainExe Vegha.App.exe `
+            --channel win-x64 `
             --outputDir releases/feed
 
       # ---- Trigger update from inside the installed app ----
