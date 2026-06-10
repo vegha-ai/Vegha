@@ -222,14 +222,34 @@ codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 # ----------------------------------------------------------------------------
 echo "Creating $DMG_PATH ..."
 rm -f "$DMG_PATH"
-# Stage the volume contents: the app plus an /Applications symlink, so Finder
-# shows the conventional "drag to Applications" install layout.
+# create-dmg bakes a .DS_Store into the volume so Finder shows the conventional
+# installer layout: fixed window, large icons, app on the left, /Applications
+# drop-link on the right. Plain hdiutil cannot set Finder view options.
+if ! command -v create-dmg > /dev/null; then
+    echo "create-dmg not found — installing via Homebrew..."
+    brew install create-dmg
+fi
+
 DMG_STAGE="$OUTPUT_DIR/dmg-stage"
 rm -rf "$DMG_STAGE"
 mkdir -p "$DMG_STAGE"
 cp -R "$APP_BUNDLE" "$DMG_STAGE/"
-ln -s /Applications "$DMG_STAGE/Applications"
-hdiutil create -volname "$BUNDLE_NAME" -srcfolder "$DMG_STAGE" -ov -format UDZO "$DMG_PATH" > /dev/null
+
+CREATE_DMG_ARGS=(
+    --volname "$BUNDLE_NAME"
+    --window-pos 200 120
+    --window-size 660 420
+    --icon-size 160
+    --icon "$BUNDLE_NAME.app" 165 200
+    --app-drop-link 495 200
+    --hide-extension "$BUNDLE_NAME.app"
+)
+[[ -f "$ICNS_PATH" ]] && CREATE_DMG_ARGS+=(--volicon "$ICNS_PATH")
+# Optional backdrop (e.g. arrow art): drop a 660x420 PNG at eng/dmg-background.png.
+BACKGROUND_PNG="$SCRIPT_DIR/dmg-background.png"
+[[ -f "$BACKGROUND_PNG" ]] && CREATE_DMG_ARGS+=(--background "$BACKGROUND_PNG")
+
+create-dmg "${CREATE_DMG_ARGS[@]}" "$DMG_PATH" "$DMG_STAGE"
 rm -rf "$DMG_STAGE"
 cs "$DMG_PATH"
 
