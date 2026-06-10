@@ -278,8 +278,10 @@ jobs:
             fi
             # Stage the complete vpk pack output — uploading only the manifest +
             # nupkg makes vpk crash with FileNotFoundException on the Setup asset.
+            # Files only: the macOS artifact also carries a Vegha.app directory,
+            # which plain cp rejects (and vpk doesn't need).
             feed="feed/$ch"; mkdir -p "$feed"
-            cp "$src"/* "$feed"/
+            find "$src" -maxdepth 1 -type f -exec cp {} "$feed"/ \;
             if [ ! -e "$feed/releases.${ch}.json" ]; then
               echo "::warning::No releases.${ch}.json in $src — was it packed with --channel $ch? Skipping."
               continue
