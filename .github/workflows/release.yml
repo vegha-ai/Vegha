@@ -286,6 +286,20 @@ jobs:
               echo "::warning::No releases.${ch}.json in $src — was it packed with --channel $ch? Skipping."
               continue
             fi
+            # vpk re-uploads every pack asset unconditionally, and GitHub answers a
+            # duplicate asset name by resetting the connection mid-stream ("broken
+            # pipe"). Delete same-named assets first so re-runs are idempotent —
+            # vpk then re-uploads identical bytes under the same names.
+            assets=$(gh api "repos/${{ github.repository }}/releases/tags/$tag" --jq '[.assets[] | {id, name}]')
+            for f in "$feed"/*; do
+              name=$(basename "$f")
+              id=$(jq -r --arg n "$name" '.[] | select(.name == $n) | .id' <<< "$assets")
+              if [ -n "$id" ]; then
+                echo "Deleting pre-existing asset $name (id $id) so vpk can re-upload it"
+                gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$id"
+              fi
+            done
+
             echo "Uploading $ch feed -> release $tag"
             vpk upload github \
               --repoUrl "https://github.com/${{ github.repository }}" \

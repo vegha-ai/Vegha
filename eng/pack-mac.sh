@@ -222,7 +222,15 @@ codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 # ----------------------------------------------------------------------------
 echo "Creating $DMG_PATH ..."
 rm -f "$DMG_PATH"
-hdiutil create -volname "$BUNDLE_NAME" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG_PATH" > /dev/null
+# Stage the volume contents: the app plus an /Applications symlink, so Finder
+# shows the conventional "drag to Applications" install layout.
+DMG_STAGE="$OUTPUT_DIR/dmg-stage"
+rm -rf "$DMG_STAGE"
+mkdir -p "$DMG_STAGE"
+cp -R "$APP_BUNDLE" "$DMG_STAGE/"
+ln -s /Applications "$DMG_STAGE/Applications"
+hdiutil create -volname "$BUNDLE_NAME" -srcfolder "$DMG_STAGE" -ov -format UDZO "$DMG_PATH" > /dev/null
+rm -rf "$DMG_STAGE"
 cs "$DMG_PATH"
 
 # ----------------------------------------------------------------------------
