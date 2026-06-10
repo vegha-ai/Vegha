@@ -236,9 +236,11 @@ jobs:
       # (releases.<channel>.json + *.nupkg) are channel-named, so all four
       # coexist without colliding; the client (VelopackUpdateService) selects its
       # channel via ExplicitChannel == its RID. `vpk upload github --merge`
-      # appends to the existing Release. We upload the feed files only (not the
-      # installers), so these never clash with the stable website-facing
-      # installer names staged above.
+      # appends to the existing Release. vpk needs the FULL pack output locally
+      # (it uploads every asset listed in assets.<ch>.json, Setup/portable
+      # included, and dies if one is missing); same-named assets already on the
+      # Release — the stable installer names staged above — are replaced with
+      # identical bytes, so there is no clash.
       # ============================================================
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
@@ -274,11 +276,10 @@ jobs:
               echo "::warning::Artifact dir $src missing — skipping $ch feed."
               continue
             fi
-            # Feed-only staging: channel manifest + packages, NOT the installers.
+            # Stage the complete vpk pack output — uploading only the manifest +
+            # nupkg makes vpk crash with FileNotFoundException on the Setup asset.
             feed="feed/$ch"; mkdir -p "$feed"
-            cp "$src"/releases.${ch}.json "$feed"/ 2>/dev/null || true
-            cp "$src"/assets.${ch}.json   "$feed"/ 2>/dev/null || true
-            cp "$src"/*.nupkg             "$feed"/ 2>/dev/null || true
+            cp "$src"/* "$feed"/
             if [ ! -e "$feed/releases.${ch}.json" ]; then
               echo "::warning::No releases.${ch}.json in $src — was it packed with --channel $ch? Skipping."
               continue
