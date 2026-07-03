@@ -78,7 +78,7 @@
                     <StackPanel Spacing="6">
                         <CheckBox Content="Save response bodies to history"
                                   IsChecked="{Binding SaveResponsesToHistory, Mode=TwoWay}" />
-                        <TextBlock Text="History always records method, URL, status, and timing. This toggle adds the response body and the request snapshot used by Replay; off by default for compliance."
+                        <TextBlock Text="History always records the full request (method, URL, headers, body, auth) so it can be replayed. This toggle additionally saves the response body; off by default for compliance."
                                    FontSize="11" Foreground="{DynamicResource Text2Brush}"
                                    TextWrapping="Wrap"
                                    Margin="22,0,0,0" />

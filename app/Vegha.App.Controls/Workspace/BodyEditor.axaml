@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:ws="using:Vegha.App.Controls.Workspace"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="320"
              x:Class="Vegha.App.Controls.Workspace.BodyEditor"
              x:DataType="vm:RequestEditorViewModel">
@@ -128,20 +129,17 @@
                     Background="{DynamicResource Bg2Brush}"
                     BorderBrush="{DynamicResource Border0Brush}"
                     BorderThickness="0,0,0,1">
+                <!-- No "+ Add row" — the table keeps a blank trailing row that grows as
+                     the user types into it, matching the Params / Headers editors. -->
                 <StackPanel Orientation="Horizontal" Spacing="10">
                     <TextBlock Text="application/x-www-form-urlencoded"
                                Classes="sectionHeaderMinor"
                                VerticalAlignment="Center" />
-                    <Button Content="+ Add row"
-                            Command="{Binding AddFormUrlEncodedItemCommand}"
-                            Background="Transparent" BorderThickness="0"
-                            Foreground="{DynamicResource AccentBrush}"
-                            FontSize="11" Padding="6,2" />
                 </StackPanel>
             </Border>
             <ScrollViewer Background="{DynamicResource Bg2Brush}">
                 <StackPanel Spacing="0">
-                    <Grid ColumnDefinitions="32,*,*,Auto" Margin="12,8,12,4">
+                    <Grid ColumnDefinitions="32,*,*,30" Margin="12,8,12,4">
                         <TextBlock Grid.Column="1" Text="Name" FontSize="10"
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource Text2Brush}" />
@@ -152,8 +150,9 @@
                     <ItemsControl ItemsSource="{Binding FormUrlEncodedItems}" Margin="12,0,12,8">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:KvEntry">
-                                <Grid ColumnDefinitions="32,*,*,Auto" Margin="0,2,0,0">
-                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsActive, Mode=TwoWay}"
+                                <Grid ColumnDefinitions="32,*,*,30" Margin="0,2,0,0">
+                                    <CheckBox Grid.Column="0" IsChecked="{Binding Enabled, Mode=TwoWay}"
+                                              IsVisible="{Binding !IsBlank}"
                                               VerticalAlignment="Center" />
                                     <TextBox Grid.Column="1" Text="{Binding Name, Mode=TwoWay}"
                                              Watermark="key"
@@ -172,6 +171,7 @@
                                     <Button Grid.Column="3"
                                             Command="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).RemoveFormUrlEncodedItemCommand}"
                                             CommandParameter="{Binding}"
+                                            IsVisible="{Binding !IsBlank}"
                                             Background="Transparent" BorderThickness="0"
                                             Padding="6,2" Margin="4,0,0,0"
                                             ToolTip.Tip="Remove">
@@ -182,12 +182,6 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <TextBlock IsVisible="{Binding !FormUrlEncodedItems.Count}"
-                               Text="(no fields — click '+ Add row')"
-                               FontSize="11" FontStyle="Italic"
-                               Foreground="{DynamicResource Text3Brush}"
-                               HorizontalAlignment="Center"
-                               Margin="0,16,0,16" />
                 </StackPanel>
             </ScrollViewer>
         </DockPanel>
@@ -260,7 +254,7 @@
                                                 Background="Transparent" BorderThickness="0"
                                                 Padding="6,2" Margin="2,0,0,0"
                                                 ToolTip.Tip="Pick a file">
-                                            <TextBlock Text="📁" FontSize="14" />
+                                            <icons:Icon Kind="FolderOpen" Size="14" Foreground="{DynamicResource Text2Brush}" />
                                         </Button>
                                     </Grid>
                                     <TextBox Grid.Column="3" Text="{Binding ContentType, Mode=TwoWay}"
@@ -342,11 +336,22 @@
             </Border>
         </DockPanel>
 
+        <!-- "none" empty state — centered title + subtitle, matching the response pane's
+             empty-state typography instead of a lone italic line in the top-left corner. -->
         <Border IsVisible="{Binding BodyType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=none}"
                 Padding="20" Background="{DynamicResource Bg2Brush}">
-            <TextBlock FontSize="11" FontStyle="Italic"
-                       Foreground="{DynamicResource Text3Brush}"
-                       Text="No body will be sent. Pick a type from the dropdown above to add one." />
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Spacing="6" MaxWidth="320" Margin="0,0,0,60">
+                <TextBlock Text="No body will be sent"
+                           FontSize="13" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text1Brush}"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="Pick a body type from the dropdown above to add one."
+                           FontSize="11"
+                           Foreground="{DynamicResource Text2Brush}"
+                           TextWrapping="Wrap" TextAlignment="Center"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
         </Border>
     </Grid>
 </UserControl>

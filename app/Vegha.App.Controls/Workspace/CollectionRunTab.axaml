@@ -248,7 +248,7 @@
                     <TextBlock Text="No results yet. Click Run."
                                IsVisible="{Binding !HasResults}"
                                Foreground="{DynamicResource Text3Brush}"
-                               FontSize="12" FontStyle="Italic"
+                               FontSize="11" FontStyle="Italic"
                                Padding="0,40,0,0"
                                HorizontalAlignment="Center" />
                     <ItemsControl ItemsSource="{Binding Iterations_Results}">

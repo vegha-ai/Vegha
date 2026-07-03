@@ -17,20 +17,16 @@
          single Grid cell so both possible bodies (rows vs bulk-edit) share the same
          "fill" slot via overlapping Grid.Row=0. -->
     <DockPanel Background="{DynamicResource Bg2Brush}">
-        <!-- Footer with Add-row + Bulk-edit toggle -->
+        <!-- Footer with the Bulk-edit toggle. No "+ Add row" button — the table keeps a
+             blank trailing row that grows as the user types into it (Bruno parity). -->
         <Border DockPanel.Dock="Bottom"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,1,0,0"
                 Padding="12,8">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <Button Grid.Column="0"
-                        Classes="tertiary"
-                        Content="+ Add row"
-                        Command="{Binding #Root.AddCommand}"
-                        IsVisible="{Binding #Root.IsBulkMode, Converter={x:Static BoolConverters.Not}}" />
+            <Grid ColumnDefinitions="*,Auto">
                 <!-- Bulk-edit toggle. Bruno parity — flips between table and a textarea
                      where the user pastes/edits `Key: Value` pairs in bulk. -->
-                <ToggleButton Grid.Column="2"
+                <ToggleButton Grid.Column="1"
                               Content="Bulk edit"
                               IsChecked="{Binding #Root.IsBulkMode, Mode=TwoWay}"
                               FontSize="11"

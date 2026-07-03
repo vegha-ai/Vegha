@@ -20,11 +20,12 @@ public sealed class HistoryStore : IDisposable
     private readonly string _connectionString;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
-    /// <summary>When false, <see cref="AppendAsync"/> still records the request row
-    /// (method/url/status/duration/timestamp/error) but drops the response body preview
-    /// and request blob so no payload data is persisted. Wired from
-    /// AppSettings.SaveResponsesToHistory by the App layer. Toggling does not delete
-    /// already-stored entries.</summary>
+    /// <summary>When false, <see cref="AppendAsync"/> drops the response body preview so no
+    /// response payload is persisted. The request row (method/url/status/duration/timestamp/error)
+    /// AND the request blob are always recorded — the blob is the user-authored request snapshot
+    /// (the same shape the session-tab store already persists to disk) and is required for
+    /// History → Replay. Wired from AppSettings.SaveResponsesToHistory by the App layer.
+    /// Toggling does not delete already-stored entries.</summary>
     public bool Enabled { get; set; } = true;
 
     /// <summary>Per-row preview truncation length. Defaults to <see cref="DefaultPreviewMaxChars"/>;
@@ -108,9 +109,9 @@ public sealed class HistoryStore : IDisposable
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            // Body + request blob are gated by Enabled; the row itself is always recorded so
-            // the activity list stays useful even when payload persistence is off for compliance.
-            var persistPayloads = Enabled;
+            // Only the response body preview is gated by Enabled (compliance toggle for
+            // response payloads). The row and the request blob are always recorded: the blob
+            // is the user's own request — without it History → Replay degrades to URL-only.
             using var conn = OpenConnection();
             var id = await conn.ExecuteScalarAsync<long>(
                 """
@@ -125,9 +126,9 @@ public sealed class HistoryStore : IDisposable
                     Url = url ?? string.Empty,
                     Status = statusCode,
                     Duration = durationMs,
-                    Preview = persistPayloads ? Truncate(responseBody, MaxPreviewChars) : null,
+                    Preview = Enabled ? Truncate(responseBody, MaxPreviewChars) : null,
                     Error = errorMessage,
-                    Blob = persistPayloads ? requestBlob : null,
+                    Blob = requestBlob,
                     Workspace = string.IsNullOrEmpty(workspaceId) ? null : workspaceId,
                 }).ConfigureAwait(false);
 

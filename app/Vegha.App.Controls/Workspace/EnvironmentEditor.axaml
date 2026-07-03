@@ -28,6 +28,21 @@
         <Style Selector="Button.del:pointerover">
             <Setter Property="Foreground" Value="{DynamicResource StatusErrBrush}" />
         </Style>
+        <!-- Ghost (blank trailing) row: fade out the row chrome so the placeholder reads
+             as "type here", not a real entry. Declared after the hover styles so it wins
+             on the ghost row even while hovered. Opacity (not IsVisible) keeps the Auto
+             grid columns sized, so ghost cells stay aligned with real rows. -->
+        <Style Selector="Border.varRow.ghost CheckBox">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
+        <Style Selector="Border.varRow.ghost Border.rowDivider">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Border.varRow.ghost Button.del">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
     </UserControl.Styles>
     <DockPanel Background="{DynamicResource Bg2Brush}">
         <!-- Toolbar -->
@@ -46,12 +61,8 @@
                                FontSize="14" FontWeight="SemiBold"
                                Foreground="{DynamicResource Text0Brush}" />
                 </StackPanel>
-                <Button Grid.Column="1"
-                        Command="{Binding AddVariableCommand}"
-                        Content="+ Add variable"
-                        Background="{DynamicResource Bg3Brush}"
-                        Foreground="{DynamicResource Text0Brush}"
-                        Padding="10,4" Margin="0,0,8,0" />
+                <!-- No "+ Add variable" — the table keeps a blank trailing row that
+                     grows as the user types into it (matches Params / Headers). -->
                 <Button Grid.Column="2"
                         Command="{Binding SaveCommand}"
                         Content="Save"
@@ -77,7 +88,10 @@
             <ItemsControl ItemsSource="{Binding Variables}" Margin="14,8">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:EnvVarRow">
-                        <Border Classes="varRow" Background="Transparent">
+                        <!-- ghost class fades out the row chrome on the blank trailing
+                             placeholder row via the varRow.ghost styles above. -->
+                        <Border Classes="varRow" Classes.ghost="{Binding IsBlank}"
+                                Background="Transparent">
                           <Grid ColumnDefinitions="Auto,260,*,Auto,Auto,Auto" Margin="0,2">
                             <CheckBox Grid.Column="0"
                                       IsChecked="{Binding IsEnabled}"
@@ -113,7 +127,7 @@
                                 </TextBox.InnerRightContent>
                             </TextBox>
                             <!-- divider: separates the key=value group from the secret + delete group -->
-                            <Border Grid.Column="3" Width="1" Margin="12,4"
+                            <Border Grid.Column="3" Classes="rowDivider" Width="1" Margin="12,4"
                                     Background="{DynamicResource Border1Brush}" />
                             <CheckBox Grid.Column="4"
                                       IsChecked="{Binding IsSecret}"

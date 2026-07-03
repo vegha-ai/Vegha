@@ -32,14 +32,70 @@ public partial class MainWindow : Window
         Loaded += OnLoaded;
         Closing += OnClosing;
 
-        // Ctrl/Cmd+K opens the search palette anywhere in the window. Tunnel routing so
-        // we win against TextBox key handlers.
-        AddHandler(KeyDownEvent, (_, e) =>
+        // Global shortcuts. Tunnel routing so we win against TextBox/AvaloniaEdit key
+        // handlers (and, for Ctrl+Tab, the focus manager). These were long advertised in
+        // the menus / Shortcuts page but only Ctrl+K was actually wired.
+        AddHandler(KeyDownEvent, async (_, e) =>
         {
-            if (e.Key == Key.K && (e.KeyModifiers == KeyModifiers.Control || e.KeyModifiers == KeyModifiers.Meta))
+            var mods = e.KeyModifiers;
+            var primary = mods == KeyModifiers.Control || mods == KeyModifiers.Meta;
+            var primaryShift = mods == (KeyModifiers.Control | KeyModifiers.Shift)
+                            || mods == (KeyModifiers.Meta | KeyModifiers.Shift);
+
+            if (e.Key == Key.K && primary)
             {
                 OpenSearchPalette();
                 e.Handled = true;
+            }
+            else if (e.Key == Key.E && primary)
+            {
+                OpenQuickSwitcher();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Tab && (primary || primaryShift))
+            {
+                var tabsVm = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
+                if (tabsVm is null) return;
+                if (primaryShift) tabsVm.ActivatePreviousTab();
+                else tabsVm.ActivateNextTab();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.W && primary)
+            {
+                var tabsVm = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
+                if (tabsVm?.ActiveTab is { } active)
+                {
+                    tabsVm.CloseTab(active);
+                    e.Handled = true;
+                }
+            }
+            else if (e.Key == Key.T && primary)
+            {
+                CreateScratchRequest();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Enter && primary)
+            {
+                // The Source Control commit box binds Ctrl+Enter to Commit — don't hijack
+                // it into Send while the user is typing a commit message.
+                if (GitPanelControl.IsKeyboardFocusWithin) return;
+                var tabsVm = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
+                if (tabsVm?.ActiveTab is Vegha.App.ViewModels.Tabs.HttpRequestTabViewModel http
+                    && http.Editor.SendCommand.CanExecute(null))
+                {
+                    http.Editor.SendCommand.Execute(null);
+                    e.Handled = true;
+                }
+            }
+            else if (e.Key == Key.O && primary)
+            {
+                e.Handled = true;
+                await OpenCollectionFolderAsync();
+            }
+            else if (e.Key == Key.I && primary)
+            {
+                e.Handled = true;
+                await OpenImportWizardAsync();
             }
         }, global::Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
@@ -54,9 +110,9 @@ public partial class MainWindow : Window
         TopBar.OpenCollectionRequested += (_, path) =>
             App.Services.GetService<WorkspacesViewModel>()?.LinkCollection(path);
         // Env picker's Configure button → route per scope. Collection envs surface in the
-        // left activity rail's Environments panel; global envs require the workspace editor
-        // dialog (where workspace-scoped envs are persisted).
-        TopBar.ConfigureEnvsRequested += (_, scope) =>
+        // left activity rail's Environments panel; global (workspace) envs open the
+        // Manage Global Environments dialog.
+        TopBar.ConfigureEnvsRequested += async (_, scope) =>
         {
             if (scope == Vegha.App.Controls.Shell.EnvScope.Collection)
             {
@@ -64,9 +120,7 @@ public partial class MainWindow : Window
                     mwvm.ActiveSidebarSection = "environments";
                 return;
             }
-            var workspaces = App.Services.GetService<WorkspacesViewModel>();
-            if (workspaces?.ActiveWorkspace is { } ws)
-                OpenWorkspaceEditorTab(ws, preselectEnvironments: true);
+            await OpenGlobalEnvironmentsDialogAsync();
         };
         // Collections sidebar "+" → Import collection routes through here too so the
         // unified wizard is the single import entry point.
@@ -83,14 +137,10 @@ public partial class MainWindow : Window
             Vegha.App.Controls.Workspace.RequestEditor.CodegenToggleRequestedEvent,
             (_, _) => SetCodePanelCollapsed(!_codegenCollapsed));
 
-        // Edit button inside the Manage-Workspaces dialog bubbles up here — open a tab
-        // for the picked workspace and seed it with the current collections + envs.
-        AddHandler(
-            Vegha.App.Controls.Shell.AppTitleBar.WorkspaceEditRequestedEvent,
-            (_, e) => OpenWorkspaceEditorTab(e.Workspace));
-
-        // (Earlier: auto-close stale workspace tabs on workspace switch. Workspace editing is
-        // now a modal dialog — no in-memory tab to clean up.)
+        // (Earlier: the Manage-Workspaces dialog had an Edit action that opened the modal
+        // workspace editor. Retired — workspaces are renamed inline in the dialog, global
+        // envs live in the Manage Global Environments dialog, and collections in Manage
+        // Collections — so the editor and its routed event are gone.)
 
         // Welcome card buttons (only relevant when no tabs are open).
         WelcomeCard.NewRequestRequested += (_, _) => CreateScratchRequest();
@@ -165,6 +215,19 @@ public partial class MainWindow : Window
         if (tabs is not null)
             tabs.SaveAsRequested += async (_, tab) => await SaveTabToCollectionAsync(tab);
 
+        // F2 → rename the active request tab. Focused panels that have their own F2 target
+        // (collections tree, environments list) mark the event handled before it bubbles here.
+        if (tabs is not null)
+        {
+            AddHandler(KeyDownEvent, async (object? _, KeyEventArgs e) =>
+            {
+                if (e.Key != Key.F2 || e.Handled) return;
+                if (tabs.ActiveTab is not { } active) return;
+                e.Handled = true;
+                await RenameTabAsync(active);
+            }, RoutingStrategies.Bubble);
+        }
+
         if (tabs is not null && tabStateStore is not null)
         {
             // Structural change (open/close/reorder) → persist. This also reflects a closed
@@ -174,6 +237,46 @@ public partial class MainWindow : Window
             // Collection switch → persist (durability; tabs stay in memory, filtered by scope).
             if (collectionsForTabs is not null)
                 collectionsForTabs.ActiveCollectionChanged += (_, _) => PersistTabs(tabs, tabStateStore);
+
+            // Tree rename moved a request file → re-key any open tab bound to the old path so
+            // its title / save target follow the file (mirrors what RenameTabAsync does when
+            // the rename starts from the tab itself).
+            if (collectionsForTabs is not null)
+                collectionsForTabs.RequestFileRenamed += (_, e) =>
+                {
+                    foreach (var t in tabs.Tabs.OfType<Vegha.App.ViewModels.Tabs.HttpRequestTabViewModel>())
+                    {
+                        if (!string.Equals(t.SourcePath, e.OldPath, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        t.Id = e.NewPath;
+                        t.SourcePath = e.NewPath;
+                        t.Name = e.NewName;
+                        t.Editor.SourcePath = e.NewPath;
+                    }
+                    PersistTabs(tabs, tabStateStore);
+                };
+
+            // Collection Settings — open (or activate) a settings tab for the picked collection.
+            if (collectionsForTabs is not null)
+                collectionsForTabs.CollectionSettingsTabRequested += (_, root) =>
+                {
+                    var tab = new Vegha.App.ViewModels.Tabs.CollectionSettingsTabViewModel(collectionsForTabs, root);
+                    tabs.OpenCollectionSettingsTab(tab);
+                };
+
+            // A collection removed from the tree → close its settings tab so it doesn't linger.
+            // Only genuine removals — NOT a Replace, which is how a settings save reloads the root
+            // (Roots[i] = reloaded): that carries the old root in OldItems but must keep the tab open.
+            if (collectionsForTabs is not null)
+                collectionsForTabs.Roots.CollectionChanged += (_, e) =>
+                {
+                    if (e.Action is not (System.Collections.Specialized.NotifyCollectionChangedAction.Remove
+                        or System.Collections.Specialized.NotifyCollectionChangedAction.Reset))
+                        return;
+                    if (e.OldItems is null) return;
+                    foreach (var old in e.OldItems.OfType<Vegha.App.ViewModels.CollectionRootViewModel>())
+                        tabs.CloseCollectionSettingsTab(old.SourcePath);
+                };
 
             // Workspace switch → repoint the scratch scope and persist. Tabs stay in memory and
             // are filtered by ActiveWorkspaceId (scratch) / ActiveScope (collection), so dirty
@@ -551,590 +654,24 @@ public partial class MainWindow : Window
         return Vegha.Core.Importers.BruToRequestConverter.Convert(doc);
     }
 
-    /// <summary>Opens a modal WorkspaceEditorDialog for the given workspace, seeded with the
-    /// current collections + workspace envs. All in-dialog actions (quick actions, collection
-    /// row menus, workspace … menu, env header buttons) route back through callbacks wired
-    /// here so the editor view itself stays decoupled from services / sibling dialogs.
-    /// When <paramref name="preselectEnvironments"/> is true the dialog opens on the
-    /// Environments sub-tab instead of the default Overview (used by the global env
-    /// picker's Configure action).</summary>
-    private async void OpenWorkspaceEditorTab(
-        Vegha.App.ViewModels.WorkspaceItemViewModel ws,
-        bool preselectEnvironments = false)
+    /// <summary>Opens the Manage Global Environments dialog — a modal host around the shared
+    /// EnvironmentsPanel bound to a GLOBAL-scoped <see cref="EnvironmentsViewModel"/> (the
+    /// active workspace's <c>environments/</c> folder). Replaces the retired workspace
+    /// editor's Environments sub-tab; full parity with the collection env panel (create,
+    /// F2 / context-menu rename, duplicate, delete, color, import/export, secret binding).</summary>
+    private async Task OpenGlobalEnvironmentsDialogAsync()
     {
         var collections = App.Services.GetService<CollectionsViewModel>();
         var workspaces = App.Services.GetService<WorkspacesViewModel>();
-        if (collections is null || workspaces is null) return;
+        var secrets = App.Services.GetService<Vegha.Integrations.Secrets.SecretRegistry>();
+        var logger = App.Services.GetService<Microsoft.Extensions.Logging.ILogger<EnvironmentsViewModel>>();
+        if (collections is null || workspaces is null || secrets is null || logger is null) return;
+        if (workspaces.ActiveWorkspace is null) return;
 
-        // Build a transient tab-VM purely to drive the editor's bindings. It's never
-        // registered with OpenTabsViewModel — the dialog owns its lifetime.
-        var tab = new Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel(
-            ws, id: "workspace-dialog:" + ws.FolderPath);
-        tab.SetCollections(collections.AvailableCollections);
-        // Reload the workspace env set from disk before binding it. ws.WorkspaceModel is
-        // otherwise only refreshed on a full workspace switch, so envs the user added /
-        // copied / saved / imported in a previous dialog session were written to disk but
-        // never made it back into this cached list — the dialog kept showing the stale
-        // snapshot, so a freshly-created env "vanished" on reopen.
-        ws.WorkspaceModel = Vegha.Core.FileFormat.WorkspaceModelLoader.Load(ws.FolderPath);
-        // Pass the currently-active workspace env as the initial selection so opening the
-        // dialog doesn't spuriously activate a different env. With this aligned, the
-        // RequestActivateEnvironment hook below only fires when the user picks a new row.
-        tab.SetEnvironments(ws.WorkspaceModel.Environments, collections.ActiveGlobalEnvironment);
-        if (preselectEnvironments) tab.ActiveSection = "environments";
-
-        // ---- Overview quick actions ----
-        tab.RequestCreateCollection = () => TopBar.RaiseCreateCollection();
-        tab.RequestOpenCollection   = () => TopBar.RaiseOpenCollection();
-        tab.RequestImportCollection = () => TopBar.RaiseImportCollection();
-        tab.ActivateCollection      = c => collections.ActiveCollection = c;
-
-        // ---- Workspace header "…" menu ----
-        tab.RequestRenameWorkspace          = () => _ = RenameWorkspaceAsync(tab, ws, workspaces);
-        tab.RequestRevealWorkspaceInExplorer = () => RevealFolderInExplorer(ws.FolderPath);
-        tab.RequestExportWorkspace          = () => ShowNotImplemented(tab, "Export workspace");
-        tab.RequestCloseWorkspace           = () => _ = CloseWorkspaceFromEditorAsync(ws, workspaces);
-
-        // ---- Per-collection actions ----
-        tab.RequestRenameCollection = c => _ = RenameCollectionAsync(tab, c);
-        tab.RequestRemoveCollection = c => RemoveCollectionFromWorkspace(c, ws, workspaces, collections);
-        tab.RequestDeleteCollection = c => _ = DeleteCollectionAsync(tab, c, collections);
-
-        // ---- Per-env actions ----
-        tab.RequestAddEnvironment    = () => _ = AddWorkspaceEnvAsync(tab, ws);
-        tab.RequestRenameEnvironment = env => _ = RenameWorkspaceEnvAsync(tab, env, ws);
-        tab.RequestCopyEnvironment   = env => _ = CopyWorkspaceEnvAsync(tab, env, ws);
-        tab.RequestDeleteEnvironment = env => _ = DeleteWorkspaceEnvAsync(tab, env, ws);
-        tab.RequestSetEnvColor       = env => _ = SetWorkspaceEnvColorAsync(tab, env, ws);
-        tab.RequestImportEnvironment = () => _ = ImportWorkspaceEnvAsync(tab, ws);
-        // User-driven row click in the workspace dialog flips the shared
-        // ActiveGlobalEnvironment so the top-bar pill follows. Skip the no-op case where
-        // the selection already matches active — that fires on dialog open when
-        // SetEnvironments pre-selects the current env.
-        tab.RequestActivateEnvironment = env =>
-        {
-            if (env is not null && !ReferenceEquals(collections.ActiveGlobalEnvironment, env))
-                collections.ActiveGlobalEnvironment = env;
-        };
-
-        // Mirror the post-Save state into the shared CollectionsViewModel so the top-bar
-        // pill, env picker, and left panel all pick up renames / variable edits / color
-        // changes without waiting for a workspace reload. ReplaceEnvironment matches by
-        // stable Id and reports whether the env was already tracked; when it wasn't (the
-        // "Add Environment" / "Duplicate" paths create an env that lives only inside
-        // tab.Environments until the first Save) we append it so it shows up immediately.
-        tab.EnvironmentSaved += (_, pair) =>
-        {
-            if (!collections.ReplaceEnvironment(pair.Old, pair.New))
-            {
-                collections.GlobalEnvironments.Add(pair.New);
-                if (!collections.Environments.Contains(pair.New))
-                    collections.Environments.Add(pair.New);
-            }
-        };
-
-        var dlg = new Vegha.App.Controls.Workspace.WorkspaceEditorDialog
-        {
-            EditorContext = tab,
-        };
-        // Close dialog when the user picks Close from the workspace … menu.
-        tab.RequestCloseWorkspace = () =>
-        {
-            _ = CloseWorkspaceFromEditorAsync(ws, workspaces).ContinueWith(t =>
-            {
-                if (t.Result) global::Avalonia.Threading.Dispatcher.UIThread.Post(() => dlg.Close());
-            });
-        };
+        var vm = new EnvironmentsViewModel(
+            collections, workspaces, secrets, logger, EnvironmentScopeKind.Global);
+        var dlg = new Vegha.App.Controls.Workspace.ManageGlobalEnvironmentsDialog(vm);
         await dlg.ShowDialog(this);
-    }
-
-    /// <summary>"Close workspace" path used from the editor dialog. Returns true if the user
-    /// confirmed and the workspace was removed; the dialog caller uses that to dismiss itself.</summary>
-    private async Task<bool> CloseWorkspaceFromEditorAsync(
-        Vegha.App.ViewModels.WorkspaceItemViewModel ws,
-        WorkspacesViewModel workspaces)
-    {
-        if (ws.IsDefault) return false;
-        var confirm = new Vegha.App.Controls.Workspace.CloseWorkspaceDialog(ws.Name, ws.FolderPath);
-        var ok = await confirm.ShowDialog<bool>(this);
-        if (!ok) return false;
-        workspaces.RemoveWorkspaceCommand.Execute(ws);
-        return true;
-    }
-
-    // ---- Workspace actions ----
-
-    private async Task RenameWorkspaceAsync(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
-        WorkspaceItemViewModel ws,
-        WorkspacesViewModel workspaces)
-    {
-        var dlg = new Vegha.App.Controls.Workspace.RenameDialog(
-            "Rename workspace", "Workspace name", ws.Name);
-        var ok = await dlg.ShowDialog<bool>(this);
-        if (!ok || string.IsNullOrEmpty(dlg.ResultName)) return;
-
-        var newName = dlg.ResultName.Trim();
-        if (string.Equals(newName, ws.Name, StringComparison.Ordinal)) return;
-
-        try
-        {
-            // Update the manifest on disk + the VM (folder name itself is left alone — Bruno
-            // identifies the workspace by manifest, not by folder).
-            var manifest = Vegha.Core.Persistence.WorkspaceManifestIO.Read(ws.FolderPath)
-                           ?? new Vegha.Core.Persistence.WorkspaceManifest();
-            Vegha.Core.Persistence.WorkspaceManifestIO.Write(ws.FolderPath,
-                manifest with { Name = newName });
-            ws.Name = newName;
-            tab.Name = newName;
-            // Force a persist of workspaces.json by setting the same property to itself.
-            workspaces.ActiveWorkspace = ws;
-        }
-        catch (Exception ex)
-        {
-            tab.StatusMessage = $"Rename failed: {ex.Message}";
-        }
-    }
-
-    private static void RevealFolderInExplorer(string path)
-    {
-        if (string.IsNullOrEmpty(path)) return;
-        try
-        {
-            if (OperatingSystem.IsWindows())
-                System.Diagnostics.Process.Start("explorer.exe", $"\"{path}\"");
-            else if (OperatingSystem.IsMacOS())
-                System.Diagnostics.Process.Start("open", $"\"{path}\"");
-            else
-                System.Diagnostics.Process.Start("xdg-open", path);
-        }
-        catch { /* best-effort */ }
-    }
-
-    private static void ShowNotImplemented(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab, string feature)
-    {
-        tab.StatusMessage = feature + " is not implemented yet.";
-    }
-
-    // ---- Collection actions ----
-
-    private async Task RenameCollectionAsync(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
-        CollectionRootViewModel col)
-    {
-        var dlg = new Vegha.App.Controls.Workspace.RenameDialog(
-            "Rename collection", "Collection name", col.Name);
-        var ok = await dlg.ShowDialog<bool>(this);
-        if (!ok || string.IsNullOrEmpty(dlg.ResultName)) return;
-
-        var newName = dlg.ResultName.Trim();
-        if (string.Equals(newName, col.Name, StringComparison.Ordinal)) return;
-
-        try
-        {
-            // Update the collection.bru meta.name so the tree reloads with the new label.
-            var bruPath = System.IO.Path.Combine(col.SourcePath, "collection.bru");
-            if (System.IO.File.Exists(bruPath))
-            {
-                var bru = await System.IO.File.ReadAllTextAsync(bruPath);
-                bru = System.Text.RegularExpressions.Regex.Replace(
-                    bru, @"(meta\s*\{[^}]*?\bname:\s*)([^\r\n]+)", "$1" + newName);
-                await System.IO.File.WriteAllTextAsync(bruPath, bru);
-            }
-            col.Name = newName;
-            tab.StatusMessage = $"Renamed to “{newName}”.";
-        }
-        catch (Exception ex)
-        {
-            tab.StatusMessage = $"Rename failed: {ex.Message}";
-        }
-    }
-
-    private static void RemoveCollectionFromWorkspace(
-        CollectionRootViewModel col,
-        WorkspaceItemViewModel ws,
-        WorkspacesViewModel workspaces,
-        CollectionsViewModel collections)
-    {
-        // If it's a linked collection (outside workspace's collections/ folder), drop the link.
-        if (ws.LinkedCollections.Remove(col.SourcePath))
-        {
-            collections.RemoveCollectionCommand.Execute(col);
-            // Triggering persist via the existing Persist path inside RemoveWorkspaceCommand is overkill;
-            // re-setting ActiveCollection forces a persist of workspaces.json.
-            workspaces.ActiveWorkspace = ws;
-        }
-        else
-        {
-            // In-workspace collection — RemoveCollection just removes from the in-memory tree.
-            // On next workspace activation it'll come back unless the user Delete'd the folder.
-            collections.RemoveCollectionCommand.Execute(col);
-        }
-    }
-
-    private async Task DeleteCollectionAsync(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
-        CollectionRootViewModel col,
-        CollectionsViewModel collections)
-    {
-        var owner = this;
-        var confirm = new Vegha.App.Controls.Workspace.CloseWorkspaceDialog(
-            workspaceName: col.Name,
-            workspacePath: col.SourcePath);
-        confirm.Title = "Delete collection";
-        // The dialog's prompt + descriptor copy is workspace-centric; for collection delete we
-        // override the prompt and warning lines so the user knows files will actually be deleted.
-        confirm.SetPromptForCollectionDelete();
-        var ok = await confirm.ShowDialog<bool>(owner);
-        if (!ok) return;
-
-        try
-        {
-            if (System.IO.Directory.Exists(col.SourcePath))
-                System.IO.Directory.Delete(col.SourcePath, recursive: true);
-            collections.RemoveCollectionCommand.Execute(col);
-            tab.StatusMessage = $"Deleted “{col.Name}” from disk.";
-        }
-        catch (Exception ex)
-        {
-            tab.StatusMessage = $"Delete failed: {ex.Message}";
-        }
-    }
-
-    // ---- Env actions ----
-
-    private async Task RenameWorkspaceEnvAsync(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
-        Vegha.Core.Domain.Environment env,
-        WorkspaceItemViewModel ws)
-    {
-        var dlg = new Vegha.App.Controls.Workspace.RenameDialog(
-            "Rename environment", "Environment name", env.Name);
-        var ok = await dlg.ShowDialog<bool>(this);
-        if (!ok || string.IsNullOrEmpty(dlg.ResultName)) return;
-
-        var newName = dlg.ResultName.Trim();
-        if (string.Equals(newName, env.Name, StringComparison.Ordinal)) return;
-
-        try
-        {
-            // Sanitize old + new file names the same way the writer does. Without this the
-            // old file path can't be found when the original name has chars Path APIs reject,
-            // so the new file is written but the old file lingers — the "rename made copies
-            // with new names" bug.
-            var envDir = System.IO.Path.Combine(ws.FolderPath, Vegha.Core.FileFormat.WorkspaceModelLoader.EnvironmentsFolder);
-            System.IO.Directory.CreateDirectory(envDir);
-            var oldPath = System.IO.Path.Combine(envDir, SanitizeEnvFileName(env.Name) + Vegha.Core.FileFormat.CollectionJson.EnvironmentSuffix);
-            var newPath = System.IO.Path.Combine(envDir, SanitizeEnvFileName(newName) + Vegha.Core.FileFormat.CollectionJson.EnvironmentSuffix);
-            var updated = env with { Name = newName };
-            await System.IO.File.WriteAllTextAsync(newPath,
-                Vegha.Core.FileFormat.CollectionJson.SerializeEnvironment(
-                    Vegha.Core.FileFormat.EnvironmentFile.FromDomain(updated)));
-            if (System.IO.File.Exists(oldPath)
-                && !string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
-                System.IO.File.Delete(oldPath);
-
-            var idx = tab.Environments.IndexOf(env);
-            if (idx >= 0) tab.Environments[idx] = updated;
-            tab.SelectedEnvironment = updated;
-
-            // Mirror the swap into the shared CollectionsViewModel state so the top-bar pill,
-            // the env-picker popup, and the left-toolbar panel all refresh immediately. Before
-            // this call the dialog showed the new name but everywhere else still showed the
-            // old name until the user switched collections.
-            App.Services.GetService<CollectionsViewModel>()?.ReplaceEnvironment(env, updated);
-
-            tab.StatusMessage = $"Renamed to “{newName}”.";
-        }
-        catch (Exception ex)
-        {
-            tab.StatusMessage = $"Rename failed: {ex.Message}";
-        }
-    }
-
-    /// <summary>Mirrors <see cref="EnvironmentsViewModel"/>'s file-name sanitization so
-    /// rename / delete in the workspace dialog target the exact files the writer produced.</summary>
-    private static string SanitizeEnvFileName(string name)
-    {
-        var invalid = System.IO.Path.GetInvalidFileNameChars();
-        var s = new string(name.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
-        return string.IsNullOrEmpty(s) ? "untitled" : s;
-    }
-
-    /// <summary>Opens a swatch popup anchored on whatever pill was clicked and persists the
-    /// chosen color to the env's .env.json. The same flow the left panel uses — just plumbed
-    /// through the WorkspaceTabViewModel because the dialog's env editor lives there.</summary>
-    private async Task SetWorkspaceEnvColorAsync(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
-        Vegha.Core.Domain.Environment env,
-        WorkspaceItemViewModel ws)
-    {
-        var hex = await PickEnvironmentColorAsync();
-        if (hex is null) return; // user cancelled
-        try
-        {
-            var dir = System.IO.Path.Combine(ws.FolderPath, Vegha.Core.FileFormat.WorkspaceModelLoader.EnvironmentsFolder);
-            System.IO.Directory.CreateDirectory(dir);
-            var updated = env with { Color = string.IsNullOrEmpty(hex) ? null : hex };
-            var path = System.IO.Path.Combine(dir, SanitizeEnvFileName(updated.Name) + Vegha.Core.FileFormat.CollectionJson.EnvironmentSuffix);
-            await System.IO.File.WriteAllTextAsync(path,
-                Vegha.Core.FileFormat.CollectionJson.SerializeEnvironment(
-                    Vegha.Core.FileFormat.EnvironmentFile.FromDomain(updated)));
-
-            // Capture selection before the swap — replacing an item in tab.Environments
-            // pushes the ListBox SelectedItem to null (the old reference vanished), so a
-            // post-swap ReferenceEquals check would always miss and the env editor empty-
-            // states. Mirror the unconditional rename pattern instead.
-            var wasSelected = ReferenceEquals(tab.SelectedEnvironment, env);
-            var idx = tab.Environments.IndexOf(env);
-            if (idx >= 0) tab.Environments[idx] = updated;
-            if (wasSelected) tab.SelectedEnvironment = updated;
-
-            App.Services.GetService<CollectionsViewModel>()?.ReplaceEnvironment(env, updated);
-            tab.StatusMessage = string.IsNullOrEmpty(hex)
-                ? $"Cleared color on “{updated.Name}”."
-                : $"Set color on “{updated.Name}”.";
-        }
-        catch (Exception ex)
-        {
-            tab.StatusMessage = $"Color update failed: {ex.Message}";
-        }
-    }
-
-    /// <summary>Workspace env import: same Postman/Bruno detection the left panel uses, but
-    /// writes into the workspace env folder rather than the active collection's. Routes the
-    /// new env into <see cref="CollectionsViewModel.GlobalEnvironments"/> so the "Global" tab
-    /// of the env picker shows it immediately.</summary>
-    private async Task ImportWorkspaceEnvAsync(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
-        WorkspaceItemViewModel ws)
-    {
-        var picked = await StorageProvider.OpenFilePickerAsync(new global::Avalonia.Platform.Storage.FilePickerOpenOptions
-        {
-            Title = "Import workspace environment(s)",
-            AllowMultiple = true,
-            FileTypeFilter = new[]
-            {
-                new global::Avalonia.Platform.Storage.FilePickerFileType("Environment files") { Patterns = new[] { "*.env.json", "*.postman_environment.json", "*.json" } },
-                new global::Avalonia.Platform.Storage.FilePickerFileType("All files") { Patterns = new[] { "*" } },
-            },
-        });
-        var paths = picked
-            .Select(f => f.TryGetLocalPath())
-            .Where(p => !string.IsNullOrEmpty(p))
-            .Select(p => p!)
-            .ToList();
-        if (paths.Count == 0) return;
-
-        var imported = 0;
-        var skipped = 0;
-        var dir = System.IO.Path.Combine(ws.FolderPath, Vegha.Core.FileFormat.WorkspaceModelLoader.EnvironmentsFolder);
-        System.IO.Directory.CreateDirectory(dir);
-
-        foreach (var path in paths)
-        {
-            try
-            {
-                var result = Vegha.Core.Importers.ImportPipeline.DetectAndImportPath(path);
-                if (!result.Success || result.Environment is null) { skipped++; continue; }
-                var env = result.Environment;
-
-                // Avoid clobbering an existing env file with the same sanitized name.
-                var baseName = SanitizeEnvFileName(env.Name);
-                var suffix = Vegha.Core.FileFormat.CollectionJson.EnvironmentSuffix;
-                var fullPath = System.IO.Path.Combine(dir, baseName + suffix);
-                for (var n = 2; System.IO.File.Exists(fullPath); n++)
-                {
-                    var newName = $"{env.Name} {n}";
-                    env = env with { Name = newName };
-                    fullPath = System.IO.Path.Combine(dir, SanitizeEnvFileName(newName) + suffix);
-                }
-
-                await System.IO.File.WriteAllTextAsync(fullPath,
-                    Vegha.Core.FileFormat.CollectionJson.SerializeEnvironment(
-                        Vegha.Core.FileFormat.EnvironmentFile.FromDomain(env)));
-
-                tab.Environments.Add(env);
-                var collections = App.Services.GetService<CollectionsViewModel>();
-                if (collections is not null)
-                {
-                    collections.GlobalEnvironments.Add(env);
-                    if (!collections.Environments.Contains(env)) collections.Environments.Add(env);
-                }
-                imported++;
-            }
-            catch { skipped++; }
-        }
-
-        tab.StatusMessage = skipped == 0
-            ? $"Imported {imported} environment(s)."
-            : $"Imported {imported}, skipped {skipped} (not an environment file).";
-    }
-
-    /// <summary>Spawns a transient swatch popup centered on the main window and resolves to
-    /// the chosen hex (or empty string for "no color", or null for cancel). Reuses the same
-    /// palette the left panel uses so collection + workspace envs share the same palette.</summary>
-    private async Task<string?> PickEnvironmentColorAsync()
-    {
-        var dlg = new Window
-        {
-            Title = "Pick color",
-            Width = 200,
-            SizeToContent = SizeToContent.Height,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            CanResize = false,
-        };
-        string? chosen = null;
-        var wrap = new global::Avalonia.Controls.WrapPanel { Margin = new global::Avalonia.Thickness(8) };
-        foreach (var swatch in Vegha.App.Controls.Shell.EnvironmentColorPalette.Swatches)
-        {
-            var capture = swatch.Hex;
-            var btn = new Button
-            {
-                Width = 28, Height = 28,
-                Margin = new global::Avalonia.Thickness(3),
-                Padding = new global::Avalonia.Thickness(0),
-                Background = new global::Avalonia.Media.SolidColorBrush(global::Avalonia.Media.Color.Parse(swatch.Hex)),
-                BorderThickness = new global::Avalonia.Thickness(1),
-                CornerRadius = new global::Avalonia.CornerRadius(14),
-                Cursor = new global::Avalonia.Input.Cursor(global::Avalonia.Input.StandardCursorType.Hand),
-            };
-            ToolTip.SetTip(btn, swatch.Name);
-            btn.Click += (_, _) => { chosen = capture; dlg.Close(); };
-            wrap.Children.Add(btn);
-        }
-        var clear = new Button
-        {
-            Content = "No color",
-            Margin = new global::Avalonia.Thickness(8, 0, 8, 8),
-            Background = global::Avalonia.Media.Brushes.Transparent,
-            BorderThickness = new global::Avalonia.Thickness(0),
-            HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch,
-        };
-        clear.Click += (_, _) => { chosen = string.Empty; dlg.Close(); };
-        var stack = new StackPanel();
-        stack.Children.Add(wrap);
-        stack.Children.Add(clear);
-        dlg.Content = stack;
-        await dlg.ShowDialog(this);
-        return chosen;
-    }
-
-    /// <summary>Creates a blank workspace env from the "+" button and writes it to
-    /// <c>&lt;workspace&gt;/environments/</c> immediately, mirroring the collection-level
-    /// "new environment" flow. Persisting up-front (rather than waiting for a Save) is what
-    /// makes the env survive a dialog close/reopen.</summary>
-    private async Task AddWorkspaceEnvAsync(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
-        WorkspaceItemViewModel ws)
-    {
-        var name = NextWorkspaceEnvName(tab, "Untitled");
-        var env = new Vegha.Core.Domain.Environment { Id = Guid.NewGuid().ToString("N"), Name = name };
-        await PersistNewWorkspaceEnvAsync(tab, ws, env, $"Created “{name}”.");
-    }
-
-    private async Task CopyWorkspaceEnvAsync(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
-        Vegha.Core.Domain.Environment env,
-        WorkspaceItemViewModel ws)
-    {
-        var name = NextWorkspaceEnvName(tab, env.Name + " copy");
-        var copy = env with
-        {
-            Id = Guid.NewGuid().ToString("N"),
-            Name = name,
-            Variables = env.Variables.Select(v => v with { }).ToList(),
-            SecretVariables = env.SecretVariables.ToList(),
-        };
-        await PersistNewWorkspaceEnvAsync(tab, ws, copy, $"Copied to “{name}”.");
-    }
-
-    /// <summary>Picks the first un-taken name with <paramref name="basename"/> as the seed
-    /// (then "basename 2", "basename 3", …) against the dialog's current env list.</summary>
-    private static string NextWorkspaceEnvName(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab, string basename)
-    {
-        var taken = new HashSet<string>(tab.Environments.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
-        if (!taken.Contains(basename)) return basename;
-        var n = 2;
-        while (taken.Contains(basename + " " + n)) n++;
-        return basename + " " + n;
-    }
-
-    /// <summary>Shared tail for Add / Copy: writes the env's <c>.env.json</c>, then mirrors it
-    /// into the dialog list and the shared <see cref="CollectionsViewModel"/> scope lists so
-    /// the top-bar pill / env picker pick it up immediately. Selecting it activates it via the
-    /// tab's RequestActivateEnvironment hook.</summary>
-    private async Task PersistNewWorkspaceEnvAsync(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
-        WorkspaceItemViewModel ws,
-        Vegha.Core.Domain.Environment env,
-        string successMessage)
-    {
-        try
-        {
-            var dir = System.IO.Path.Combine(ws.FolderPath, Vegha.Core.FileFormat.WorkspaceModelLoader.EnvironmentsFolder);
-            System.IO.Directory.CreateDirectory(dir);
-            var path = System.IO.Path.Combine(dir, SanitizeEnvFileName(env.Name) + Vegha.Core.FileFormat.CollectionJson.EnvironmentSuffix);
-            await System.IO.File.WriteAllTextAsync(path,
-                Vegha.Core.FileFormat.CollectionJson.SerializeEnvironment(
-                    Vegha.Core.FileFormat.EnvironmentFile.FromDomain(env)));
-
-            tab.Environments.Add(env);
-            tab.SelectedEnvironment = env;
-
-            var collections = App.Services.GetService<CollectionsViewModel>();
-            if (collections is not null)
-            {
-                collections.GlobalEnvironments.Add(env);
-                if (!collections.Environments.Contains(env)) collections.Environments.Add(env);
-            }
-            tab.StatusMessage = successMessage;
-        }
-        catch (Exception ex)
-        {
-            tab.StatusMessage = $"Save failed: {ex.Message}";
-        }
-    }
-
-    private async Task DeleteWorkspaceEnvAsync(
-        Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel tab,
-        Vegha.Core.Domain.Environment env,
-        WorkspaceItemViewModel ws)
-    {
-        var confirm = new Vegha.App.Controls.Workspace.CloseWorkspaceDialog(env.Name, ws.FolderPath);
-        confirm.Title = "Delete environment";
-        confirm.SetPromptForEnvDelete();
-        var ok = await confirm.ShowDialog<bool>(this);
-        if (!ok) return;
-
-        try
-        {
-            var envDir = System.IO.Path.Combine(ws.FolderPath, Vegha.Core.FileFormat.WorkspaceModelLoader.EnvironmentsFolder);
-            var path = System.IO.Path.Combine(envDir, SanitizeEnvFileName(env.Name) + Vegha.Core.FileFormat.CollectionJson.EnvironmentSuffix);
-            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
-            tab.Environments.Remove(env);
-
-            // Drop from the shared lists so the top-bar pill / env picker stop showing the
-            // deleted env. Without this the env survived in CollectionsViewModel until the
-            // user switched workspaces.
-            var collections = App.Services.GetService<CollectionsViewModel>();
-            if (collections is not null)
-            {
-                collections.CollectionEnvironments.Remove(env);
-                collections.GlobalEnvironments.Remove(env);
-                collections.Environments.Remove(env);
-                if (ReferenceEquals(collections.ActiveEnvironment, env)) collections.ActiveEnvironment = null;
-                if (ReferenceEquals(collections.ActiveGlobalEnvironment, env)) collections.ActiveGlobalEnvironment = null;
-            }
-
-            tab.StatusMessage = $"Deleted “{env.Name}”.";
-        }
-        catch (Exception ex)
-        {
-            tab.StatusMessage = $"Delete failed: {ex.Message}";
-        }
     }
 
     /// <summary>Gate that keeps checkpoint persistence from firing until the startup restore has
@@ -1274,6 +811,28 @@ public partial class MainWindow : Window
         vm.Open();
         var win = new SearchPaletteWindow { DataContext = vm };
         win.Show(this);
+    }
+
+    private bool _quickSwitcherOpen;
+
+    /// <summary>Ctrl+E — opens the Alt+Tab-style quick collection switcher. Guards against a
+    /// second window while one is open (the chord repeats while Ctrl is held; repeats are
+    /// consumed by the overlay itself, not by re-opening). No-op with fewer than two rows.</summary>
+    private void OpenQuickSwitcher()
+    {
+        if (_quickSwitcherOpen) return;
+        var collections = App.Services.GetService<CollectionsViewModel>();
+        var workspaces = App.Services.GetService<WorkspacesViewModel>();
+        if (collections is null || workspaces is null) return;
+
+        var vm = new Vegha.App.ViewModels.QuickSwitcherViewModel(collections, workspaces);
+        if (vm.Rows.Count < 2) return; // nothing to switch between
+
+        var win = new Vegha.App.Controls.Workspace.QuickSwitcherWindow(vm);
+        _quickSwitcherOpen = true;
+        win.Closed += (_, _) => _quickSwitcherOpen = false;
+        win.Show(this);
+        win.Activate();
     }
 
     private double _restoredCodegenWidth = 320;
@@ -1460,13 +1019,10 @@ public partial class MainWindow : Window
             collections?.AddEnvironment(env);
         };
 
-        // Post-batch summary: surface "Imported X of Y collections" on the workspace
-        // editor's Overview tab (the "Collection summary page" the user sees when a
-        // WorkspaceTabViewModel happens to be open) and on the shared CollectionsViewModel
-        // status channel so the status-bar toast picks it up too. The dedicated summary
-        // dialog (opened below, after the wizard closes) is what the user actually sees in
-        // the common case; this hook keeps the lightweight surfaces in sync for follow-up
-        // glances.
+        // Post-batch summary: surface "Imported X of Y collections" on the shared
+        // CollectionsViewModel status channel so the status-bar toast picks it up.
+        // The dedicated summary dialog (opened below, after the wizard closes) is what the
+        // user actually sees in the common case.
         vm.OnBatchImported = (importedCount, totalRecognized) =>
         {
             if (importedCount <= 0) return;
@@ -1474,17 +1030,6 @@ public partial class MainWindow : Window
                 ? $"Imported {importedCount} of {totalRecognized} collections."
                 : $"Imported {importedCount} collection{(importedCount == 1 ? "" : "s")}.";
             if (collections is not null) collections.StatusMessage = message;
-            var openTabs = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
-            if (openTabs is null) return;
-            foreach (var tab in openTabs.Tabs.OfType<Vegha.App.ViewModels.Tabs.WorkspaceTabViewModel>())
-            {
-                if (workspaces?.ActiveWorkspace is { } ws &&
-                    !string.Equals(tab.WorkspaceItem.FolderPath, ws.FolderPath,
-                        StringComparison.OrdinalIgnoreCase))
-                    continue;
-                tab.OverviewMessage = message;
-                tab.ActiveSection = "overview";
-            }
         };
 
         var dlg = new ImportWizardDialog { DataContext = vm };
@@ -1555,6 +1100,11 @@ public partial class MainWindow : Window
     private async Task OpenNewRequestDialogAsync(CollectionsViewModel collections, Vegha.App.ViewModels.CollectionNodeViewModel node)
     {
         var dlg = new Vegha.App.Controls.Workspace.NewRequestDialog();
+        // Seed the form from the owning collection's presets (default request type + base URL).
+        var ownerRootPath = collections.ResolveCollectionRootPath(node);
+        if (!string.IsNullOrEmpty(ownerRootPath)
+            && collections.FindRootForDirectory(ownerRootPath)?.Collection?.Presets is { } presets)
+            dlg.ApplyPresets(presets.RequestType, presets.BaseUrl);
         var ok = await dlg.ShowDialog<bool>(this);
         if (!ok || dlg.Result is null) return;
 
@@ -1853,8 +1403,16 @@ public partial class MainWindow : Window
         var path = folders[0].TryGetLocalPath();
         if (string.IsNullOrEmpty(path)) return;
 
-        var collections = App.Services.GetService<CollectionsViewModel>();
-        collections?.LoadFromDirectory(path);
+        // Route through WorkspacesViewModel.LinkCollection so the path persists in the
+        // active workspace — a bare LoadFromDirectory loads it for this session only and
+        // it silently disappears on next launch (same routing the top bar uses).
+        var workspaces = App.Services.GetService<WorkspacesViewModel>();
+        if (workspaces is not null)
+        {
+            workspaces.LinkCollection(path);
+            return;
+        }
+        App.Services.GetService<CollectionsViewModel>()?.LoadFromDirectory(path);
     }
 
     private void ApplyTheme(string theme)

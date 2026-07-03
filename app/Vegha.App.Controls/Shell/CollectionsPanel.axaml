@@ -39,7 +39,7 @@
         <!-- Header — search/filter input + active-collection menu. The "+ create / open /
              import" cluster moved into the workspace header (AppTopBar) so it stays reachable
              from every sidebar mode. -->
-        <Border DockPanel.Dock="Top" Padding="8,5" Height="40"
+        <Border DockPanel.Dock="Top" Padding="8,4" Height="36"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
@@ -110,38 +110,47 @@
              showed a stale message from a previous collection. Errors now surface via
              toast / status footer instead.) -->
 
-        <!-- Loading skeleton — shown while the host defers the initial workspace-tree load
-             past first paint. Occupies the same slot as the empty-state below so the sidebar
-             isn't a blank rectangle during the warm-up. -->
-        <TextBlock IsVisible="{Binding IsLoading}"
-                   Text="Loading workspace…"
-                   Foreground="{DynamicResource Text3Brush}"
-                   FontSize="11" FontStyle="Italic"
-                   TextWrapping="Wrap"
-                   Padding="14,40,14,0"
-                   HorizontalAlignment="Stretch"
-                   TextAlignment="Center" />
+        <!-- Body — empty-state, tree and loading indicator share one overlapping slot so the
+             loading message never takes layout space (collections load progressively, so the
+             tree is often already visible while IsLoading is still true — a docked message
+             would shove it around). -->
+        <Panel>
 
         <!-- Empty state — shown when no collection is active in the workspace
-             (and the deferred load isn't currently in flight). -->
-        <TextBlock IsVisible="{Binding ShowNoCollectionEmptyState}"
-                   Text="No collection selected.&#10;&#10;Pick a collection from the top bar — or click + to create one."
-                   Foreground="{DynamicResource Text3Brush}"
-                   FontSize="11" FontStyle="Italic"
-                   TextWrapping="Wrap"
-                   Padding="14,40,14,0"
-                   HorizontalAlignment="Stretch"
-                   TextAlignment="Center" />
+             (and the deferred load isn't currently in flight). Icon-circle pattern
+             shared with the Environments / History / Runner panels. -->
+        <StackPanel IsVisible="{Binding ShowNoCollectionEmptyState}"
+                    HorizontalAlignment="Center" Margin="14,40,14,0"
+                    Spacing="10" MaxWidth="200">
+            <Border Width="44" Height="44" CornerRadius="22"
+                    Background="{DynamicResource Bg3Brush}"
+                    HorizontalAlignment="Center">
+                <icons:Icon Kind="Collection" Size="20"
+                            Foreground="{DynamicResource Text3Brush}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="No collection selected"
+                       FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text1Brush}"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="Pick a collection from the top bar, or click + to create one."
+                       FontSize="11"
+                       Foreground="{DynamicResource Text2Brush}"
+                       TextWrapping="Wrap" TextAlignment="Center"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
 
         <!-- Tree — bound to the active collection's children only. Right padding leaves
              clearance for the vertical scrollbar so the row's "..." button isn't occluded
              when scrolling kicks in. -->
-        <TreeView Classes="compact"
+        <TreeView x:Name="CollectionsTree"
+                  Classes="compact"
                   ItemsSource="{Binding ActiveCollection.Children}"
                   IsVisible="{Binding ActiveCollection, Converter={x:Static ObjectConverters.IsNotNull}}"
                   Background="{DynamicResource ChromeSideBarBrush}"
                   BorderThickness="0"
-                  Padding="0,4,18,4">
+                  Padding="0,4,18,4"
+                  KeyDown="OnTreeKeyDown">
 
             <TreeView.Styles>
                 <!-- Filter binding: each TreeViewItem hosts a CollectionNodeViewModel as its
@@ -174,7 +183,7 @@
                     <MenuItem Header="Clone"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CloneNodeCommand}"
                               CommandParameter="{Binding}" />
-                    <MenuItem Header="Rename"
+                    <MenuItem Header="Rename" InputGesture="F2"
                               Tag="{Binding}"
                               Click="OnTreeRename_Click" />
                     <MenuItem Header="Collapse"
@@ -223,7 +232,7 @@
                     <MenuItem Header="Paste"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).PasteNodeCommand}"
                               CommandParameter="{Binding}" />
-                    <MenuItem Header="Rename"
+                    <MenuItem Header="Rename" InputGesture="F2"
                               Tag="{Binding}"
                               Click="OnTreeRename_Click" />
                     <Separator />
@@ -256,7 +265,7 @@
                     <MenuItem Header="Copy"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CopyNodeCommand}"
                               CommandParameter="{Binding}" />
-                    <MenuItem Header="Rename"
+                    <MenuItem Header="Rename" InputGesture="F2"
                               Tag="{Binding}"
                               Click="OnTreeRename_Click" />
                     <MenuItem Header="Create Example"
@@ -344,5 +353,35 @@
                 </TreeDataTemplate>
             </TreeView.DataTemplates>
         </TreeView>
+
+        <!-- Loading indicator — floating pill overlaid top-center of the tree area while the
+             host defers / rebuilds the workspace-tree load. An overlay (not a docked sibling)
+             so an in-flight load never pushes the already-rendered tree; hit-test invisible so
+             it never blocks clicks on rows appearing underneath it. -->
+        <Border IsVisible="{Binding IsLoading}"
+                IsHitTestVisible="False"
+                Background="{DynamicResource Bg1Brush}"
+                BorderBrush="{DynamicResource Border1Brush}"
+                BorderThickness="1" CornerRadius="12"
+                Padding="12,5"
+                Margin="0,14,0,0"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                BoxShadow="0 4 12 0 #20000000">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <!-- Avalonia's indeterminate ProgressBar acts as our spinner. -->
+                <ProgressBar IsIndeterminate="True"
+                             Width="42" Height="3"
+                             MinWidth="0" MinHeight="0"
+                             Background="{DynamicResource Bg3Brush}"
+                             Foreground="{DynamicResource AccentBrush}" />
+                <TextBlock Text="Loading workspace…"
+                           FontSize="11"
+                           Foreground="{DynamicResource Text1Brush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+
+        </Panel>
     </DockPanel>
 </UserControl>

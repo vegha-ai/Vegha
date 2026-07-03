@@ -44,8 +44,17 @@ public partial class HistoryViewModel : ObservableObject
     /// whether a search filter is active.</summary>
     [ObservableProperty] private string _emptyStateText = NoHistoryText;
 
-    private const string NoHistoryText = "No requests yet.\n\nSend a request and it'll show up here.";
-    private const string NoMatchesText = "No matching requests.\n\nTry a different search.";
+    /// <summary>Title/subtitle split of the empty-state copy — drives the shared icon-circle
+    /// empty-state layout (same pattern as the Environments and Runner panels).</summary>
+    [ObservableProperty] private string _emptyStateTitle = NoHistoryTitle;
+    [ObservableProperty] private string _emptyStateSubtitle = NoHistorySubtitle;
+
+    private const string NoHistoryTitle = "No requests yet";
+    private const string NoHistorySubtitle = "Send a request and it'll show up here.";
+    private const string NoMatchesTitle = "No matching requests";
+    private const string NoMatchesSubtitle = "Try a different search.";
+    private const string NoHistoryText = NoHistoryTitle + ".\n\n" + NoHistorySubtitle;
+    private const string NoMatchesText = NoMatchesTitle + ".\n\n" + NoMatchesSubtitle;
 
     /// <summary>Debounces <see cref="SearchText"/> edits so each keystroke doesn't hit SQLite.</summary>
     private CancellationTokenSource? _searchDebounceCts;
@@ -254,6 +263,8 @@ public partial class HistoryViewModel : ObservableObject
     {
         IsListEmpty = Items.Count == 0;
         EmptyStateText = filtered ? NoMatchesText : NoHistoryText;
+        EmptyStateTitle = filtered ? NoMatchesTitle : NoHistoryTitle;
+        EmptyStateSubtitle = filtered ? NoMatchesSubtitle : NoHistorySubtitle;
     }
 
     /// <summary>Removes a single entry from the store and the bound list.</summary>

@@ -16,8 +16,11 @@
          this UserControl and the ItemContainer in KvEditor), Avalonia's ItemsControl
          sizes rows to their content and they collapse to the left third of the pane. -->
     <Grid ColumnDefinitions="32,1*,1*,32" Margin="0,3,0,0" HorizontalAlignment="Stretch">
+        <!-- Checkbox + remove hide on the blank ghost row (Bruno parity) so the trailing
+             placeholder reads as an invitation to type, not a real entry. -->
         <CheckBox Grid.Column="0"
                   IsChecked="{Binding Enabled}"
+                  IsVisible="{Binding !IsBlank}"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Center" />
 
@@ -68,6 +71,7 @@
         <Button Grid.Column="3"
                 Command="{Binding #Root.RemoveCommand}"
                 CommandParameter="{Binding}"
+                IsVisible="{Binding !IsBlank}"
                 ToolTip.Tip="Remove row"
                 Background="Transparent"
                 BorderThickness="0"

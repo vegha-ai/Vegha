@@ -1,0 +1,311 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:tabs="using:Vegha.App.ViewModels.Tabs"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="640"
+             x:Class="Vegha.App.Controls.Workspace.CollectionSettingsTab"
+             x:DataType="tabs:CollectionSettingsTabViewModel">
+    <DockPanel Background="{DynamicResource Bg2Brush}">
+        <!-- Header: collection name + Save -->
+        <Border DockPanel.Dock="Top"
+                Padding="16,12"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <icons:Icon Grid.Column="0" Kind="Collection" Size="18"
+                            Foreground="{DynamicResource Text1Brush}"
+                            VerticalAlignment="Center" Margin="0,0,10,0" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                    <TextBlock Text="{Binding Props.Name}"
+                               FontSize="15" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <TextBlock Text="Collection settings"
+                               FontSize="10" LetterSpacing="1"
+                               Foreground="{DynamicResource Text2Brush}" />
+                </StackPanel>
+                <Button Grid.Column="2"
+                        Command="{Binding Props.SaveCommand}"
+                        Content="Save"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="White"
+                        Padding="16,6" />
+            </Grid>
+        </Border>
+
+        <TabControl Classes="subtabs" Padding="0" Background="{DynamicResource Bg2Brush}">
+            <!-- ===================== Overview ===================== -->
+            <TabItem Header="Overview">
+                <Grid ColumnDefinitions="360,1,*" Margin="0">
+                    <!-- ===== Left: info tiles ===== -->
+                    <ScrollViewer Grid.Column="0">
+                        <StackPanel Margin="20,18" Spacing="18">
+                            <!-- Info tiles: [icon chip] label + value -->
+                            <Grid ColumnDefinitions="Auto,*">
+                                <Border Grid.Column="0" Width="38" Height="38" CornerRadius="9"
+                                        Background="#1F3B82F6" VerticalAlignment="Top">
+                                    <icons:Icon Kind="Folder" Size="18"
+                                                Foreground="#60A5FA"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Location" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text0Brush}" />
+                                    <SelectableTextBlock Text="{Binding Location}"
+                                               FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="Auto,*">
+                                <Border Grid.Column="0" Width="38" Height="38" CornerRadius="9"
+                                        Background="#1F10B981" VerticalAlignment="Top">
+                                    <icons:Icon Kind="Globe" Size="18"
+                                                Foreground="#34D399"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Environments" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text0Brush}" />
+                                    <TextBlock FontSize="11" Foreground="{DynamicResource Text2Brush}">
+                                        <Run Text="{Binding CollectionEnvCount}" />
+                                        <Run Text=" collection · " />
+                                        <Run Text="{Binding GlobalEnvCount}" />
+                                        <Run Text=" global" />
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="Auto,*">
+                                <Border Grid.Column="0" Width="38" Height="38" CornerRadius="9"
+                                        Background="#1F7C3AED" VerticalAlignment="Top">
+                                    <TextBlock Text="API" FontSize="11" FontWeight="Bold"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               Foreground="#A78BFA"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Requests" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text0Brush}" />
+                                    <TextBlock FontSize="11" Foreground="{DynamicResource Text2Brush}">
+                                        <Run Text="{Binding RequestCount}" />
+                                        <Run Text=" request(s) in collection" />
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <Border Grid.Column="1" Background="{DynamicResource Border0Brush}" />
+
+                    <!-- ===== Right: documentation (edit OR view, never both) ===== -->
+                    <DockPanel Grid.Column="2">
+                        <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="16,12,16,8">
+                            <icons:Icon Grid.Column="0" Kind="FileText" Size="15"
+                                        Foreground="{DynamicResource Text1Brush}"
+                                        VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Grid.Column="1" Text="Documentation"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text0Brush}"
+                                       VerticalAlignment="Center" />
+                            <!-- Edit / done toggle: pencil while viewing, eye while editing. -->
+                            <Button Grid.Column="2"
+                                    Command="{Binding ToggleDocsEditCommand}"
+                                    Background="Transparent" BorderThickness="0"
+                                    Width="30" Height="28" Padding="0"
+                                    Cursor="Hand">
+                                <Panel>
+                                    <icons:Icon Kind="Pencil" Size="15"
+                                                Foreground="{DynamicResource Text2Brush}"
+                                                IsVisible="{Binding !IsDocsEditing}"
+                                                ToolTip.Tip="Edit documentation" />
+                                    <icons:Icon Kind="Eye" Size="15"
+                                                Foreground="{DynamicResource AccentBrush}"
+                                                IsVisible="{Binding IsDocsEditing}"
+                                                ToolTip.Tip="Preview documentation" />
+                                </Panel>
+                            </Button>
+                        </Grid>
+
+                        <Panel>
+                            <!-- EDIT mode: the Markdown editor (only). -->
+                            <TextBox IsVisible="{Binding IsDocsEditing}"
+                                     Text="{Binding Props.Docs}"
+                                     AcceptsReturn="True"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                     Background="{DynamicResource CodeBgBrush}"
+                                     BorderThickness="0"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="16,12"
+                                     Watermark="# Document this collection (Markdown)" />
+
+                            <!-- VIEW mode: rendered preview when docs exist, else a placeholder. -->
+                            <Panel IsVisible="{Binding !IsDocsEditing}">
+                                <ScrollViewer IsVisible="{Binding Props.Docs, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                              Padding="16,4">
+                                    <ws:MarkdownView Markdown="{Binding Props.Docs}" />
+                                </ScrollViewer>
+
+                                <StackPanel IsVisible="{Binding Props.Docs, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Spacing="10" MaxWidth="360" Margin="0,0,0,40">
+                                    <Border Width="48" Height="48" CornerRadius="24"
+                                            Background="{DynamicResource Bg3Brush}"
+                                            HorizontalAlignment="Center">
+                                        <icons:Icon Kind="FileText" Size="22"
+                                                    Foreground="{DynamicResource Text3Brush}"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <TextBlock Text="No documentation yet"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Text1Brush}"
+                                               HorizontalAlignment="Center" />
+                                    <TextBlock Text="Document this collection's purpose, endpoints, and conventions. Markdown is supported — headings, lists, code blocks, tables, and links."
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               TextWrapping="Wrap" TextAlignment="Center"
+                                               HorizontalAlignment="Center" />
+                                    <Button Content="Add documentation"
+                                            Command="{Binding ToggleDocsEditCommand}"
+                                            Classes="tertiary"
+                                            HorizontalAlignment="Center"
+                                            Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Panel>
+                        </Panel>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- ===================== Headers ===================== -->
+            <TabItem Header="Headers">
+                <ws:KvEditor ItemsSource="{Binding Props.Headers}"
+                             RemoveCommand="{Binding Props.RemoveHeaderCommand}"
+                             Mode="headers" />
+            </TabItem>
+
+            <!-- ===================== Vars ===================== -->
+            <TabItem Header="Vars">
+                <ws:KvEditor ItemsSource="{Binding Props.Variables}"
+                             RemoveCommand="{Binding Props.RemoveVariableCommand}" />
+            </TabItem>
+
+            <!-- ===================== Auth ===================== -->
+            <TabItem Header="Auth">
+                <ScrollViewer>
+                    <StackPanel Margin="16,12" Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="Type" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Text2Brush}" FontSize="12" />
+                            <ComboBox SelectedItem="{Binding Props.AuthType}"
+                                      ItemsSource="{Binding Props.AvailableAuthTypes}"
+                                      Width="160"
+                                      Background="{DynamicResource Bg3Brush}"
+                                      BorderBrush="{DynamicResource Border1Brush}" />
+                        </StackPanel>
+                        <TextBlock Text="Parameters (one per line, format: key: value)"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text2Brush}" />
+                        <TextBox Text="{Binding Props.AuthParametersText}"
+                                 AcceptsReturn="True"
+                                 Height="200"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                 Background="{DynamicResource BgInputBrush}"
+                                 BorderBrush="{DynamicResource Border1Brush}"
+                                 Foreground="{DynamicResource Text0Brush}"
+                                 Padding="8,4" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===================== Script ===================== -->
+            <TabItem Header="Script">
+                <Grid Margin="16,12" RowDefinitions="Auto,*,8,Auto,*">
+                    <TextBlock Grid.Row="0"
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap"
+                               Text="Pre-request — runs before every request in this collection."
+                               Margin="0,0,0,6" />
+                    <TextBox Grid.Row="1"
+                             Text="{Binding Props.PreRequestScript}"
+                             AcceptsReturn="True"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource CodeBgBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="10,8" />
+                    <TextBlock Grid.Row="3"
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap"
+                               Text="Post-response — runs after every response, before tests."
+                               Margin="0,0,0,6" />
+                    <TextBox Grid.Row="4"
+                             Text="{Binding Props.PostResponseScript}"
+                             AcceptsReturn="True"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource CodeBgBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="10,8" />
+                </Grid>
+            </TabItem>
+
+            <!-- ===================== Tests ===================== -->
+            <TabItem Header="Tests">
+                <DockPanel Margin="16,12">
+                    <TextBlock DockPanel.Dock="Top"
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap"
+                               Text="Runs after every request in this collection. Use test('name', fn) and expect(actual)."
+                               Margin="0,0,0,6" />
+                    <TextBox Text="{Binding Props.TestsScript}"
+                             AcceptsReturn="True"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource CodeBgBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="10,8" />
+                </DockPanel>
+            </TabItem>
+
+            <!-- ===================== Presets ===================== -->
+            <TabItem Header="Presets">
+                <ScrollViewer>
+                    <StackPanel Margin="16,12" Spacing="14" MaxWidth="480" HorizontalAlignment="Left">
+                        <TextBlock Text="Defaults applied when creating a new request in this collection."
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   TextWrapping="Wrap" />
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Request type" FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}" />
+                            <ComboBox SelectedItem="{Binding Props.PresetRequestType}"
+                                      ItemsSource="{Binding Props.AvailablePresetTypes}"
+                                      Width="200"
+                                      Background="{DynamicResource Bg3Brush}"
+                                      BorderBrush="{DynamicResource Border1Brush}" />
+                        </StackPanel>
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Base URL" FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}" />
+                            <TextBox Text="{Binding Props.PresetBaseUrl}"
+                                     Watermark="https://api.example.com"
+                                     FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                     Background="{DynamicResource BgInputBrush}"
+                                     BorderBrush="{DynamicResource Border1Brush}"
+                                     Foreground="{DynamicResource Text0Brush}"
+                                     Padding="6,4" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</UserControl>

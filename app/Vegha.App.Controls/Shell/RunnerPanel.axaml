@@ -9,12 +9,11 @@
              x:Class="Vegha.App.Controls.Shell.RunnerPanel"
              x:DataType="runner:RunnerSidebarViewModel">
     <DockPanel Background="{DynamicResource ChromeSideBarBrush}">
-        <Border DockPanel.Dock="Top" Padding="10,8" Height="34"
+        <Border DockPanel.Dock="Top" Padding="10,8" Height="36"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,0,0,1">
             <TextBlock Text="RUNNER"
-                       FontSize="10" FontWeight="SemiBold"
-                       Foreground="{DynamicResource Text2Brush}"
+                       Classes="sectionHeaderMinor"
                        VerticalAlignment="Center" />
         </Border>
 

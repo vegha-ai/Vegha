@@ -110,13 +110,12 @@
 
     <DockPanel Background="{DynamicResource ChromeSideBarBrush}">
         <!-- ============== HEADER ============== -->
-        <Border DockPanel.Dock="Top" Padding="10,6,8,6"
+        <Border DockPanel.Dock="Top" Padding="10,8" Height="36"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                 <TextBlock Grid.Column="0" Text="SOURCE CONTROL"
-                           FontSize="10" FontWeight="SemiBold"
-                           Foreground="{DynamicResource Text2Brush}"
+                           Classes="sectionHeaderMinor"
                            VerticalAlignment="Center" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
                     <Button Classes="headerAction"

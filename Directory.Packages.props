@@ -83,6 +83,12 @@
     <PackageVersion Include="Tmds.DBus.Protocol" Version="0.21.3" />
     <!-- GHSA-4cv2-4hjh-77rx: System.Linq.Dynamic.Core < 1.6.0 (via WireMock.Net) -->
     <PackageVersion Include="System.Linq.Dynamic.Core" Version="1.6.0" />
+    <!-- GHSA-2m69-gcr7-jv3q (CVE-2025-6965): SQLitePCLRaw.lib.e_sqlite3 2.1.11 bundles a
+         vulnerable SQLite < 3.50.2 (via Microsoft.Data.Sqlite). 3.50.3 bundles SQLite 3.50.3. -->
+    <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.50.3" />
+    <!-- GHSA-24c8-4792-22hx: Scriban.Signed <= 7.1.0 array.insert_at DoS (via WireMock.Net,
+         test-only). 7.2.0 is the first patched release. -->
+    <PackageVersion Include="Scriban.Signed" Version="7.2.5" />
   </ItemGroup>
 
   <ItemGroup Label="Packaging">

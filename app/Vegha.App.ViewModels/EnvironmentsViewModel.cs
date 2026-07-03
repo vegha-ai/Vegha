@@ -11,9 +11,12 @@ using DomainEnv = Vegha.Core.Domain.Environment;
 namespace Vegha.App.ViewModels;
 
 /// <summary>
-/// Backs the Environments sidebar — lists every loaded environment, lets the user
-/// activate one, and edits its variables in-place. Save writes the full collection
-/// back via CollectionStore so env files stay in lockstep with disk.
+/// Backs an environments master/detail editor — lists every environment in its scope,
+/// lets the user activate one, and edits its variables in-place. Scope is picked at
+/// construction (<see cref="EnvironmentScopeKind"/>): the sidebar panel edits the active
+/// COLLECTION's envs; the Manage Global Environments dialog edits the WORKSPACE's envs.
+/// All disk IO is "scope root + environments/", so the two scopes share every flow
+/// (create / rename / duplicate / delete / color / import / export / secret binding).
 /// </summary>
 public partial class EnvironmentsViewModel : ObservableObject
 {
@@ -21,6 +24,7 @@ public partial class EnvironmentsViewModel : ObservableObject
     private readonly WorkspacesViewModel _workspaces;
     private readonly Vegha.Integrations.Secrets.SecretRegistry _secretRegistry;
     private readonly ILogger<EnvironmentsViewModel> _logger;
+    private readonly EnvironmentScopeKind _scope;
 
     /// <summary>Names of the secret providers currently registered for the active
     /// collection. Drives the per-variable "bind to secret manager" picker dropdown.</summary>
@@ -35,15 +39,32 @@ public partial class EnvironmentsViewModel : ObservableObject
     [ObservableProperty]
     private string _searchText = string.Empty;
 
-    public DomainEnv? Active => _collections.ActiveEnvironment;
-    /// <summary>Collection-scoped envs only. The left-toolbar panel never shows workspace /
-    /// global envs — those live in the WorkspaceEditor dialog. Without this scoping the panel
-    /// double-listed every workspace env alongside the active collection's envs.</summary>
-    public ObservableCollection<DomainEnv> All => _collections.CollectionEnvironments;
+    public DomainEnv? Active => ActiveScoped;
+
+    /// <summary>The active env for THIS scope — collection instances read/write
+    /// <c>ActiveEnvironment</c>, global instances <c>ActiveGlobalEnvironment</c> (whose
+    /// setter already persists the choice per-workspace via WorkspacesViewModel).</summary>
+    private DomainEnv? ActiveScoped
+    {
+        get => _scope == EnvironmentScopeKind.Collection
+            ? _collections.ActiveEnvironment
+            : _collections.ActiveGlobalEnvironment;
+        set
+        {
+            if (_scope == EnvironmentScopeKind.Collection) _collections.ActiveEnvironment = value;
+            else _collections.ActiveGlobalEnvironment = value;
+        }
+    }
+
+    /// <summary>The env list for this scope. Collection instances never show workspace /
+    /// global envs (and vice versa) — without the scoping the panel double-listed every
+    /// workspace env alongside the active collection's envs.</summary>
+    public ObservableCollection<DomainEnv> All => _scope == EnvironmentScopeKind.Collection
+        ? _collections.CollectionEnvironments
+        : _collections.GlobalEnvironments;
 
     /// <summary>The env currently being edited in the master/detail's right pane. Driven by
-    /// the ListBox's two-way SelectedItem binding. Mirrors WorkspaceTabViewModel's model so
-    /// both env surfaces have the same shape.</summary>
+    /// the ListBox's two-way SelectedItem binding.</summary>
     [ObservableProperty]
     private DomainEnv? _selectedEnvironment;
 
@@ -57,10 +78,10 @@ public partial class EnvironmentsViewModel : ObservableObject
     {
         HydrateVariables();
         // Selecting an env in the master list also activates it for variable substitution
-        // — matches the workspace dialog UX where the selected env is the one in use, and
-        // drives the green check-mark indicator on the row that's the current active env.
-        if (value is not null && !ReferenceEquals(_collections.ActiveEnvironment, value))
-            _collections.ActiveEnvironment = value;
+        // — the selected env is the one in use, and this drives the green check-mark
+        // indicator on the row that's the current active env.
+        if (value is not null && !ReferenceEquals(ActiveScoped, value))
+            ActiveScoped = value;
     }
 
     private void HydrateVariables()
@@ -80,8 +101,17 @@ public partial class EnvironmentsViewModel : ObservableObject
                 ProviderNames = providers,
             });
         }
+        // Trailing ghost row — users type straight into the table; SaveAsync's
+        // empty-name filter keeps it out of the persisted env file.
+        KvAutoAppend.EnsureTrailingBlank(Variables, NewBlankVarRow, r => r.IsBlank);
         IsDirty = false;
     }
+
+    private EnvVarRow NewBlankVarRow() => new()
+    {
+        Name = string.Empty, Value = string.Empty, IsEnabled = true,
+        ProviderNames = ProviderNames,
+    };
 
     [RelayCommand]
     private void AddVariable()
@@ -141,21 +171,48 @@ public partial class EnvironmentsViewModel : ObservableObject
     /// (Add/Remove/Replace/Reset) so the user sees imports / deletes immediately.</summary>
     public ObservableCollection<DomainEnv> Filtered { get; } = new();
 
+    /// <summary>DI constructor — collection scope (the left-toolbar Environments panel).
+    /// Kept separate so the container never has to resolve <see cref="EnvironmentScopeKind"/>.</summary>
     public EnvironmentsViewModel(
         CollectionsViewModel collections,
         WorkspacesViewModel workspaces,
         Vegha.Integrations.Secrets.SecretRegistry secretRegistry,
         ILogger<EnvironmentsViewModel> logger)
+        : this(collections, workspaces, secretRegistry, logger, EnvironmentScopeKind.Collection)
+    {
+    }
+
+    public EnvironmentsViewModel(
+        CollectionsViewModel collections,
+        WorkspacesViewModel workspaces,
+        Vegha.Integrations.Secrets.SecretRegistry secretRegistry,
+        ILogger<EnvironmentsViewModel> logger,
+        EnvironmentScopeKind scope)
     {
         _collections = collections;
         _workspaces = workspaces;
         _secretRegistry = secretRegistry;
         _logger = logger;
+        _scope = scope;
 
         _collections.PropertyChanged += OnCollectionsPropertyChanged;
         All.CollectionChanged += OnAllCollectionChanged;
         RebuildFiltered();
         Refresh();
+
+        // Ghost-row UX: typing into the trailing blank row spawns the next one, and
+        // removing rows keeps a blank tail — no "+ Add variable" click needed.
+        // HydrateVariables seeds the initial ghost itself after each rebuild.
+        KvAutoAppend.Wire(Variables, NewBlankVarRow, r => r.IsBlank);
+    }
+
+    /// <summary>Unsubscribes from the shared CollectionsViewModel. Transient instances
+    /// (the Manage Global Environments dialog) must call this on close or the shared VM
+    /// keeps them alive and pumping events forever; the DI singleton never detaches.</summary>
+    public void Detach()
+    {
+        _collections.PropertyChanged -= OnCollectionsPropertyChanged;
+        All.CollectionChanged -= OnAllCollectionChanged;
     }
 
     // Selection-restore state. Survives a Clear→Add reload cycle so the editor
@@ -238,14 +295,19 @@ public partial class EnvironmentsViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string value) => RebuildFiltered();
 
-    /// <summary>The on-disk root for collection-scoped env files. We persist into the active
-    /// collection's <c>environments/</c> folder, not the workspace's, because this panel
-    /// shows collection envs only. Earlier code wrote to <c>workspace.FolderPath</c> instead —
-    /// the file landed in <c>&lt;workspace&gt;/environments/</c>, the in-memory list still
-    /// pointed at <see cref="CollectionsViewModel.CollectionEnvironments"/>, and on the next
-    /// workspace switch the loader picked the file up as a workspace env. That was the
-    /// "imported env jumps from collection to workspace level after reload" bug.</summary>
-    private string? CollectionEnvRoot => _collections.ActiveCollection?.SourcePath;
+    /// <summary>The on-disk root whose <c>environments/</c> folder this instance persists to.
+    /// Collection scope writes into the active collection's folder — NOT the workspace's;
+    /// mixing the two was the "imported env jumps from collection to workspace level after
+    /// reload" bug. Global scope writes into the workspace folder, which is exactly where
+    /// <c>WorkspaceModelLoader</c> reads workspace envs from.</summary>
+    private string? EnvRoot => _scope == EnvironmentScopeKind.Collection
+        ? _collections.ActiveCollection?.SourcePath
+        : _workspaces.ActiveWorkspace?.FolderPath;
+
+    /// <summary>Status shown when <see cref="EnvRoot"/> is unavailable for a mutation.</summary>
+    private string NoRootMessage => _scope == EnvironmentScopeKind.Collection
+        ? "Activate a collection first."
+        : "No workspace open.";
 
     private void RebuildFiltered()
     {
@@ -291,7 +353,10 @@ public partial class EnvironmentsViewModel : ObservableObject
 
     private void OnCollectionsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(CollectionsViewModel.ActiveEnvironment))
+        var watched = _scope == EnvironmentScopeKind.Collection
+            ? nameof(CollectionsViewModel.ActiveEnvironment)
+            : nameof(CollectionsViewModel.ActiveGlobalEnvironment);
+        if (e.PropertyName == watched)
         {
             OnPropertyChanged(nameof(Active));
             Refresh();
@@ -310,7 +375,7 @@ public partial class EnvironmentsViewModel : ObservableObject
     private void Activate(DomainEnv? env)
     {
         if (env is null) return;
-        _collections.ActiveEnvironment = env;
+        ActiveScoped = env;
     }
 
     /// <summary>Raised when the user picks the edit icon on an env row. The host opens
@@ -328,13 +393,13 @@ public partial class EnvironmentsViewModel : ObservableObject
     [RelayCommand]
     private void CreateEnvironment()
     {
-        var root = CollectionEnvRoot;
-        if (string.IsNullOrEmpty(root)) { StatusMessage = "Activate a collection first."; return; }
+        var root = EnvRoot;
+        if (string.IsNullOrEmpty(root)) { StatusMessage = NoRootMessage; return; }
 
         var name = ResolveUniqueName("new-env");
         var env = new DomainEnv { Id = Guid.NewGuid().ToString("N"), Name = name };
-        AddToCollectionLists(env);
-        if (_collections.ActiveEnvironment is null) _collections.ActiveEnvironment = env;
+        AddToScopedLists(env);
+        if (ActiveScoped is null) ActiveScoped = env;
         // Drive the master/detail to the newly-created env so the user lands directly in
         // the variable editor — the previous flow opened a separate tab.
         SelectedEnvironment = env;
@@ -351,14 +416,21 @@ public partial class EnvironmentsViewModel : ObservableObject
         }
     }
 
-    /// <summary>Inserts an env into the two lists the UI binds against — the collection-scoped
-    /// list (left toolbar panel) and the back-compat union (older consumers). Without the
-    /// dual-write the panel and the top-bar's "Collection" tab would disagree about which
-    /// envs exist.</summary>
-    private void AddToCollectionLists(DomainEnv env)
+    /// <summary>Inserts an env into every list the UI binds against for this scope — the
+    /// scoped list plus the back-compat union (and, for globals, the WorkspaceEnvironments
+    /// source-of-truth so a later RebuildEnvironments doesn't drop it). Without the
+    /// dual-write the panel and the top-bar pill would disagree about which envs exist.</summary>
+    private void AddToScopedLists(DomainEnv env)
     {
-        _collections.CollectionEnvironments.Add(env);
-        if (!_collections.Environments.Contains(env)) _collections.Environments.Add(env);
+        if (_scope == EnvironmentScopeKind.Collection)
+        {
+            _collections.CollectionEnvironments.Add(env);
+            if (!_collections.Environments.Contains(env)) _collections.Environments.Add(env);
+        }
+        else
+        {
+            _collections.AddWorkspaceEnvironment(env);
+        }
     }
 
     /// <summary>Persists a single env edit (called by EnvironmentTabViewModel on Save). Writes
@@ -369,7 +441,7 @@ public partial class EnvironmentsViewModel : ObservableObject
     /// list binding refresh together.</summary>
     public Task SaveEnvironmentAsync(DomainEnv updated)
     {
-        var root = CollectionEnvRoot;
+        var root = EnvRoot;
         if (string.IsNullOrEmpty(root)) return Task.CompletedTask;
 
         var match = _collections.CollectionEnvironments.FirstOrDefault(e =>
@@ -417,8 +489,8 @@ public partial class EnvironmentsViewModel : ObservableObject
     /// so the rename appears in the top-bar pill, the panel, and any other binding at once.</summary>
     public Task RenameEnvironmentAsync(DomainEnv env, string newName)
     {
-        var root = CollectionEnvRoot;
-        if (string.IsNullOrEmpty(root)) { StatusMessage = "Activate a collection first."; return Task.CompletedTask; }
+        var root = EnvRoot;
+        if (string.IsNullOrEmpty(root)) { StatusMessage = NoRootMessage; return Task.CompletedTask; }
         if (string.IsNullOrWhiteSpace(newName) || string.Equals(newName, env.Name, StringComparison.Ordinal))
             return Task.CompletedTask;
 
@@ -493,8 +565,8 @@ public partial class EnvironmentsViewModel : ObservableObject
     /// was a collection, not an env. Returns the count successfully imported.</summary>
     public int ImportEnvironments(IEnumerable<string> paths)
     {
-        var root = CollectionEnvRoot;
-        if (string.IsNullOrEmpty(root)) { StatusMessage = "Activate a collection first."; return 0; }
+        var root = EnvRoot;
+        if (string.IsNullOrEmpty(root)) { StatusMessage = NoRootMessage; return 0; }
 
         var imported = 0;
         var skipped = 0;
@@ -513,8 +585,8 @@ public partial class EnvironmentsViewModel : ObservableObject
                 if (!string.Equals(name, env.Name, StringComparison.Ordinal))
                     env = env with { Name = name };
 
-                AddToCollectionLists(env);
-                if (_collections.ActiveEnvironment is null) _collections.ActiveEnvironment = env;
+                AddToScopedLists(env);
+                if (ActiveScoped is null) ActiveScoped = env;
                 WriteSingleEnvFile(root, env);
                 imported++;
             }
@@ -544,8 +616,8 @@ public partial class EnvironmentsViewModel : ObservableObject
     private void CopyEnvironment(DomainEnv? env)
     {
         if (env is null) return;
-        var root = CollectionEnvRoot;
-        if (string.IsNullOrEmpty(root)) { StatusMessage = "Activate a collection first."; return; }
+        var root = EnvRoot;
+        if (string.IsNullOrEmpty(root)) { StatusMessage = NoRootMessage; return; }
 
         var newName = ResolveUniqueName(env.Name + " copy");
         var copy = env with
@@ -558,7 +630,7 @@ public partial class EnvironmentsViewModel : ObservableObject
 
         try
         {
-            AddToCollectionLists(copy);
+            AddToScopedLists(copy);
             WriteSingleEnvFile(root, copy);
             SelectedEnvironment = copy;
             StatusMessage = $"Copied to “{newName}”.";
@@ -574,8 +646,8 @@ public partial class EnvironmentsViewModel : ObservableObject
     private void DeleteEnvironment(DomainEnv? env)
     {
         if (env is null) return;
-        var root = CollectionEnvRoot;
-        if (string.IsNullOrEmpty(root)) { StatusMessage = "Activate a collection first."; return; }
+        var root = EnvRoot;
+        if (string.IsNullOrEmpty(root)) { StatusMessage = NoRootMessage; return; }
 
         try
         {
@@ -585,10 +657,17 @@ public partial class EnvironmentsViewModel : ObservableObject
             if (File.Exists(fullPath)) File.Delete(fullPath);
             new Vegha.Core.Persistence.EnvironmentSecretStore().Delete(root, env.Id);
 
-            _collections.CollectionEnvironments.Remove(env);
-            _collections.Environments.Remove(env);
-            if (ReferenceEquals(_collections.ActiveEnvironment, env))
-                _collections.ActiveEnvironment = null;
+            if (_scope == EnvironmentScopeKind.Collection)
+            {
+                _collections.CollectionEnvironments.Remove(env);
+                _collections.Environments.Remove(env);
+                if (ReferenceEquals(_collections.ActiveEnvironment, env))
+                    _collections.ActiveEnvironment = null;
+            }
+            else
+            {
+                _collections.RemoveWorkspaceEnvironment(env);
+            }
 
             StatusMessage = $"Deleted “{env.Name}”.";
         }
@@ -610,7 +689,7 @@ public partial class EnvironmentsViewModel : ObservableObject
     private string ResolveUniqueName(string proposed)
     {
         var existing = new HashSet<string>(
-            _collections.CollectionEnvironments.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
+            All.Select(e => e.Name), StringComparer.OrdinalIgnoreCase);
         if (!existing.Contains(proposed)) return proposed;
         for (var n = 2; n < 1000; n++)
         {
@@ -624,10 +703,20 @@ public partial class EnvironmentsViewModel : ObservableObject
 
 public partial class EnvVarRow : ObservableObject
 {
-    [ObservableProperty] private string _name = string.Empty;
-    [ObservableProperty] private string _value = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBlank))]
+    private string _name = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBlank))]
+    private string _value = string.Empty;
+
     [ObservableProperty] private bool _isSecret;
     [ObservableProperty] private bool _isEnabled = true;
+
+    /// <summary>True for the auto-appended placeholder row (both cells empty) — see
+    /// <see cref="KvEntry.IsBlank"/>.</summary>
+    public bool IsBlank => string.IsNullOrEmpty(Name) && string.IsNullOrEmpty(Value);
 
     /// <summary>True while the user has clicked the eye toggle to reveal a secret value.
     /// Resets to false (re-masked) whenever the secret flag is toggled.</summary>

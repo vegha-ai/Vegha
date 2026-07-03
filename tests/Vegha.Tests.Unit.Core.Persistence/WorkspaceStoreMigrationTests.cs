@@ -49,9 +49,9 @@ public class WorkspaceStoreMigrationTests : IDisposable
         var state = store.Load();
 
         // V1 → V2 (per-collection expansion buckets) → V3 (active-collection fields) →
-        // V4 (per-workspace ActiveGlobalEnvironmentName). Each migration is a non-destructive
-        // default-initializer for the new field(s).
-        state.SchemaVersion.Should().Be(4);
+        // V4 (per-workspace ActiveGlobalEnvironmentName) → V5 (OpenCollectionPaths). Each
+        // migration is a non-destructive default-initializer for the new field(s).
+        state.SchemaVersion.Should().Be(5);
         state.Workspaces.Should().ContainSingle();
         var ws = state.Workspaces[0];
         ws.Name.Should().Be("OldWs");
@@ -62,6 +62,27 @@ public class WorkspaceStoreMigrationTests : IDisposable
         ws.ActiveCollectionPath.Should().BeNull();
         ws.ActiveEnvironmentByCollection.Should().BeEmpty();
         ws.ActiveGlobalEnvironmentName.Should().BeNull();
+        ws.OpenCollectionPaths.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void V4Payload_MigratesToV5_SeedsOpenFromActiveCollection()
+    {
+        const string v4Json = """
+            {
+              "SchemaVersion": 4,
+              "Workspaces": [
+                { "Name": "W", "FolderPath": "C:/ws", "ActiveCollectionPath": "C:/ws/collections/Api" }
+              ],
+              "ActiveIndex": 0
+            }
+            """;
+        File.WriteAllText(_path, v4Json);
+
+        var state = new WorkspaceStore(_path).Load();
+        state.SchemaVersion.Should().Be(5);
+        state.Workspaces[0].OpenCollectionPaths
+            .Should().ContainSingle().Which.Should().Be("C:/ws/collections/Api");
     }
 
     [Fact]
@@ -69,10 +90,14 @@ public class WorkspaceStoreMigrationTests : IDisposable
     {
         var native = new WorkspaceState
         {
-            SchemaVersion = 4,
+            SchemaVersion = 5,
             Workspaces = new List<Workspace>
             {
-                new("W", "C:/ws") { IsDefault = true }
+                new("W", "C:/ws")
+                {
+                    IsDefault = true,
+                    OpenCollectionPaths = new[] { "C:/ws/collections/A", "C:/ws/collections/B" },
+                }
             },
             ActiveIndex = 0,
         };
@@ -80,7 +105,9 @@ public class WorkspaceStoreMigrationTests : IDisposable
         store.Save(native);
 
         var loaded = store.Load();
-        loaded.SchemaVersion.Should().Be(4);
+        loaded.SchemaVersion.Should().Be(5);
         loaded.Workspaces.Should().ContainSingle().Which.IsDefault.Should().BeTrue();
+        loaded.Workspaces[0].OpenCollectionPaths
+            .Should().BeEquivalentTo(new[] { "C:/ws/collections/A", "C:/ws/collections/B" });
     }
 }

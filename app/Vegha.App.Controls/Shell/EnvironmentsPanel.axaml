@@ -39,6 +39,21 @@
         <Style Selector="Button.del:pointerover">
             <Setter Property="Foreground" Value="{DynamicResource StatusErrBrush}" />
         </Style>
+        <!-- Ghost (blank trailing) row: fade out the row chrome so the placeholder reads
+             as "type here", not a real entry. Declared after the hover styles so it wins
+             on the ghost row even while hovered. Opacity (not IsVisible) keeps the Auto
+             grid columns sized, so ghost cells stay aligned with real rows. -->
+        <Style Selector="Border.varRow.ghost CheckBox">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
+        <Style Selector="Border.varRow.ghost Border.rowDivider">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Border.varRow.ghost Button.del">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+        </Style>
         <Style Selector="Button.swatch">
             <Setter Property="Width" Value="28" />
             <Setter Property="Height" Value="28" />
@@ -51,7 +66,7 @@
         </Style>
     </UserControl.Styles>
 
-    <!-- Master/detail layout matching the WorkspaceEditor's Environments sub-tab. Master is
+    <!-- Master/detail env editor layout (also hosted by ManageGlobalEnvironmentsDialog). Master is
          the env list on the left with a draggable GridSplitter so the user can widen it for
          longer env names — mirrors the sidebar splitter pattern used by collections / history /
          git panels. MinWidth keeps the master from collapsing past the toolbar's button row. -->
@@ -77,8 +92,7 @@
                         BorderThickness="0,0,0,1">
                     <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
                         <TextBlock Grid.Column="0" Text="ENVIRONMENTS"
-                                   FontSize="10" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Text2Brush}"
+                                   Classes="sectionHeaderMinor"
                                    VerticalAlignment="Center" />
                         <Button Grid.Column="1" Classes="envHeaderBtn"
                                 Command="{Binding CreateEnvironmentCommand}"
@@ -156,10 +170,25 @@
                                  SelectedItem="{Binding SelectedEnvironment, Mode=TwoWay}"
                                  Background="Transparent"
                                  BorderThickness="0"
-                                 Padding="0">
+                                 Padding="0"
+                                 KeyDown="OnEnvListKeyDown">
                             <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="dom:Environment">
-                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,4">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="4,4" Background="Transparent">
+                                        <!-- Row right-click mirrors the detail-pane header actions so
+                                             renaming doesn't require hunting for the ✎ next to the
+                                             title — consistent with the collections tree rows. -->
+                                        <Grid.ContextFlyout>
+                                            <MenuFlyout>
+                                                <MenuItem Header="Rename" InputGesture="F2"
+                                                          Tag="{Binding}" Click="OnRowRename_Click" />
+                                                <MenuItem Header="Duplicate"
+                                                          Tag="{Binding}" Click="OnRowCopy_Click" />
+                                                <Separator />
+                                                <MenuItem Header="Delete"
+                                                          Tag="{Binding}" Click="OnRowDelete_Click" />
+                                            </MenuFlyout>
+                                        </Grid.ContextFlyout>
                                         <Ellipse Grid.Column="0" Width="10" Height="10"
                                                  VerticalAlignment="Center"
                                                  Fill="{Binding Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}" />
@@ -234,7 +263,7 @@
                             Width="28" Height="28" Padding="0"
                             Margin="8,0,0,0"
                             VerticalAlignment="Center">
-                        <TextBlock Text="✎" FontSize="14" />
+                        <icons:Icon Kind="Pencil" Size="13" />
                     </Button>
                     <Button Grid.Column="3"
                             Click="OnCopy_Click"
@@ -252,13 +281,8 @@
                             Width="28" Height="28" Padding="0">
                         <icons:Icon Kind="Trash" Size="13" />
                     </Button>
-                    <Button Grid.Column="6"
-                            Command="{Binding AddVariableCommand}"
-                            Content="+ Add variable"
-                            Margin="6,0,0,0"
-                            Background="{DynamicResource Bg3Brush}"
-                            Foreground="{DynamicResource Text0Brush}"
-                            Padding="10,4" />
+                    <!-- No "+ Add variable" — the table keeps a blank trailing row that
+                         grows as the user types into it (matches Params / Headers). -->
                     <Button Grid.Column="7"
                             Command="{Binding ResetCommand}"
                             Content="Reset"
@@ -277,8 +301,8 @@
             <!-- Empty state when no env is selected. -->
             <TextBlock IsVisible="{Binding SelectedEnvironment, Converter={x:Static ObjectConverters.IsNull}}"
                        Text="Select or create an environment to edit its variables."
-                       Foreground="{DynamicResource Text3Brush}"
-                       FontSize="11" FontStyle="Italic"
+                       Foreground="{DynamicResource Text2Brush}"
+                       FontSize="12"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
 
             <ScrollViewer
@@ -286,7 +310,12 @@
                 <ItemsControl ItemsSource="{Binding Variables}" Margin="14,8">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:EnvVarRow">
-                            <Border Classes="varRow" Background="Transparent">
+                            <!-- ghost class fades out the row chrome (checkboxes / divider /
+                                 delete) on the blank trailing placeholder row via the
+                                 varRow.ghost styles above — opacity, not IsVisible, so the
+                                 Auto columns keep their width and cells stay aligned. -->
+                            <Border Classes="varRow" Classes.ghost="{Binding IsBlank}"
+                                    Background="Transparent">
                               <Grid ColumnDefinitions="Auto,260,*,Auto,Auto,Auto" Margin="0,2">
                                 <CheckBox Grid.Column="0"
                                           IsChecked="{Binding IsEnabled}"
@@ -357,7 +386,7 @@
                                     </TextBox.InnerRightContent>
                                 </TextBox>
                                 <!-- divider: separates the key=value group from the secret + delete group -->
-                                <Border Grid.Column="3" Width="1" Margin="12,4"
+                                <Border Grid.Column="3" Classes="rowDivider" Width="1" Margin="12,4"
                                         Background="{DynamicResource Border1Brush}" />
                                 <CheckBox Grid.Column="4"
                                           IsChecked="{Binding IsSecret}"

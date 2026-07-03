@@ -188,6 +188,9 @@ internal static class IconLibrary
             case IconKind.Play:
                 yield return Stroke("M7 4.5 V19.5 L20 12 L7 4.5 Z", stroke);
                 break;
+            case IconKind.Pencil:
+                yield return Stroke("M4.5 15.5 L15.5 4.5 A 2.12 2.12 0 0 1 18.5 7.5 L7.5 18.5 L3.5 19.75 L4.5 15.5 Z M13.5 6.5 L16.5 9.5", stroke);
+                break;
 
             // --- Theme ---
             case IconKind.Sun:

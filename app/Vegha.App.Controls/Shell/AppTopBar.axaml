@@ -133,7 +133,8 @@
                                     </Border>
 
                                     <!-- Scrollable, filtered list of collections. Rows are built in code-behind. -->
-                                    <ScrollViewer MaxHeight="360"
+                                    <ScrollViewer x:Name="CollectionPickerScroller"
+                                                  MaxHeight="360"
                                                   VerticalScrollBarVisibility="Auto"
                                                   HorizontalScrollBarVisibility="Disabled">
                                         <StackPanel x:Name="CollectionPickerList" Margin="0,4,0,8" />
@@ -190,6 +191,11 @@
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
                         VerticalAlignment="Center"
                         Margin="0,0,8,0">
+                <!-- Each pill self-describes with a scope label ("Collection" / "Global") —
+                     previously both rested as an identical "No env" and only a hover tooltip
+                     told them apart. The env's color shows as a dot + name tint; both pills
+                     fall back to the same neutral gray when nothing is selected (the old
+                     green fallback on Global read as an active selection). -->
                 <Button x:Name="CollectionEnvButton"
                         Click="OnCollectionEnvButton_Click"
                         Background="{Binding Collections.ActiveEnvironment.Color, Converter={x:Static conv:EnvColorTranslucentConverter.Instance}, ConverterParameter=#9CA3AF}"
@@ -199,43 +205,51 @@
                         Padding="8,4"
                         Height="28"
                         Cursor="Hand"
-                        ToolTip.Tip="Collection environment">
+                        ToolTip.Tip="Collection environment — variables scoped to the active collection">
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <icons:Icon Kind="Collection" Size="13"
-                                    Foreground="{Binding Collections.ActiveEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}" />
+                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                 Fill="{Binding Collections.ActiveEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}" />
+                        <TextBlock Text="Collection"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   VerticalAlignment="Center" />
                         <TextBlock Text="{Binding Collections.ActiveEnvironment.Name, FallbackValue='No env', TargetNullValue='No env'}"
                                    FontSize="12" FontWeight="SemiBold"
                                    Foreground="{Binding Collections.ActiveEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
                                    MaxWidth="140" />
-                        <TextBlock Text="▾" FontSize="13"
-                                   Foreground="{Binding Collections.ActiveEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}"
-                                   VerticalAlignment="Center" />
+                        <icons:Icon Kind="ChevronDown" Size="10"
+                                    Foreground="{DynamicResource Text2Brush}"
+                                    VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
                 <Button x:Name="GlobalEnvButton"
                         Click="OnGlobalEnvButton_Click"
-                        Background="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorTranslucentConverter.Instance}, ConverterParameter=#10B981}"
-                        BorderBrush="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#10B981}"
+                        Background="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorTranslucentConverter.Instance}, ConverterParameter=#9CA3AF}"
+                        BorderBrush="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}"
                         BorderThickness="1"
                         CornerRadius="3"
                         Padding="8,4"
                         Height="28"
                         Cursor="Hand"
-                        ToolTip.Tip="Global environment">
+                        ToolTip.Tip="Global environment — variables shared across the workspace">
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <icons:Icon Kind="Workspace" Size="13"
-                                    Foreground="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#10B981}" />
+                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                 Fill="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}" />
+                        <TextBlock Text="Global"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   VerticalAlignment="Center" />
                         <TextBlock Text="{Binding Collections.ActiveGlobalEnvironment.Name, FallbackValue='No env', TargetNullValue='No env'}"
                                    FontSize="12" FontWeight="SemiBold"
-                                   Foreground="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#10B981}"
+                                   Foreground="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
                                    MaxWidth="140" />
-                        <TextBlock Text="▾" FontSize="13"
-                                   Foreground="{Binding Collections.ActiveGlobalEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#10B981}"
-                                   VerticalAlignment="Center" />
+                        <icons:Icon Kind="ChevronDown" Size="10"
+                                    Foreground="{DynamicResource Text2Brush}"
+                                    VerticalAlignment="Center" />
                     </StackPanel>
                 </Button>
             </StackPanel>

@@ -61,7 +61,7 @@ public sealed class WorkspaceStore
                 // Force the current schema on every write so a default-constructed state
                 // (e.g., from the bootstrapper before the VM rehydrates) doesn't leave a
                 // schemaVersion: 0 file behind that would re-trigger migration next launch.
-                var toSave = state with { SchemaVersion = 4 };
+                var toSave = state with { SchemaVersion = 5 };
                 var json = JsonSerializer.Serialize(toSave, s_jsonOptions);
                 File.WriteAllText(_filePath, json);
             }
@@ -79,6 +79,8 @@ public sealed class WorkspaceStore
     ///     (defaults — no on-disk reshuffle).</item>
     ///   <item>3 → 4: introduce <c>ActiveGlobalEnvironmentName</c> per workspace so the
     ///     workspace-level (global) env selection doesn't bleed across workspaces.</item>
+    ///   <item>4 → 5: introduce <c>OpenCollectionPaths</c> per workspace (the capped, MRU
+    ///     "open collections" set backing the picker + quick switcher).</item>
     /// </list>
     /// Each step is non-destructive: folders/files on disk are left untouched.</summary>
     private static WorkspaceState MaybeMigrate(WorkspaceState parsed)
@@ -87,6 +89,7 @@ public sealed class WorkspaceStore
         if (state.SchemaVersion < 2) state = MigrateToV2(state);
         if (state.SchemaVersion < 3) state = MigrateToV3(state);
         if (state.SchemaVersion < 4) state = MigrateToV4(state);
+        if (state.SchemaVersion < 5) state = MigrateToV5(state);
         return state;
     }
 
@@ -151,6 +154,24 @@ public sealed class WorkspaceStore
         return new WorkspaceState
         {
             SchemaVersion = 4,
+            Workspaces = migrated,
+            ActiveIndex = parsed.ActiveIndex,
+        };
+    }
+
+    private static WorkspaceState MigrateToV5(WorkspaceState parsed)
+    {
+        // Seed each workspace's open set with its last-active collection (if any) so the
+        // picker's "Open collections" section isn't empty on first run after upgrade.
+        var migrated = parsed.Workspaces.Select(ws => ws with
+        {
+            OpenCollectionPaths = string.IsNullOrEmpty(ws.ActiveCollectionPath)
+                ? Array.Empty<string>()
+                : new[] { ws.ActiveCollectionPath! },
+        }).ToList();
+        return new WorkspaceState
+        {
+            SchemaVersion = 5,
             Workspaces = migrated,
             ActiveIndex = parsed.ActiveIndex,
         };

@@ -68,6 +68,45 @@ public partial class EnvironmentsPanel : UserControl
             vm.RequestRenameCommand.Execute(env);
     }
 
+    // ---- Row context menu (master list) ----
+    // Each menu item's Tag is bound to the row's Environment, mirroring the tab-strip
+    // context-menu pattern, so the actions target the right-clicked row even when it
+    // isn't the current selection.
+
+    private DomainEnv? EnvFromMenu(object? sender) => (sender as Control)?.Tag as DomainEnv;
+
+    private void OnRowRename_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not EnvironmentsViewModel vm || EnvFromMenu(sender) is not { } env) return;
+        vm.SelectedEnvironment = env;
+        vm.RequestRenameCommand.Execute(env);
+    }
+
+    private void OnRowCopy_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not EnvironmentsViewModel vm || EnvFromMenu(sender) is not { } env) return;
+        vm.CopyEnvironmentCommand.Execute(env);
+    }
+
+    private async void OnRowDelete_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not EnvironmentsViewModel vm || EnvFromMenu(sender) is not { } env) return;
+        var owner = TopLevel.GetTopLevel(this) as Window;
+        if (owner is null) { vm.DeleteEnvironmentCommand.Execute(env); return; }
+        var confirmed = await ConfirmDeleteAsync(owner, env.Name);
+        if (confirmed) vm.DeleteEnvironmentCommand.Execute(env);
+    }
+
+    /// <summary>F2 on the environments list renames the selected environment — same flow
+    /// as the detail-pane ✎ button and the row context menu.</summary>
+    private void OnEnvListKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.F2) return;
+        if (DataContext is not EnvironmentsViewModel vm || vm.SelectedEnvironment is not { } env) return;
+        e.Handled = true;
+        vm.RequestRenameCommand.Execute(env);
+    }
+
     private void OnCopy_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is EnvironmentsViewModel vm && vm.SelectedEnvironment is { } env)

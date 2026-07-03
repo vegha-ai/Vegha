@@ -140,28 +140,15 @@ public partial class AppTitleBar : UserControl
         if (!string.IsNullOrEmpty(path)) Workspaces.AddWorkspace(path);
     }
 
-    /// <summary>Bubbles up when the user clicks "Edit" on a workspace row inside the
-    /// Manage-Workspaces dialog. MainWindow listens via <c>AddHandler</c> and opens a
-    /// WorkspaceEditor tab — we don't reach into OpenTabsViewModel from inside the title
-    /// bar control to keep the dependency direction clean.</summary>
-    public static readonly RoutedEvent<WorkspaceEditRequestedEventArgs> WorkspaceEditRequestedEvent =
-        RoutedEvent.Register<AppTitleBar, WorkspaceEditRequestedEventArgs>(
-            nameof(WorkspaceEditRequested), RoutingStrategies.Bubble);
-
-    public event EventHandler<WorkspaceEditRequestedEventArgs> WorkspaceEditRequested
-    {
-        add => AddHandler(WorkspaceEditRequestedEvent, value);
-        remove => RemoveHandler(WorkspaceEditRequestedEvent, value);
-    }
-
     private async void OnManageWorkspaces_Click(object? sender, RoutedEventArgs e)
     {
         if (Workspaces is null) return;
         var owner = TopLevel.GetTopLevel(this) as Window;
         if (owner is null) return;
+        // The dialog is self-contained now (rename runs inline through the VM); the old
+        // Edit → WorkspaceEditRequested routed-event bridge went away with the workspace
+        // editor's retirement.
         var dlg = new ManageWorkspacesDialog(Workspaces);
-        dlg.EditRequested += (_, ws) =>
-            RaiseEvent(new WorkspaceEditRequestedEventArgs(WorkspaceEditRequestedEvent, ws));
         await dlg.ShowDialog(owner);
     }
 
@@ -245,17 +232,5 @@ public partial class AppTitleBar : UserControl
         };
         item.Click += click;
         return item;
-    }
-}
-
-/// <summary>Carries the workspace whose Edit button was clicked through the bubbling
-/// <see cref="AppTitleBar.WorkspaceEditRequestedEvent"/>.</summary>
-public sealed class WorkspaceEditRequestedEventArgs : RoutedEventArgs
-{
-    public WorkspaceItemViewModel Workspace { get; }
-    public WorkspaceEditRequestedEventArgs(RoutedEvent routedEvent, WorkspaceItemViewModel workspace)
-        : base(routedEvent)
-    {
-        Workspace = workspace;
     }
 }

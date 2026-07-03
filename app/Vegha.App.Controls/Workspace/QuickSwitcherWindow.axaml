@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Vegha.App.ViewModels"
+        x:Class="Vegha.App.Controls.Workspace.QuickSwitcherWindow"
+        x:DataType="vm:QuickSwitcherViewModel"
+        Title="Switch Collection"
+        Width="460" SizeToContent="Height" MaxHeight="520"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="BorderOnly"
+        ShowInTaskbar="False"
+        CanResize="False">
+    <Border BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1" Padding="6">
+        <DockPanel>
+            <TextBlock DockPanel.Dock="Top"
+                       Text="Switch collection"
+                       FontSize="10" FontWeight="SemiBold" LetterSpacing="1"
+                       Foreground="{DynamicResource Text2Brush}"
+                       Margin="8,6,8,8" />
+            <ListBox ItemsSource="{Binding Rows}"
+                     SelectedIndex="{Binding SelectedIndex}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     MaxHeight="440">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:QuickSwitcherRow">
+                        <TextBlock Text="{Binding Name}"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource Text0Brush}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   Margin="2" />
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+    </Border>
+</Window>

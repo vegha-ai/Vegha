@@ -83,6 +83,52 @@ public class BruMetaEmitterTests : IDisposable
     }
 
     [Fact]
+    public void EmitCollection_RoundTrips_PostResponseScript()
+    {
+        // Regression: NodePropertiesViewModel used to drop script:post-response on save.
+        // The emitter/loader always round-tripped it; this pins the format so the VM fix holds.
+        var collection = new Collection
+        {
+            Name = "PostApi",
+            PreRequestScript = "bru.setVar('a', 1);",
+            PostResponseScript = "bru.setEnvVar('token', res.body.token);",
+        };
+        File.WriteAllText(Path.Combine(_root, "collection.bru"), BruMetaEmitter.EmitCollection(collection));
+        File.WriteAllText(Path.Combine(_root, "ping.bru"), "meta {\n  name: ping\n}\n\nget {\n  url: x\n}\n");
+
+        var loaded = CollectionLoader.Load(_root);
+        loaded.PreRequestScript.Should().Contain("bru.setVar");
+        loaded.PostResponseScript.Should().Contain("bru.setEnvVar('token'");
+    }
+
+    [Fact]
+    public void EmitCollection_RoundTrips_Presets()
+    {
+        var collection = new Collection
+        {
+            Name = "PresetApi",
+            Presets = new RequestPresets { RequestType = "graphql", BaseUrl = "https://api.example.com/graphql" },
+        };
+        File.WriteAllText(Path.Combine(_root, "collection.bru"), BruMetaEmitter.EmitCollection(collection));
+        File.WriteAllText(Path.Combine(_root, "ping.bru"), "meta {\n  name: ping\n}\n\nget {\n  url: x\n}\n");
+
+        var loaded = CollectionLoader.Load(_root);
+        loaded.Presets.Should().NotBeNull();
+        loaded.Presets!.RequestType.Should().Be("graphql");
+        loaded.Presets.BaseUrl.Should().Be("https://api.example.com/graphql");
+    }
+
+    [Fact]
+    public void EmitCollection_OmitsEmptyPresets()
+    {
+        var c = new Collection { Name = "n", Presets = new RequestPresets() };
+        BruMetaEmitter.EmitCollection(c).Should().NotContain("presets {");
+
+        var c2 = new Collection { Name = "n" };
+        BruMetaEmitter.EmitCollection(c2).Should().NotContain("presets {");
+    }
+
+    [Fact]
     public void EmitCollection_OmitsEmptyBlocks()
     {
         var bare = new Collection { Name = "Empty" };

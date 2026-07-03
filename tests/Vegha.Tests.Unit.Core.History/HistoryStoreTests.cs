@@ -45,6 +45,33 @@ public class HistoryStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Disabled_StillPersistsRequestBlob_SoReplayWorks()
+    {
+        // The compliance toggle suppresses response payloads only. The request snapshot is the
+        // user's own request and must always be stored, otherwise History → Replay degrades to
+        // URL-only (the regression this test pins).
+        var store = Store();
+        store.Enabled = false;
+        var blob = """{"Method":"POST","Url":"https://x/y","Body":{"Type":"json"}}""";
+        var id = await store.AppendAsync("POST", "https://x/y", 201, 12, "secret-response", null, default, blob);
+
+        (await store.GetRequestBlobAsync(id)).Should().Be(blob);
+    }
+
+    [Fact]
+    public async Task Disabled_DropsResponsePreview_ButKeepsRow()
+    {
+        var store = Store();
+        store.Enabled = false;
+        await store.AppendAsync("GET", "https://x/y", 200, 5, "secret-response", null);
+
+        var rows = await store.GetRecentAsync();
+        rows.Should().ContainSingle();
+        rows[0].Url.Should().Be("https://x/y");
+        rows[0].ResponseBodyPreview.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Append_ThenGetRecent_RoundTrips()
     {
         var store = Store();

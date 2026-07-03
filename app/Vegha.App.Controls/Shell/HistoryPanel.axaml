@@ -4,17 +4,19 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:conv="using:Vegha.App.Controls.Converters"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
              mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="700"
              x:Class="Vegha.App.Controls.Shell.HistoryPanel"
              x:DataType="vm:HistoryViewModel">
     <DockPanel Background="{DynamicResource ChromeSideBarBrush}">
-        <Border DockPanel.Dock="Top" Padding="10,8" Height="34"
+        <!-- Header — 36px + sectionHeaderMinor title to match the other sidebar panels
+             (Environments / Runner / etc.), vector icons instead of emoji glyphs. -->
+        <Border DockPanel.Dock="Top" Padding="10,8" Height="36"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="*,Auto,Auto,Auto">
                 <TextBlock Grid.Column="0" Text="HISTORY"
-                           FontSize="10" FontWeight="SemiBold"
-                           Foreground="{DynamicResource Text2Brush}"
+                           Classes="sectionHeaderMinor"
                            VerticalAlignment="Center" />
                 <Button Grid.Column="1"
                         Command="{Binding RequestHarExportCommand}"
@@ -34,7 +36,7 @@
                         Width="22" Height="22" Padding="0" CornerRadius="3"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center">
-                    <TextBlock Text="↻" FontSize="13" />
+                    <icons:Icon Kind="Refresh" Size="13" />
                 </Button>
                 <Button Grid.Column="3"
                         Command="{Binding ClearCommand}"
@@ -44,7 +46,7 @@
                         Width="22" Height="22" Padding="0" CornerRadius="3"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center">
-                    <TextBlock Text="🗑" FontSize="12" />
+                    <icons:Icon Kind="Trash" Size="13" />
                 </Button>
             </Grid>
         </Border>
@@ -88,14 +90,31 @@
             </Grid>
         </Border>
 
-        <TextBlock IsVisible="{Binding IsListEmpty}"
-                   Text="{Binding EmptyStateText}"
-                   Foreground="{DynamicResource Text3Brush}"
-                   FontSize="11" FontStyle="Italic"
-                   TextWrapping="Wrap"
-                   Padding="14,40,14,0"
-                   TextAlignment="Center"
-                   IsHitTestVisible="False" />
+        <!-- Empty state — icon-circle pattern shared with the Environments / Runner panels.
+             Docked Top: a non-last DockPanel child defaults to Dock=Left, which shoved the
+             whole stack against the panel's left edge instead of centering it. -->
+        <StackPanel DockPanel.Dock="Top"
+                    IsVisible="{Binding IsListEmpty}"
+                    HorizontalAlignment="Center" Margin="14,40,14,0"
+                    Spacing="10" MaxWidth="200"
+                    IsHitTestVisible="False">
+            <Border Width="44" Height="44" CornerRadius="22"
+                    Background="{DynamicResource Bg3Brush}"
+                    HorizontalAlignment="Center">
+                <icons:Icon Kind="History" Size="20"
+                            Foreground="{DynamicResource Text3Brush}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="{Binding EmptyStateTitle}"
+                       FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text1Brush}"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="{Binding EmptyStateSubtitle}"
+                       FontSize="11"
+                       Foreground="{DynamicResource Text2Brush}"
+                       TextWrapping="Wrap" TextAlignment="Center"
+                       HorizontalAlignment="Center" />
+        </StackPanel>
 
         <ListBox x:Name="HistoryList"
                  ItemsSource="{Binding Items}"

@@ -547,6 +547,27 @@ public partial class OpenTabsViewModel : ObservableObject
         if (tab is not null && Tabs.Contains(tab)) ActiveTab = tab;
     }
 
+    /// <summary>Ctrl+Tab — activates the next VISIBLE tab, wrapping at the end. Cycling uses
+    /// the visible (scope-filtered) list so it never lands on a tab the user can't see.
+    /// No-ops with fewer than two visible tabs.</summary>
+    [RelayCommand]
+    public void ActivateNextTab() => ActivateAdjacentTab(+1);
+
+    /// <summary>Ctrl+Shift+Tab — activates the previous VISIBLE tab, wrapping at the start.</summary>
+    [RelayCommand]
+    public void ActivatePreviousTab() => ActivateAdjacentTab(-1);
+
+    private void ActivateAdjacentTab(int direction)
+    {
+        if (VisibleTabs.Count < 2) return;
+        var current = ActiveTab is not null ? VisibleTabs.IndexOf(ActiveTab) : -1;
+        // Unknown/foreign active tab: land on the first visible one rather than guessing.
+        var next = current < 0
+            ? 0
+            : (current + direction + VisibleTabs.Count) % VisibleTabs.Count;
+        ActiveTab = VisibleTabs[next];
+    }
+
     /// <summary>Opens a new Collection Runner tab for <paramref name="collection"/>. Each
     /// invocation creates a fresh tab (GUID id) so the user can compare two runs side-by-side
     /// without losing prior results. <paramref name="collectionPath"/> stamps the tab so it
@@ -569,26 +590,22 @@ public partial class OpenTabsViewModel : ObservableObject
         return tab;
     }
 
-    /// <summary>Opens (or activates) the workspace editor tab. There's only ever one editor
-    /// per workspace, identified by the workspace folder path.</summary>
-    public WorkspaceTabViewModel OpenWorkspaceTab(WorkspaceItemViewModel ws)
+    /// <summary>Opens (or activates) the Collection Settings tab for a collection. One tab per
+    /// collection (keyed by source path); re-opening activates the existing tab.</summary>
+    public CollectionSettingsTabViewModel OpenCollectionSettingsTab(CollectionSettingsTabViewModel tab)
     {
-        var id = "workspace:" + ws.FolderPath;
-        var existing = Tabs.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
-        if (existing is WorkspaceTabViewModel wsTab) { ActiveTab = wsTab; return wsTab; }
-
-        var tab = new WorkspaceTabViewModel(ws, id);
+        var existing = Tabs.FirstOrDefault(t => string.Equals(t.Id, tab.Id, StringComparison.OrdinalIgnoreCase));
+        if (existing is CollectionSettingsTabViewModel cs) { ActiveTab = cs; return cs; }
         Tabs.Add(tab);
         ActiveTab = tab;
         return tab;
     }
 
-    /// <summary>Closes the workspace editor tab for the given workspace path, if it's open.
-    /// The host calls this on workspace switch so a stale workspace's editor doesn't linger
-    /// in the tab strip after the user navigates away.</summary>
-    public void CloseWorkspaceTab(string workspaceFolderPath)
+    /// <summary>Closes any Collection Settings tab bound to <paramref name="collectionSourcePath"/>
+    /// — used when the collection is removed/closed so its settings tab doesn't linger.</summary>
+    public void CloseCollectionSettingsTab(string collectionSourcePath)
     {
-        var id = "workspace:" + workspaceFolderPath;
+        var id = CollectionSettingsTabViewModel.BuildId(collectionSourcePath);
         var match = Tabs.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
         if (match is not null) CloseTab(match);
     }

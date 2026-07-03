@@ -45,6 +45,14 @@ public sealed record Workspace(string Name, string FolderPath)
     /// workspaces doesn't bleed one workspace's "active global env" into another that
     /// happens to share an env name.</summary>
     public string? ActiveGlobalEnvironmentName { get; init; }
+
+    /// <summary>The workspace's currently-OPEN collections, newest-first, capped (max 5).
+    /// Drives the "Open collections" section of the collection picker and the quick switcher.
+    /// A collection joins this set when activated (moved to front, evicting the least-recent
+    /// past the cap) and leaves it when the user closes it via the picker's ✕ — closing keeps
+    /// the collection linked to the workspace (unlike Remove), so it can be reopened from the
+    /// "All collections" section.</summary>
+    public IReadOnlyList<string> OpenCollectionPaths { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>Top-level persisted state for the workspace switcher.</summary>

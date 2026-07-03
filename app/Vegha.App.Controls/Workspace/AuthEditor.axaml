@@ -382,7 +382,7 @@
                         <TabControl Classes="subtabs">
                             <TabItem Header="Token">
                                 <StackPanel Spacing="6" Margin="0,8,0,0">
-                                    <Grid ColumnDefinitions="*,*,140,Auto">
+                                    <Grid ColumnDefinitions="*,*,140,30">
                                         <TextBlock Grid.Column="0" Text="Key" FontSize="11"
                                                    Foreground="{DynamicResource Text2Brush}" />
                                         <TextBlock Grid.Column="1" Text="Value" FontSize="11"
@@ -393,7 +393,7 @@
                                     <ItemsControl ItemsSource="{Binding OAuth2TokenParameters}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:OAuth2AdditionalParameter">
-                                                <Grid ColumnDefinitions="*,*,140,Auto" Margin="0,3,0,0">
+                                                <Grid ColumnDefinitions="*,*,140,30" Margin="0,3,0,0">
                                                     <TextBox Grid.Column="0" Text="{Binding Key, Mode=TwoWay}"
                                                              FontFamily="{StaticResource MonoFont}" FontSize="11"
                                                              Background="{DynamicResource BgInputBrush}"
@@ -414,6 +414,7 @@
                                                     <Button Grid.Column="3"
                                                             Command="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).RemoveOAuth2TokenParameterCommand}"
                                                             CommandParameter="{Binding}"
+                                                            IsVisible="{Binding !IsBlank}"
                                                             Background="Transparent" BorderThickness="0"
                                                             Padding="6,2" Margin="4,0,0,0"
                                                             ToolTip.Tip="Remove">
@@ -424,17 +425,11 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <Button Command="{Binding AddOAuth2TokenParameterCommand}"
-                                            Content="+ Add Parameter"
-                                            Background="Transparent" BorderThickness="0"
-                                            Foreground="{DynamicResource AccentBrush}"
-                                            HorizontalAlignment="Left"
-                                            Padding="0,4" FontSize="11" />
                                 </StackPanel>
                             </TabItem>
                             <TabItem Header="Refresh">
                                 <StackPanel Spacing="6" Margin="0,8,0,0">
-                                    <Grid ColumnDefinitions="*,*,140,Auto">
+                                    <Grid ColumnDefinitions="*,*,140,30">
                                         <TextBlock Grid.Column="0" Text="Key" FontSize="11"
                                                    Foreground="{DynamicResource Text2Brush}" />
                                         <TextBlock Grid.Column="1" Text="Value" FontSize="11"
@@ -445,7 +440,7 @@
                                     <ItemsControl ItemsSource="{Binding OAuth2RefreshParameters}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:OAuth2AdditionalParameter">
-                                                <Grid ColumnDefinitions="*,*,140,Auto" Margin="0,3,0,0">
+                                                <Grid ColumnDefinitions="*,*,140,30" Margin="0,3,0,0">
                                                     <TextBox Grid.Column="0" Text="{Binding Key, Mode=TwoWay}"
                                                              FontFamily="{StaticResource MonoFont}" FontSize="11"
                                                              Background="{DynamicResource BgInputBrush}"
@@ -466,6 +461,7 @@
                                                     <Button Grid.Column="3"
                                                             Command="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).RemoveOAuth2RefreshParameterCommand}"
                                                             CommandParameter="{Binding}"
+                                                            IsVisible="{Binding !IsBlank}"
                                                             Background="Transparent" BorderThickness="0"
                                                             Padding="6,2" Margin="4,0,0,0"
                                                             ToolTip.Tip="Remove">
@@ -476,12 +472,6 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <Button Command="{Binding AddOAuth2RefreshParameterCommand}"
-                                            Content="+ Add Parameter"
-                                            Background="Transparent" BorderThickness="0"
-                                            Foreground="{DynamicResource AccentBrush}"
-                                            HorizontalAlignment="Left"
-                                            Padding="0,4" FontSize="11" />
                                 </StackPanel>
                             </TabItem>
                         </TabControl>
