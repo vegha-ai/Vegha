@@ -32,7 +32,9 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$branch = "release/v$Version"
+# Flat name (release-vX.Y.Z, not release/vX.Y.Z): a ref can't nest under a ref
+# named "release", and an old top-level "release" branch exists in this repo.
+$branch = "release-v$Version"
 
 function Require-Command([string] $name) {
     if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
