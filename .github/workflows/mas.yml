@@ -23,6 +23,10 @@ on:
         description: 'Mac App Store version (e.g., 1.2.3)'
         required: true
         type: string
+      dry_run:
+        description: 'Build & sign only — skip the App Store Connect upload (smoke test)'
+        type: boolean
+        default: false
 
 env:
   DOTNET_NOLOGO: true
@@ -89,10 +93,14 @@ jobs:
           ./eng/build-mas.sh ${{ inputs.version }}
 
       - name: Upload to App Store Connect
-        if: env.MAS_APP_CERT_P12_BASE64 != ''
+        if: env.MAS_APP_CERT_P12_BASE64 != '' && !inputs.dry_run
         run: |
           xcrun altool --upload-app -f "build/Vegha-${{ inputs.version }}.pkg" -t macos \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Skipped upload (dry run)
+        if: env.MAS_APP_CERT_P12_BASE64 != '' && inputs.dry_run
+        run: echo "::notice::dry_run=true — signed .pkg built but NOT uploaded to App Store Connect."
 
       # ============================================================
       # UNSIGNED fallback — no secrets. Produces an artifact only (not uploadable).
