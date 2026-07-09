@@ -23,15 +23,17 @@ name: Release
 # When the secrets are absent, the corresponding step is skipped — local
 # signing remains an option and the workflow still produces unsigned bits.
 on:
+  # Manual-only. Releasing is a deliberate act: go to Actions -> Release ->
+  # "Run workflow" and enter the version. Merges to main and PRs never release.
+  # This single run builds every artifact the vegha.ai site links to, publishes
+  # the GitHub Release + Velopack feeds, generates the winget manifests, builds
+  # the MSIX, and submits it to the Microsoft Store.
   workflow_dispatch:
     inputs:
       version:
         description: 'Release version (e.g., 0.1.0)'
         required: true
         type: string
-  push:
-    tags:
-      - 'v*.*.*'
 
 env:
   DOTNET_NOLOGO: true
@@ -62,20 +64,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET 10
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          # 10.0.x builds the app; 8.0.x runtime is required by Velopack's bundled
+          # signtool + Azure Trusted Signing dlib used in the pack step below.
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
       - name: Resolve version
         id: ver
         shell: bash
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: Install Velopack CLI
         if: matrix.os != 'macos-14'
@@ -123,38 +124,41 @@ jobs:
         run: |
           ./eng/pack-mac.sh --version ${{ steps.ver.outputs.version }} --skip-notarize
 
+      # ============================================================
+      # Windows + Linux packaging. On Windows, when the Azure Trusted Signing
+      # secrets are present, Velopack signs the app binaries AND Setup.exe during
+      # pack via its bundled signtool + dlib, authenticating with
+      # DefaultAzureCredential (the AZURE_* env vars below). This is what clears
+      # SmartScreen's "isn't commonly downloaded" warning. Absent secrets => the
+      # metadata isn't written and unsigned bits ship (step still succeeds).
+      # Linux never signs ($IsWindows is false on the ubuntu runner).
+      # ============================================================
       - name: Build Velopack installer (Windows + Linux)
         if: matrix.os != 'macos-14'
         shell: pwsh
-        run: |
-          ./eng/Pack-Installer.ps1 `
-            -Runtime ${{ matrix.rid }} `
-            -Version ${{ steps.ver.outputs.version }}
-
-      # ============================================================
-      # Windows: Authenticode-sign the published exe + Velopack setup.
-      # Only runs when the WIN_SIGN_PFX_BASE64 secret is set.
-      # ============================================================
-      - name: Authenticode sign (Windows)
-        if: matrix.os == 'windows-latest' && env.WIN_SIGN_PFX_BASE64 != ''
         env:
-          WIN_SIGN_PFX_BASE64: ${{ secrets.WIN_SIGN_PFX_BASE64 }}
-          WIN_SIGN_PFX_PASSWORD: ${{ secrets.WIN_SIGN_PFX_PASSWORD }}
-        shell: pwsh
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          TRUSTED_SIGNING_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          TRUSTED_SIGNING_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          TRUSTED_SIGNING_PROFILE: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
         run: |
-          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
-          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WIN_SIGN_PFX_BASE64))
-          $signtool = "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.22000.0\x64\signtool.exe"
-          if (-not (Test-Path $signtool)) {
-            $signtool = (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe `
-              | Where-Object { $_.FullName -like "*\x64\signtool.exe" } `
-              | Select-Object -First 1).FullName
+          $extra = @{}
+          if ($IsWindows -and $env:AZURE_CLIENT_ID) {
+            # Velopack's signtool dlib chokes on a UTF-8 BOM — write metadata.json without one.
+            $meta = Join-Path $env:RUNNER_TEMP 'trusted-signing.json'
+            [ordered]@{
+              Endpoint               = $env:TRUSTED_SIGNING_ENDPOINT
+              CodeSigningAccountName = $env:TRUSTED_SIGNING_ACCOUNT
+              CertificateProfileName = $env:TRUSTED_SIGNING_PROFILE
+            } | ConvertTo-Json | Set-Content -Path $meta -Encoding utf8NoBOM
+            $extra['AzureTrustedSignFile'] = $meta
+            Write-Host "Azure Trusted Signing metadata written to $meta"
+          } else {
+            Write-Host "::warning::Azure Trusted Signing secrets absent or non-Windows — packing UNSIGNED."
           }
-          $files = Get-ChildItem releases/${{ matrix.rid }} -Recurse -Include "*.exe","*.dll" -ErrorAction SilentlyContinue
-          foreach ($f in $files) {
-            & $signtool sign /f $pfxPath /p $env:WIN_SIGN_PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 $f.FullName
-          }
-          Remove-Item $pfxPath -Force
+          ./eng/Pack-Installer.ps1 -Runtime ${{ matrix.rid }} -Version ${{ steps.ver.outputs.version }} @extra
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4
@@ -181,12 +185,7 @@ jobs:
       - name: Resolve version
         id: ver
         shell: bash
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-          fi
+        run: echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: Download all installer artifacts
         uses: actions/download-artifact@v4
@@ -310,3 +309,103 @@ jobs:
               --releaseName "Vegha v${version}" \
               -o "$feed"
           done
+
+  # ============================================================
+  # Winget: regenerate the Vegha.Vegha manifests from the just-published
+  # x64/arm64 Setup.exe and upload them as an artifact. Submission to
+  # microsoft/winget-pkgs is left MANUAL (per project preference) — download the
+  # 'winget-manifests' artifact, eyeball it, then run `wingetcreate submit` (or
+  # open the PR) yourself.
+  # ============================================================
+  winget:
+    name: winget manifests
+    needs: publish
+    runs-on: windows-latest
+    steps:
+      - name: Generate winget manifests
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ver = '${{ inputs.version }}'
+          $base = "https://github.com/${{ github.repository }}/releases/download/v$ver"
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          # Update the existing Vegha.Vegha package to $ver from the two Setup.exe
+          # URLs (arch pinned so wingetcreate doesn't have to guess). No --submit:
+          # manifests are written to .\winget-out for manual review + submission.
+          ./wingetcreate.exe update Vegha.Vegha `
+            --version $ver `
+            --urls "$base/Vegha-win-x64-Setup.exe|x64" "$base/Vegha-win-arm64-Setup.exe|arm64" `
+            --out winget-out `
+            --token $env:GITHUB_TOKEN
+          Write-Host "::notice::To publish: wingetcreate submit .\winget-out --token <winget-pkgs PAT>"
+
+      - name: Upload winget manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: winget-manifests
+          path: winget-out/**
+          if-no-files-found: error
+
+  # ============================================================
+  # MSIX for the Microsoft Store, built in lockstep via the reusable msix.yml.
+  # Runs in parallel with package/publish; the store job consumes its artifact.
+  # ============================================================
+  msix:
+    name: build msix
+    uses: ./.github/workflows/msix.yml
+    with:
+      version: ${{ inputs.version }}
+    secrets: inherit
+
+  # ============================================================
+  # Publish the MSIX to the Microsoft Store via the msstore CLI. Live: requires
+  # the AZURE_AD_*, SELLER_ID and STORE_APP_ID secrets. Microsoft certifies the
+  # submission afterwards (minutes to ~a day) before it reaches Store users.
+  # NOTE: automated Store updates currently support FREE products only.
+  # ============================================================
+  store:
+    name: publish microsoft store
+    needs: msix
+    runs-on: windows-latest
+    env:
+      AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+      AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+      AZURE_AD_APPLICATION_SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
+      SELLER_ID: ${{ secrets.SELLER_ID }}
+      STORE_APP_ID: ${{ secrets.STORE_APP_ID }}
+    steps:
+      - name: Verify Store secrets are present
+        shell: pwsh
+        run: |
+          foreach ($k in 'AZURE_AD_TENANT_ID','AZURE_AD_APPLICATION_CLIENT_ID','AZURE_AD_APPLICATION_SECRET','SELLER_ID','STORE_APP_ID') {
+            if ([string]::IsNullOrEmpty((Get-Item "env:$k" -ErrorAction SilentlyContinue).Value)) {
+              throw "Missing required Store secret: $k. Add it in repo Settings -> Secrets and variables -> Actions."
+            }
+          }
+
+      - name: Download MSIX
+        uses: actions/download-artifact@v4
+        with:
+          name: vegha-msix
+          path: msix
+
+      - name: Configure Microsoft Store CLI
+        uses: microsoft/microsoft-store-apppublisher@v1.1
+
+      - name: Reconfigure store credentials
+        shell: pwsh
+        run: |
+          msstore reconfigure `
+            --tenantId $env:AZURE_AD_TENANT_ID `
+            --sellerId $env:SELLER_ID `
+            --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID `
+            --clientSecret $env:AZURE_AD_APPLICATION_SECRET
+
+      - name: Publish MSIX to Microsoft Store
+        shell: pwsh
+        run: |
+          $msix = Get-ChildItem msix/Vegha-*.msix | Select-Object -First 1
+          if (-not $msix) { throw "No MSIX found in artifact 'vegha-msix'." }
+          Write-Host "Publishing $($msix.Name) to Store product $env:STORE_APP_ID"
+          msstore publish "$($msix.FullName)" -id $env:STORE_APP_ID

@@ -1,23 +1,23 @@
-# Tags a release and triggers the cross-platform build/publish pipeline.
+# Prepares a release by bumping the version and opening a PR.
+#
+# Releasing itself is now a MANUAL action — this script does NOT trigger a
+# release. After the PR this opens is merged, go to the GitHub Actions tab ->
+# "Release" -> "Run workflow" and enter the same version. That single run:
+#   - builds every artifact the vegha.ai site links to (signed win x64/arm64,
+#     mac dmg, linux AppImage) and publishes the GitHub Release + Velopack feeds,
+#   - generates the winget (Vegha.Vegha) manifests as an artifact for manual
+#     submission,
+#   - builds the MSIX and submits it to the Microsoft Store.
+#
+# This script no longer creates or pushes a git tag: release.yml creates the
+# v<version> tag itself when it publishes the GitHub Release. Bumping
+# Directory.Build.props keeps the About dialog and dev builds in sync (the
+# release workflow passes the version explicitly, so artifacts are correct
+# regardless, but main should still reflect the released version).
 #
 # Examples:
-#   ./eng/Publish-Release.ps1 -Version 1.0.0
-#   ./eng/Publish-Release.ps1 -Version 1.0.1 -BuildLocal
-#
-# Default flow:
-#   1. Validate the version and that the git tree is clean.
-#   2. Bump <Version> in Directory.Build.props (the single source of truth —
-#      drives About dialog, Velopack pack version, AND MSIX Identity/@Version
-#      via Pack-Msix.ps1 which appends ".0" for the Store's revision rule).
-#   3. Commit, create annotated tag vX.Y.Z, and push --follow-tags.
-#   4. The pushed tag triggers BOTH .github/workflows/release.yml (Velopack
-#      installers for win/mac/linux, published as a GitHub Release) AND
-#      .github/workflows/msix.yml (unsigned MSIX uploaded as a workflow
-#      artifact for manual Partner Center submission). Same version everywhere.
-#
-# With -BuildLocal it ALSO builds the Windows installers on this machine and
-# uploads them to the release via `gh` — useful for a Windows-only hotfix or
-# when CI is unavailable. macOS and Linux installers can only be built in CI.
+#   ./eng/Publish-Release.ps1 -Version 1.2.3
+#   ./eng/Publish-Release.ps1 -Version 1.2.3 -SkipPush   # branch + commit only
 
 [CmdletBinding()]
 param(
@@ -25,7 +25,6 @@ param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string] $Version,
 
-    [switch] $BuildLocal,
     [switch] $SkipPush
 )
 
@@ -33,7 +32,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$tag = "v$Version"
+$branch = "release/v$Version"
 
 function Require-Command([string] $name) {
     if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
@@ -49,83 +48,51 @@ try {
     if (git status --porcelain) {
         throw "Working tree is not clean. Commit or stash changes before releasing."
     }
-    if (git tag --list $tag) {
-        throw "Tag $tag already exists."
-    }
 
-    # --- Bump version in Directory.Build.props ---------------------------
+    # --- Branch off the latest main --------------------------------------
+    & git fetch origin main
+    if ($LASTEXITCODE -ne 0) { throw "git fetch failed" }
+    & git switch -c $branch origin/main
+    if ($LASTEXITCODE -ne 0) { throw "Failed to create branch $branch (does it already exist?)." }
+
+    # --- Bump <Version> in Directory.Build.props -------------------------
     $propsPath = Join-Path $repoRoot 'Directory.Build.props'
     $props = Get-Content $propsPath -Raw
     $updated = [regex]::Replace($props, '<Version>.*?</Version>', "<Version>$Version</Version>")
-    if ($updated -ne $props) {
-        Set-Content -Path $propsPath -Value $updated -NoNewline
-        & git add Directory.Build.props
-        & git commit -m "Release $tag"
-        Write-Host "Bumped Directory.Build.props to $Version and committed." -ForegroundColor Green
+    if ($updated -eq $props) {
+        Write-Host "Directory.Build.props already at $Version — committing branch anyway for the PR." -ForegroundColor Yellow
     }
-    else {
-        Write-Host "Directory.Build.props already at $Version — no version commit needed."
-    }
-
-    # --- Tag -------------------------------------------------------------
-    & git tag -a $tag -m "Vegha $tag"
-    if ($LASTEXITCODE -ne 0) { throw "git tag failed" }
-    Write-Host "Created tag $tag." -ForegroundColor Green
+    Set-Content -Path $propsPath -Value $updated -NoNewline
+    & git add Directory.Build.props
+    & git commit -m "Release v$Version"
+    if ($LASTEXITCODE -ne 0) { throw "git commit failed (nothing to commit?)." }
+    Write-Host "Bumped Directory.Build.props to $Version on branch $branch." -ForegroundColor Green
 
     if ($SkipPush) {
-        Write-Host "-SkipPush set: nothing pushed. Push manually with:" -ForegroundColor Yellow
-        Write-Host "    git push --follow-tags" -ForegroundColor Yellow
+        Write-Host "-SkipPush set. Push + open a PR manually:" -ForegroundColor Yellow
+        Write-Host "    git push -u origin $branch" -ForegroundColor Yellow
+        return
+    }
+
+    # --- Push branch + open PR -------------------------------------------
+    & git push -u origin $branch
+    if ($LASTEXITCODE -ne 0) { throw "git push failed" }
+
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        $body = "Version bump for the v$Version release.`n`nAfter merge: **Actions -> Release -> Run workflow**, version ``$Version``."
+        & gh pr create --base main --head $branch --title "Release v$Version" --body $body
+        if ($LASTEXITCODE -ne 0) { throw "gh pr create failed" }
     }
     else {
-        & git push --follow-tags
-        if ($LASTEXITCODE -ne 0) { throw "git push failed" }
-        Write-Host "Pushed commit + tag — release.yml will build and publish the GitHub Release." -ForegroundColor Green
+        Write-Host "gh CLI not found — open the PR for '$branch' -> main manually." -ForegroundColor Yellow
     }
 }
 finally {
     Pop-Location
 }
 
-# --- Optional: build + upload the Windows installers locally -------------
-if ($BuildLocal) {
-    Require-Command gh
-
-    Write-Host ""
-    Write-Host "=== Building Windows installers locally ===" -ForegroundColor Cyan
-
-    $packScript = Join-Path $PSScriptRoot 'Pack-Installer.ps1'
-    $stage = Join-Path $repoRoot 'release-local'
-    Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Force -Path $stage | Out-Null
-
-    # rid -> stable asset name (must match the publish job in release.yml).
-    $map = [ordered]@{
-        'win-x64'   = 'Vegha-win-x64-Setup.exe'
-        'win-arm64' = 'Vegha-win-arm64-Setup.exe'
-    }
-
-    foreach ($rid in $map.Keys) {
-        & $packScript -Runtime $rid -Version $Version
-        if ($LASTEXITCODE -ne 0) { throw "Pack-Installer.ps1 failed for $rid" }
-
-        $setup = Get-ChildItem (Join-Path $repoRoot "releases/$rid") -Filter '*Setup.exe' |
-            Select-Object -First 1
-        if (-not $setup) { throw "No *Setup.exe produced for $rid" }
-        Copy-Item $setup.FullName (Join-Path $stage $map[$rid])
-    }
-
-    $assets = Get-ChildItem $stage | ForEach-Object { $_.FullName }
-
-    Write-Host "Uploading Windows installers to release $tag via gh..." -ForegroundColor Cyan
-    if (gh release view $tag 2>$null) {
-        & gh release upload $tag @assets --clobber
-    }
-    else {
-        & gh release create $tag @assets --title "Vegha $tag" --generate-notes
-    }
-    if ($LASTEXITCODE -ne 0) { throw "gh release upload/create failed" }
-    Write-Host "Windows installers attached to $tag." -ForegroundColor Green
-}
-
 Write-Host ""
-Write-Host "Release $tag initiated." -ForegroundColor Green
+Write-Host "Next steps:" -ForegroundColor Cyan
+Write-Host "  1. Review + merge the release PR." -ForegroundColor Cyan
+Write-Host "  2. Actions -> Release -> Run workflow -> version $Version." -ForegroundColor Cyan
+Write-Host "  3. After the run: download the 'winget-manifests' artifact and submit it to winget-pkgs." -ForegroundColor Cyan

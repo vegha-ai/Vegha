@@ -12,9 +12,15 @@ name: MSIX
 # Signing: the .msix is uploaded UNSIGNED as a workflow artifact. The
 # maintainer downloads it and uploads to Partner Center, which signs on ingest.
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  # Called by release.yml (workflow_call) so a single manual release builds the
+  # MSIX in lockstep, AND runnable standalone from the Actions tab. Never
+  # auto-fires on tags/pushes/PRs.
+  workflow_call:
+    inputs:
+      version:
+        description: 'MSIX version (e.g. 1.0.2 or 1.0.2.0). Leave blank to use Directory.Build.props.'
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       version:
@@ -42,12 +48,8 @@ jobs:
         id: ver
         shell: bash
         run: |
-          # Tag push -> strip leading "v". Manual dispatch -> use input or blank.
-          if [ "${{ github.event_name }}" = "push" ]; then
-            v="${GITHUB_REF#refs/tags/v}"
-          else
-            v="${{ github.event.inputs.version }}"
-          fi
+          # `inputs` is populated for BOTH workflow_call and workflow_dispatch.
+          v="${{ inputs.version }}"
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "Resolved MSIX version: '$v' (blank = Pack-Msix.ps1 reads Directory.Build.props)"
 

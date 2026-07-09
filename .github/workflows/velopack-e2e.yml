@@ -14,12 +14,9 @@ name: Velopack auto-update e2e
 # Windows-only here to limit CI minutes.
 
 on:
-  # No pull_request trigger: must not auto-run on PRs. Still runs on release
-  # tags (so every release gets an upgrade-path smoke) and on manual dispatch.
+  # Manual-only: never auto-runs (no PR, push, or tag trigger). Run it by hand
+  # from the Actions tab when an upgrade-path smoke test is wanted.
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*.*.*'
 
 jobs:
   e2e-update:
