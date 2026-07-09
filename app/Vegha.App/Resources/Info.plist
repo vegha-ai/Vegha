@@ -29,6 +29,12 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>0.1.9</string>
+	<!-- Export compliance: Vegha uses only standard, exempt encryption (OS-provided
+	     HTTPS/TLS for API requests) and no proprietary cryptography, so it does not
+	     use non-exempt encryption. Declaring this here auto-clears App Store Connect's
+	     "Missing Compliance" prompt on every build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
