@@ -62,10 +62,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET 10
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          # 10.0.x builds the app; 8.0.x runtime is required by Velopack's bundled
+          # signtool + Azure Trusted Signing dlib used in the pack step below.
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
       - name: Resolve version
         id: ver
@@ -123,38 +127,41 @@ jobs:
         run: |
           ./eng/pack-mac.sh --version ${{ steps.ver.outputs.version }} --skip-notarize
 
+      # ============================================================
+      # Windows + Linux packaging. On Windows, when the Azure Trusted Signing
+      # secrets are present, Velopack signs the app binaries AND Setup.exe during
+      # pack via its bundled signtool + dlib, authenticating with
+      # DefaultAzureCredential (the AZURE_* env vars below). This is what clears
+      # SmartScreen's "isn't commonly downloaded" warning. Absent secrets => the
+      # metadata isn't written and unsigned bits ship (step still succeeds).
+      # Linux never signs ($IsWindows is false on the ubuntu runner).
+      # ============================================================
       - name: Build Velopack installer (Windows + Linux)
         if: matrix.os != 'macos-14'
         shell: pwsh
-        run: |
-          ./eng/Pack-Installer.ps1 `
-            -Runtime ${{ matrix.rid }} `
-            -Version ${{ steps.ver.outputs.version }}
-
-      # ============================================================
-      # Windows: Authenticode-sign the published exe + Velopack setup.
-      # Only runs when the WIN_SIGN_PFX_BASE64 secret is set.
-      # ============================================================
-      - name: Authenticode sign (Windows)
-        if: matrix.os == 'windows-latest' && env.WIN_SIGN_PFX_BASE64 != ''
         env:
-          WIN_SIGN_PFX_BASE64: ${{ secrets.WIN_SIGN_PFX_BASE64 }}
-          WIN_SIGN_PFX_PASSWORD: ${{ secrets.WIN_SIGN_PFX_PASSWORD }}
-        shell: pwsh
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          TRUSTED_SIGNING_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          TRUSTED_SIGNING_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          TRUSTED_SIGNING_PROFILE: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
         run: |
-          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
-          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WIN_SIGN_PFX_BASE64))
-          $signtool = "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.22000.0\x64\signtool.exe"
-          if (-not (Test-Path $signtool)) {
-            $signtool = (Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe `
-              | Where-Object { $_.FullName -like "*\x64\signtool.exe" } `
-              | Select-Object -First 1).FullName
+          $extra = @{}
+          if ($IsWindows -and $env:AZURE_CLIENT_ID) {
+            # Velopack's signtool dlib chokes on a UTF-8 BOM — write metadata.json without one.
+            $meta = Join-Path $env:RUNNER_TEMP 'trusted-signing.json'
+            [ordered]@{
+              Endpoint               = $env:TRUSTED_SIGNING_ENDPOINT
+              CodeSigningAccountName = $env:TRUSTED_SIGNING_ACCOUNT
+              CertificateProfileName = $env:TRUSTED_SIGNING_PROFILE
+            } | ConvertTo-Json | Set-Content -Path $meta -Encoding utf8NoBOM
+            $extra['AzureTrustedSignFile'] = $meta
+            Write-Host "Azure Trusted Signing metadata written to $meta"
+          } else {
+            Write-Host "::warning::Azure Trusted Signing secrets absent or non-Windows — packing UNSIGNED."
           }
-          $files = Get-ChildItem releases/${{ matrix.rid }} -Recurse -Include "*.exe","*.dll" -ErrorAction SilentlyContinue
-          foreach ($f in $files) {
-            & $signtool sign /f $pfxPath /p $env:WIN_SIGN_PFX_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 $f.FullName
-          }
-          Remove-Item $pfxPath -Force
+          ./eng/Pack-Installer.ps1 -Runtime ${{ matrix.rid }} -Version ${{ steps.ver.outputs.version }} @extra
 
       - name: Upload installer artifacts
         uses: actions/upload-artifact@v4

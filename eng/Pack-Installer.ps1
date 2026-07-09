@@ -28,6 +28,13 @@ param(
     # ignored for osx-*/linux-*. Empty (default) = no signing.
     [string] $SignParams = '',
 
+    # Path to an Azure Trusted Signing (a.k.a. Artifact Signing) metadata.json.
+    # When set, forwarded to `vpk pack --azureTrustedSignFile` so Velopack signs
+    # the app binaries AND the generated Setup.exe with its bundled signtool +
+    # dlib, authenticating via DefaultAzureCredential (the AZURE_* env vars).
+    # Windows runtimes only; ignored for osx-*/linux-*.
+    [string] $AzureTrustedSignFile = '',
+
     [switch] $SkipRestore
 )
 
@@ -103,6 +110,13 @@ function Invoke-Pack([string] $rid) {
     }
     elseif ($SignParams) {
         Write-Host "Ignoring -SignParams for non-Windows runtime $rid."
+    }
+    if ($AzureTrustedSignFile -and $rid.StartsWith('win-')) {
+        Write-Host "Azure Trusted Signing enabled (vpk --azureTrustedSignFile $AzureTrustedSignFile)."
+        $packArgs += '--azureTrustedSignFile', $AzureTrustedSignFile
+    }
+    elseif ($AzureTrustedSignFile) {
+        Write-Host "Ignoring -AzureTrustedSignFile for non-Windows runtime $rid."
     }
 
     Write-Host "Running vpk pack..."
