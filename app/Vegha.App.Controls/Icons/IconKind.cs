@@ -54,6 +54,7 @@ public enum IconKind
     Copy,
     Trash,
     Play,
+    Pencil,
 
     // Theme
     Sun,

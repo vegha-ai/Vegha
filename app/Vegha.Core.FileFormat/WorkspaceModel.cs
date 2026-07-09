@@ -36,12 +36,19 @@ public static class WorkspaceModelLoader
         var envDir = Path.Combine(workspaceFolder, EnvironmentsFolder);
         if (Directory.Exists(envDir))
         {
+            // Restore literal secret values from the workspace's encrypted sidecar, the same
+            // way CollectionStore does for collection envs. Without this merge, an editor
+            // that strips secrets on write (EnvironmentSecretSplitter.StripForPersistence)
+            // would reload masked placeholders and the values would be lost.
+            var secretStore = new Persistence.EnvironmentSecretStore();
             foreach (var path in Directory.EnumerateFiles(envDir, "*" + CollectionJson.EnvironmentSuffix))
             {
                 try
                 {
                     var file = CollectionJson.DeserializeEnvironment(File.ReadAllText(path));
-                    if (file is not null) envs.Add(EnvironmentFile.ToDomain(file));
+                    if (file is not null)
+                        envs.Add(EnvironmentSecretSplitter.MergeFromStore(
+                            EnvironmentFile.ToDomain(file), workspaceFolder, secretStore));
                 }
                 catch { /* one malformed env shouldn't bring down the whole workspace */ }
             }

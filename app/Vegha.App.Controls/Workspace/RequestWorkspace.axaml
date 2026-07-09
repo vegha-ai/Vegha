@@ -109,11 +109,11 @@
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" Spacing="2">
                         <TextBlock Text="Params" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding Params.Count}"
+                        <TextBlock Text="{Binding ParamsCount}"
                                    FontSize="9" FontWeight="SemiBold"
                                    Foreground="{DynamicResource AccentBrush}"
                                    VerticalAlignment="Top" Margin="1,-1,0,0"
-                                   IsVisible="{Binding Params.Count}" />
+                                   IsVisible="{Binding ParamsCount}" />
                     </StackPanel>
                 </TabItem.Header>
                 <ws:KvEditor ItemsSource="{Binding Params}"
@@ -141,11 +141,11 @@
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" Spacing="2">
                         <TextBlock Text="Headers" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding Headers.Count}"
+                        <TextBlock Text="{Binding HeadersCount}"
                                    FontSize="9" FontWeight="SemiBold"
                                    Foreground="{DynamicResource AccentBrush}"
                                    VerticalAlignment="Top" Margin="1,-1,0,0"
-                                   IsVisible="{Binding Headers.Count}" />
+                                   IsVisible="{Binding HeadersCount}" />
                     </StackPanel>
                 </TabItem.Header>
                 <ws:KvEditor ItemsSource="{Binding Headers}"

@@ -40,6 +40,11 @@ public sealed partial class EnvironmentTabViewModel : RequestTabViewModel
         Method = "ENV";
         Kind = Vegha.Core.Domain.RequestKind.Http;  // tab type isn't a request kind; reuse Http for icon defaults
         Hydrate();
+        // Ghost-row UX: typing into the trailing blank row spawns the next one — no
+        // "+ Add variable" click needed. Hydrate seeds the initial ghost itself.
+        KvAutoAppend.Wire(Variables,
+            () => new EnvVarRow { Name = string.Empty, Value = string.Empty, IsEnabled = true },
+            r => r.IsBlank);
     }
 
     private void Hydrate()
@@ -56,6 +61,10 @@ public sealed partial class EnvironmentTabViewModel : RequestTabViewModel
                 IsEnabled = v.Enabled,
             });
         }
+        // Trailing ghost row — SaveAsync's empty-name filter keeps it out of the env file.
+        KvAutoAppend.EnsureTrailingBlank(Variables,
+            () => new EnvVarRow { Name = string.Empty, Value = string.Empty, IsEnabled = true },
+            r => r.IsBlank);
     }
 
     [RelayCommand]

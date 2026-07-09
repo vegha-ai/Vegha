@@ -92,6 +92,7 @@ public partial class WorkspacesViewModel : ObservableObject
                         new HashSet<string>(paths, StringComparer.OrdinalIgnoreCase);
                 foreach (var linked in w.LinkedCollections)
                     item.LinkedCollections.Add(linked);
+                item.OpenCollectionPaths.AddRange(w.OpenCollectionPaths.Take(MaxOpenCollections));
                 foreach (var (k, v) in w.ActiveEnvironmentByCollection)
                     item.ActiveEnvironmentByCollection[k] = v;
                 Workspaces.Add(item);
@@ -300,6 +301,9 @@ public partial class WorkspacesViewModel : ObservableObject
     {
         if (ActiveWorkspace is null) return;
         ActiveWorkspace.ActiveCollectionPath = e.NewCollectionPath;
+        // Activating a collection opens it (moves to front of the open set; the least-recent
+        // beyond the cap is evicted — i.e. auto-closed).
+        TouchOpenCollection(ActiveWorkspace, e.NewCollectionPath);
 
         if (!string.IsNullOrEmpty(e.NewCollectionPath)
             && ActiveWorkspace.ActiveEnvironmentByCollection.TryGetValue(e.NewCollectionPath, out var envName))
@@ -307,6 +311,55 @@ public partial class WorkspacesViewModel : ObservableObject
             var match = _collections.Environments.FirstOrDefault(env =>
                 string.Equals(env.Name, envName, StringComparison.OrdinalIgnoreCase));
             if (match is not null) _collections.ActiveEnvironment = match;
+        }
+
+        if (!_suspendPersist) Persist();
+    }
+
+    /// <summary>Max simultaneously-open collections per workspace. Opening a 6th evicts the
+    /// least-recently-used from the open set.</summary>
+    public const int MaxOpenCollections = 5;
+
+    /// <summary>Moves <paramref name="path"/> to the front of the workspace's open set
+    /// (de-duplicating), trimming to <see cref="MaxOpenCollections"/>. No-op for empty paths.</summary>
+    private static void TouchOpenCollection(WorkspaceItemViewModel ws, string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        ws.OpenCollectionPaths.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+        ws.OpenCollectionPaths.Insert(0, path);
+        if (ws.OpenCollectionPaths.Count > MaxOpenCollections)
+            ws.OpenCollectionPaths.RemoveRange(MaxOpenCollections,
+                ws.OpenCollectionPaths.Count - MaxOpenCollections);
+    }
+
+    /// <summary>Closes a collection: removes it from the workspace's open set WITHOUT
+    /// unlinking it (unlike <c>RemoveCollection</c>). The collection stays loaded and linked,
+    /// so it reappears in the picker's "All collections" section and reopens instantly. If the
+    /// closed collection was active, activates the next open one (or, if the open set empties,
+    /// the first available collection — which reopens it). Persists.</summary>
+    public void CloseCollection(string collectionPath)
+    {
+        var ws = ActiveWorkspace;
+        if (ws is null || string.IsNullOrEmpty(collectionPath)) return;
+
+        ws.OpenCollectionPaths.RemoveAll(p => string.Equals(p, collectionPath, StringComparison.OrdinalIgnoreCase));
+
+        var wasActive = string.Equals(_collections.ActiveCollection?.SourcePath, collectionPath,
+            StringComparison.OrdinalIgnoreCase);
+        if (wasActive)
+        {
+            // Prefer the next still-open collection (MRU order); fall back to any available
+            // collection (activating it re-opens it via OnActiveCollectionChanged).
+            CollectionRootViewModel? next = null;
+            foreach (var p in ws.OpenCollectionPaths)
+            {
+                next = _collections.AvailableCollections.FirstOrDefault(c =>
+                    string.Equals(c.SourcePath, p, StringComparison.OrdinalIgnoreCase));
+                if (next is not null) break;
+            }
+            next ??= _collections.AvailableCollections.FirstOrDefault(c =>
+                !string.Equals(c.SourcePath, collectionPath, StringComparison.OrdinalIgnoreCase));
+            _collections.ActiveCollection = next; // may be null when no collections remain
         }
 
         if (!_suspendPersist) Persist();
@@ -490,6 +543,32 @@ public partial class WorkspacesViewModel : ObservableObject
         ActiveWorkspace = item;
     }
 
+    /// <summary>Renames a workspace: writes the new name into <c>workspace.yml</c> (the folder
+    /// itself is left alone — identity is by manifest), updates the VM, and persists
+    /// <c>workspaces.json</c>. The persist is a direct <see cref="Persist"/> call — the old
+    /// MainWindow implementation "forced" it by re-assigning <c>ActiveWorkspace</c> to itself,
+    /// which the equality-checked setter turns into a no-op, so the registry kept the stale
+    /// name until some other action happened to persist.</summary>
+    public bool RenameWorkspace(WorkspaceItemViewModel ws, string newName)
+    {
+        newName = (newName ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(newName) || string.Equals(newName, ws.Name, StringComparison.Ordinal))
+            return false;
+        try
+        {
+            var manifest = WorkspaceManifestIO.Read(ws.FolderPath) ?? new WorkspaceManifest();
+            WorkspaceManifestIO.Write(ws.FolderPath, manifest with { Name = newName });
+            ws.Name = newName;
+            Persist();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Rename workspace failed for {Path}", ws.FolderPath);
+            return false;
+        }
+    }
+
     [RelayCommand]
     private void RemoveWorkspace(WorkspaceItemViewModel? ws)
     {
@@ -513,7 +592,7 @@ public partial class WorkspacesViewModel : ObservableObject
     {
         var state = new WorkspaceState
         {
-            SchemaVersion = 4,
+            SchemaVersion = 5,
             Workspaces = Workspaces.Select(w => new Workspace(w.Name, w.FolderPath)
             {
                 IsDefault = w.IsDefault,
@@ -525,6 +604,7 @@ public partial class WorkspacesViewModel : ObservableObject
                 ActiveEnvironmentByCollection = new Dictionary<string, string>(
                     w.ActiveEnvironmentByCollection, StringComparer.OrdinalIgnoreCase),
                 ActiveGlobalEnvironmentName = w.ActiveGlobalEnvironmentName,
+                OpenCollectionPaths = w.OpenCollectionPaths.ToList(),
             }).ToList(),
             ActiveIndex = ActiveWorkspace is null ? -1 : Workspaces.IndexOf(ActiveWorkspace),
         };
@@ -534,6 +614,51 @@ public partial class WorkspacesViewModel : ObservableObject
     private static string? ReadManifestName(string folder)
     {
         try { return WorkspaceManifestIO.Read(folder)?.Name; }
+        catch { return null; }
+    }
+
+    /// <summary>Enumerates the collections in <paramref name="ws"/> WITHOUT loading them —
+    /// the in-folder <c>collections/*</c> plus linked collections, dead paths pruned, display
+    /// name from <c>collection.bru</c>'s <c>meta.name</c> (fallback: folder name). Used by the
+    /// picker's "Other workspaces" section and the quick switcher to list collections in
+    /// workspaces that aren't the active one (so we can't rely on loaded <c>Roots</c>).</summary>
+    public IReadOnlyList<WorkspaceCollectionRef> EnumerateWorkspaceCollections(WorkspaceItemViewModel ws)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<WorkspaceCollectionRef>();
+
+        void TryAdd(string dir)
+        {
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+            string full;
+            try { full = Path.GetFullPath(dir); } catch { return; }
+            if (!seen.Add(full)) return;
+            result.Add(new WorkspaceCollectionRef(ws, full, TryReadCollectionName(full) ?? DeriveDisplayName(full)));
+        }
+
+        var collectionsRoot = Path.Combine(ws.FolderPath, "collections");
+        if (Directory.Exists(collectionsRoot))
+        {
+            try { foreach (var d in Directory.EnumerateDirectories(collectionsRoot)) TryAdd(d); }
+            catch { /* unreadable workspace folder — skip */ }
+        }
+        foreach (var linked in ws.LinkedCollections) TryAdd(linked);
+        return result;
+    }
+
+    /// <summary>Reads <c>collection.bru</c>'s <c>meta.name</c> for a collection folder without
+    /// parsing the whole tree. Returns null when the file is absent / unparseable / nameless.</summary>
+    private static string? TryReadCollectionName(string collectionDir)
+    {
+        try
+        {
+            var bru = Path.Combine(collectionDir, "collection.bru");
+            if (!File.Exists(bru)) return null;
+            var doc = Vegha.Core.Bru.Parser.BruParser.Parse(File.ReadAllText(bru));
+            var meta = doc.Blocks.OfType<Vegha.Core.Bru.Parser.DictBlock>().FirstOrDefault(b => b.Name == "meta");
+            var name = (meta?.Pairs.FirstOrDefault(p => p.Name == "name")?.Value as Vegha.Core.Bru.Parser.StringValue)?.Text;
+            return string.IsNullOrWhiteSpace(name) ? null : name;
+        }
         catch { return null; }
     }
 
@@ -577,6 +702,12 @@ public partial class WorkspaceItemViewModel : ObservableObject
     /// Restored on activation so the user lands back on the same collection.</summary>
     public string? ActiveCollectionPath { get; set; }
 
+    /// <summary>The workspace's currently-OPEN collections, newest-first, capped at
+    /// <see cref="WorkspacesViewModel.MaxOpenCollections"/>. Drives the picker's "Open
+    /// collections" section + the quick switcher. A collection joins on activation (moved to
+    /// front, LRU evicted past the cap) and leaves when closed via the picker ✕.</summary>
+    public List<string> OpenCollectionPaths { get; init; } = new();
+
     /// <summary>Per-collection memory of the active environment (collection root path → env name).</summary>
     public Dictionary<string, string> ActiveEnvironmentByCollection { get; init; } =
         new(StringComparer.OrdinalIgnoreCase);
@@ -610,3 +741,9 @@ public partial class WorkspaceItemViewModel : ObservableObject
         }
     }
 }
+
+/// <summary>A lightweight reference to a collection in a (possibly non-active) workspace —
+/// its owning workspace, on-disk path, and display name — resolved WITHOUT loading the
+/// collection tree. Used by the collection picker's "Other workspaces" section and the quick
+/// switcher.</summary>
+public sealed record WorkspaceCollectionRef(WorkspaceItemViewModel Workspace, string Path, string Name);

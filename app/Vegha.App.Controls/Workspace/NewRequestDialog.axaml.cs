@@ -29,6 +29,22 @@ public partial class NewRequestDialog : Window
         TypeSoap.IsCheckedChanged += (_, _) => SyncSections();
     }
 
+    /// <summary>Seeds the form from the owning collection's presets: pre-checks the request
+    /// type radio and pre-fills the URL. Applied before the dialog is shown so the user can
+    /// still override any field. No-op for empty presets.</summary>
+    public void ApplyPresets(string? requestType, string? baseUrl)
+    {
+        switch ((requestType ?? "http").ToLowerInvariant())
+        {
+            case "graphql":   TypeGraphQL.IsChecked = true; break;
+            case "grpc":      TypeGrpc.IsChecked = true; break;
+            case "websocket": TypeWebSocket.IsChecked = true; break;
+            default:          TypeHttp.IsChecked = true; break;
+        }
+        if (!string.IsNullOrEmpty(baseUrl)) UrlBox.Text = baseUrl;
+        SyncSections();
+    }
+
     private void SyncSections()
     {
         var isCurl = TypeFromCurl.IsChecked == true;

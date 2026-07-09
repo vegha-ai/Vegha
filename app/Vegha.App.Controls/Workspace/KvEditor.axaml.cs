@@ -182,5 +182,9 @@ public partial class KvEditor : UserControl
         list.Clear();
         foreach (var p in parsed)
             list.Add(new KvEntry(p.Name, p.Value, p.Enabled));
+        // Restore the trailing ghost row the Clear() wiped. The VM-side auto-append
+        // (KvAutoAppend) deliberately sits out Reset storms like this one, so the
+        // repopulating code owns the invariant here.
+        list.Add(new KvEntry());
     }
 }

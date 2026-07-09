@@ -62,6 +62,14 @@ public partial class AppTopBar : UserControl
             CollectionPickerFilterBox.Focus();
         }
         RebuildCollectionPickerList();
+        // Always open at the top — the ScrollViewer otherwise keeps the previous session's
+        // offset (e.g. scrolled to a collection deep in the list), so the flyout appeared
+        // "opened partway down." Post so the reset runs after the rebuilt content lays out.
+        global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (CollectionPickerScroller is not null)
+                CollectionPickerScroller.Offset = new global::Avalonia.Vector(0, 0);
+        }, global::Avalonia.Threading.DispatcherPriority.Loaded);
     }
 
     private CollectionsViewModel? _attachedCollections;
@@ -106,21 +114,45 @@ public partial class AppTopBar : UserControl
         CollectionPickerList.Children.Clear();
         if (DataContext is not MainWindowViewModel vm) return;
         var collections = vm.Collections;
+        var workspaces = vm.Workspaces;
 
         var filter = CollectionPickerFilterBox?.Text ?? string.Empty;
         if (CollectionPickerClearFilter is not null)
             CollectionPickerClearFilter.IsVisible = !string.IsNullOrEmpty(filter);
 
-        var any = false;
-        foreach (var c in collections.AvailableCollections)
+        // Everything here is scoped to the CURRENT workspace — AvailableCollections is already
+        // the active workspace's collections. The set is split into the "open" working set
+        // (capped, MRU) and the remaining collections in the workspace.
+        var openPaths = workspaces.ActiveWorkspace?.OpenCollectionPaths ?? new List<string>();
+        int OpenRank(CollectionRootViewModel c)
         {
-            if (!MatchesFilter(c.Name, filter)) continue;
-            any = true;
-            CollectionPickerList.Children.Add(
-                BuildCollectionPickerRow(c, isActive: ReferenceEquals(c, collections.ActiveCollection)));
+            var idx = openPaths.FindIndex(p => string.Equals(p, c.SourcePath, StringComparison.OrdinalIgnoreCase));
+            return idx < 0 ? int.MaxValue : idx;
+        }
+        bool IsOpen(CollectionRootViewModel c) =>
+            openPaths.Any(p => string.Equals(p, c.SourcePath, StringComparison.OrdinalIgnoreCase));
+
+        var matching = collections.AvailableCollections.Where(c => MatchesFilter(c.Name, filter)).ToList();
+        var open = matching.Where(IsOpen).OrderBy(OpenRank).ToList();     // MRU order
+        var others = matching.Where(c => !IsOpen(c)).ToList();            // remaining in this workspace
+
+        if (open.Count > 0)
+        {
+            CollectionPickerList.Children.Add(SectionHeader("OPEN COLLECTIONS"));
+            foreach (var c in open)
+                CollectionPickerList.Children.Add(BuildCollectionPickerRow(
+                    c, isActive: ReferenceEquals(c, collections.ActiveCollection), isOpen: true));
         }
 
-        if (!any)
+        if (others.Count > 0)
+        {
+            CollectionPickerList.Children.Add(SectionHeader(open.Count > 0 ? "OTHER COLLECTIONS" : "COLLECTIONS"));
+            foreach (var c in others)
+                CollectionPickerList.Children.Add(BuildCollectionPickerRow(
+                    c, isActive: ReferenceEquals(c, collections.ActiveCollection), isOpen: false));
+        }
+
+        if (open.Count == 0 && others.Count == 0)
         {
             CollectionPickerList.Children.Add(new TextBlock
             {
@@ -134,18 +166,30 @@ public partial class AppTopBar : UserControl
         }
     }
 
+    private TextBlock SectionHeader(string text) => new()
+    {
+        Text = text,
+        FontSize = 9,
+        FontWeight = FontWeight.SemiBold,
+        LetterSpacing = 1,
+        Foreground = ResolveBrush("Text2Brush", Brushes.Gray),
+        Margin = new Thickness(12, 8, 12, 4),
+    };
+
     private static bool MatchesFilter(string? name, string filter) =>
         string.IsNullOrEmpty(filter) ||
         (name is not null && name.Contains(filter, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Builds a single picker row: [✓ marker][name][...]. Clicking the row body
-    /// switches the active collection; the trailing "..." button and right-click open the
-    /// same per-row action menu (rename / reveal / settings / remove).</summary>
-    private Control BuildCollectionPickerRow(CollectionRootViewModel collection, bool isActive)
+    /// <summary>Builds a single picker row: [✓ marker][name][...][✕]. Clicking the row body
+    /// switches the active collection (opening it if it wasn't); the trailing "..." button and
+    /// right-click open the per-row action menu (rename / reveal / settings / remove). The ✕
+    /// (open rows only) CLOSES the collection — removes it from the open set but keeps it linked
+    /// to the workspace, so it reappears under "Other collections" and reopens instantly.</summary>
+    private Control BuildCollectionPickerRow(CollectionRootViewModel collection, bool isActive, bool isOpen)
     {
         var grid = new Grid
         {
-            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"),
         };
 
         var check = new TextBlock
@@ -199,9 +243,43 @@ public partial class AppTopBar : UserControl
         Grid.SetColumn(more, 2);
         grid.Children.Add(more);
 
+        // Trailing "✕" (open rows only) CLOSES the collection: removes it from the workspace's
+        // open set but keeps it linked (unlike the "…" menu's Remove, which unlinks). It stays
+        // loaded and reappears under "Other collections". Not shown for non-open rows.
+        if (isOpen)
+        {
+            var close = new Button
+            {
+                Content = new TextBlock { Text = "✕", FontSize = 11 },
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Foreground = ResolveBrush("Text3Brush", Brushes.Gray),
+                Width = 22,
+                Height = 24,
+                Padding = new Thickness(0),
+                Margin = new Thickness(2, 0, 0, 0),
+                Cursor = new global::Avalonia.Input.Cursor(global::Avalonia.Input.StandardCursorType.Hand),
+            };
+            ToolTip.SetTip(close, "Close collection (keeps it in the workspace)");
+            close.Click += (_, e) =>
+            {
+                e.Handled = true;
+                if (DataContext is MainWindowViewModel mvm)
+                    mvm.Workspaces.CloseCollection(collection.SourcePath);
+                RebuildCollectionPickerList();
+            };
+            Grid.SetColumn(close, 3);
+            grid.Children.Add(close);
+        }
+
         var rowButton = new Button { Content = grid };
         rowButton.Classes.Add("envPickerRow");
         rowButton.Padding = new Thickness(12, 6, 8, 6);
+        // Open rows carry a subtle accent-tinted background so the "open" group reads as
+        // distinct from the (untinted) "other collections" below it at a glance. The hover
+        // style paints over it, so hover feedback still works.
+        if (isOpen)
+            rowButton.Background = new SolidColorBrush(Color.Parse("#1F7C3AED")); // ~12% accent
         rowButton.Click += (_, _) =>
         {
             if (DataContext is MainWindowViewModel mvm)
@@ -224,7 +302,9 @@ public partial class AppTopBar : UserControl
         flyout.Items.Add(MenuItemFor("Reveal in File Explorer", () => InvokeRowReveal(collection)));
         flyout.Items.Add(MenuItemFor("Settings", () => InvokeRowSettings(collection)));
         flyout.Items.Add(new Separator());
-        flyout.Items.Add(MenuItemFor("Remove", () => InvokeRowRemove(collection)));
+        // "Remove from workspace" unlinks the collection (files stay on disk) — heavier than
+        // the row's ✕, which only closes it.
+        flyout.Items.Add(MenuItemFor("Remove from workspace", () => InvokeRowRemove(collection)));
         return flyout;
     }
 

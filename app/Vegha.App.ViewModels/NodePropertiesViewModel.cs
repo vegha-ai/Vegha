@@ -28,6 +28,7 @@ public partial class NodePropertiesViewModel : ObservableObject
     public ObservableCollection<KvEntry> Headers { get; } = new();
 
     [ObservableProperty] private string _preRequestScript = string.Empty;
+    [ObservableProperty] private string _postResponseScript = string.Empty;
     [ObservableProperty] private string _testsScript = string.Empty;
     [ObservableProperty] private string _docs = string.Empty;
 
@@ -40,6 +41,19 @@ public partial class NodePropertiesViewModel : ObservableObject
     [ObservableProperty] private string _authType = "none";
     [ObservableProperty] private string _authParametersText = string.Empty;
 
+    // ---- Presets (collection-only; new-request defaults) ----
+    public IReadOnlyList<string> AvailablePresetTypes { get; } = new[]
+    {
+        "http", "graphql", "grpc", "websocket"
+    };
+
+    /// <summary>Default request type for NEW requests created in this collection. Bruno's
+    /// "Presets → Request Type". Only meaningful for collections (folders ignore it).</summary>
+    [ObservableProperty] private string _presetRequestType = "http";
+
+    /// <summary>Base URL pre-filled into new requests. Bruno's "Presets → Base URL".</summary>
+    [ObservableProperty] private string _presetBaseUrl = string.Empty;
+
     public event EventHandler<NodePropertiesSaveEventArgs>? SaveRequested;
     public event EventHandler? CancelRequested;
 
@@ -49,9 +63,15 @@ public partial class NodePropertiesViewModel : ObservableObject
         SeedKv(Variables, collection.Variables);
         SeedKv(Headers, collection.Headers);
         PreRequestScript = collection.PreRequestScript ?? string.Empty;
+        PostResponseScript = collection.PostResponseScript ?? string.Empty;
         TestsScript = collection.TestsScript ?? string.Empty;
         Docs = collection.Docs ?? string.Empty;
         ApplyAuth(collection.Auth);
+        if (collection.Presets is { } presets)
+        {
+            PresetRequestType = string.IsNullOrEmpty(presets.RequestType) ? "http" : presets.RequestType;
+            PresetBaseUrl = presets.BaseUrl;
+        }
     }
 
     public NodePropertiesViewModel(Kind nodeKind, Folder folder) : this(nodeKind)
@@ -60,16 +80,27 @@ public partial class NodePropertiesViewModel : ObservableObject
         SeedKv(Variables, folder.Variables);
         SeedKv(Headers, folder.Headers);
         PreRequestScript = folder.PreRequestScript ?? string.Empty;
+        PostResponseScript = folder.PostResponseScript ?? string.Empty;
         TestsScript = folder.TestsScript ?? string.Empty;
         Docs = folder.Docs ?? string.Empty;
         ApplyAuth(folder.Auth);
     }
 
-    private NodePropertiesViewModel(Kind nodeKind) { NodeKind = nodeKind; }
+    private NodePropertiesViewModel(Kind nodeKind)
+    {
+        NodeKind = nodeKind;
+        // Ghost-row UX: typing into the trailing blank row spawns the next one — no
+        // "+ Add" click needed. BuildSnapshot's empty-name filter keeps ghosts out of
+        // the emitted .bru.
+        KvAutoAppend.Wire(Variables, () => new KvEntry(), r => r.IsBlank);
+        KvAutoAppend.Wire(Headers, () => new KvEntry(), r => r.IsBlank);
+    }
 
+    /// <summary>Copies domain pairs into rows and seeds the trailing ghost row.</summary>
     private static void SeedKv(ObservableCollection<KvEntry> sink, IList<KvPair> source)
     {
         foreach (var p in source) sink.Add(new KvEntry(p.Name, p.Value, p.Enabled));
+        KvAutoAppend.EnsureTrailingBlank(sink, () => new KvEntry(), r => r.IsBlank);
     }
 
     private void ApplyAuth(AuthConfig? auth)
@@ -122,15 +153,22 @@ public partial class NodePropertiesViewModel : ObservableObject
 
         if (NodeKind == Kind.Collection)
         {
+            var presets = new RequestPresets
+            {
+                RequestType = string.IsNullOrEmpty(PresetRequestType) ? "http" : PresetRequestType,
+                BaseUrl = PresetBaseUrl ?? string.Empty,
+            };
             var collection = new Collection
             {
                 Name = Name,
                 Headers = headerList,
                 Variables = varList,
                 PreRequestScript = string.IsNullOrEmpty(PreRequestScript) ? null : PreRequestScript,
+                PostResponseScript = string.IsNullOrEmpty(PostResponseScript) ? null : PostResponseScript,
                 TestsScript = string.IsNullOrEmpty(TestsScript) ? null : TestsScript,
                 Docs = string.IsNullOrEmpty(Docs) ? null : Docs,
                 Auth = auth,
+                Presets = presets.IsEmpty ? null : presets,
             };
             return new NodeSnapshot(NodeKind, collection, null);
         }
@@ -142,6 +180,7 @@ public partial class NodePropertiesViewModel : ObservableObject
                 Headers = headerList,
                 Variables = varList,
                 PreRequestScript = string.IsNullOrEmpty(PreRequestScript) ? null : PreRequestScript,
+                PostResponseScript = string.IsNullOrEmpty(PostResponseScript) ? null : PostResponseScript,
                 TestsScript = string.IsNullOrEmpty(TestsScript) ? null : TestsScript,
                 Docs = string.IsNullOrEmpty(Docs) ? null : Docs,
                 Auth = auth,

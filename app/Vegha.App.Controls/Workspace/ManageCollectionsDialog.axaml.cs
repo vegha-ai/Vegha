@@ -111,6 +111,36 @@ public partial class ManageCollectionsDialog : Window
         ApplyFilter();
     }
 
+    /// <summary>Delete… — permanently removes the collection folder from disk (unlike
+    /// Remove, which only detaches it). Lived in the retired workspace editor before;
+    /// this dialog is its new home.</summary>
+    private async void OnDelete_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_collections is null) return;
+        if (sender is not Button btn || btn.Tag is not CollectionRootViewModel root) return;
+
+        var confirm = new CloseWorkspaceDialog(workspaceName: root.Name, workspacePath: root.SourcePath)
+        {
+            Title = "Delete collection",
+        };
+        confirm.SetPromptForCollectionDelete();
+        var ok = await confirm.ShowDialog<bool>(this);
+        if (!ok) return;
+
+        try
+        {
+            if (System.IO.Directory.Exists(root.SourcePath))
+                System.IO.Directory.Delete(root.SourcePath, recursive: true);
+            _collections.RemoveCollectionCommand.Execute(root);
+            _collections.StatusMessage = $"Deleted “{root.Name}” from disk.";
+        }
+        catch (Exception ex)
+        {
+            _collections.StatusMessage = $"Delete failed: {ex.Message}";
+        }
+        ApplyFilter();
+    }
+
     /// <summary>Create… — same flow as the top-bar "+ Create collection" path: pop the
     /// create dialog, then LinkCollection so the new path persists in workspaces.json.</summary>
     private async void OnCreate_Click(object? sender, RoutedEventArgs e)

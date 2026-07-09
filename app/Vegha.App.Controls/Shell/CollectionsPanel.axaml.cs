@@ -138,6 +138,19 @@ public partial class CollectionsPanel : UserControl
         if (owner is null) return;
         await CollectionDialogActions.PromptAndRenameAsync(owner, vm, node);
     }
+
+    /// <summary>F2 on a selected tree row opens the same rename flow as the row's context
+    /// menu (requests, folders, and collection roots all share it). The synthetic
+    /// "+ New request" placeholder has no file to rename, so it's skipped.</summary>
+    private async void OnTreeKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.F2) return;
+        if (DataContext is not CollectionsViewModel vm) return;
+        if (CollectionsTree.SelectedItem is not CollectionNodeViewModel node) return;
+        if (node is NewRequestPlaceholderViewModel) return;
+        e.Handled = true;
+        await PromptAndRenameAsync(vm, node);
+    }
     private void OnHeaderReveal_Click(object? sender, RoutedEventArgs e) =>
         InvokeActive(vm => vm.RevealInFileExplorerCommand);
     private void OnHeaderSettings_Click(object? sender, RoutedEventArgs e) =>

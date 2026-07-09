@@ -438,8 +438,14 @@ public partial class RequestEditorViewModel : ObservableObject
     public bool DocsHasData => !string.IsNullOrWhiteSpace(Docs);
 
     /// <summary>Combined count of pre-request + post-response variables — drives the Vars
-    /// tab's single superscript count badge so the user sees one number at a glance.</summary>
-    public int VarsTotalCount => Variables.Count + PostResponseVariables.Count;
+    /// tab's single superscript count badge so the user sees one number at a glance.
+    /// Excludes the auto-appended trailing ghost rows (they're chrome, not data).</summary>
+    public int VarsTotalCount => Variables.Count(v => !v.IsBlank) + PostResponseVariables.Count(v => !v.IsBlank);
+
+    /// <summary>Non-blank row counts for the Params / Headers tab badges. Raw
+    /// <c>Params.Count</c> would always be ≥1 because of the trailing ghost row.</summary>
+    public int ParamsCount => Params.Count(p => !p.IsBlank);
+    public int HeadersCount => Headers.Count(h => !h.IsBlank);
 
     [ObservableProperty]
     private string _bodyType = "none";
@@ -1345,6 +1351,7 @@ public partial class RequestEditorViewModel : ObservableObject
             if (root.TryGetProperty("postResponseScript", out var pors)) PostResponseScript = pors.GetString() ?? string.Empty;
             if (root.TryGetProperty("tests", out var ts)) TestsScript = ts.GetString() ?? string.Empty;
             if (root.TryGetProperty("docs", out var d)) Docs = d.GetString() ?? string.Empty;
+            EnsureGhostRows();
             IsDirty = false;
             return true;
         }
@@ -1428,6 +1435,8 @@ public partial class RequestEditorViewModel : ObservableObject
         };
         PostResponseVariables.CollectionChanged += (_, _) =>
             OnPropertyChanged(nameof(VarsTotalCount));
+        Params.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ParamsCount));
+        Headers.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HeadersCount));
 
         // Keep the test-results summary (Tests (N), Passed: X, Failed: Y) in sync.
         TestResults.CollectionChanged += (_, _) =>
@@ -1452,6 +1461,37 @@ public partial class RequestEditorViewModel : ObservableObject
         WireDirtyTracking(MultipartItems);
         WireDirtyTracking(OAuth2TokenParameters);
         WireDirtyTracking(OAuth2RefreshParameters);
+
+        // Ghost-row UX (Bruno parity): every KV table keeps a blank placeholder row at its
+        // tail — typing into it spawns the next one, so there's no "+ Add row" step. Seeded
+        // here (before any load) so scratch tabs that never call LoadFromRequestItem still
+        // show the ghost; load paths re-ensure it inside their _loading guard. Multipart is
+        // excluded — its rows need an explicit text-vs-file choice up front. The _loading
+        // guard keeps the seed adds from tripping the dirty tracking wired just above.
+        _loading = true;
+        try { EnsureGhostRows(); }
+        finally { _loading = false; }
+        KvAutoAppend.Wire(Params, () => new KvEntry(), r => r.IsBlank, () => _loading);
+        KvAutoAppend.Wire(Headers, () => new KvEntry(), r => r.IsBlank, () => _loading);
+        KvAutoAppend.Wire(Variables, () => new KvEntry(), r => r.IsBlank, () => _loading);
+        KvAutoAppend.Wire(PostResponseVariables, () => new KvEntry(), r => r.IsBlank, () => _loading);
+        KvAutoAppend.Wire(FormUrlEncodedItems, () => new KvEntry(), r => r.IsBlank, () => _loading);
+        KvAutoAppend.Wire(OAuth2TokenParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank, () => _loading);
+        KvAutoAppend.Wire(OAuth2RefreshParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank, () => _loading);
+    }
+
+    /// <summary>Appends the trailing blank row to every auto-append KV table that lost it —
+    /// called at construction and from the load paths (inside <c>_loading</c>) so the
+    /// structural adds never count as user edits.</summary>
+    private void EnsureGhostRows()
+    {
+        KvAutoAppend.EnsureTrailingBlank(Params, () => new KvEntry(), r => r.IsBlank);
+        KvAutoAppend.EnsureTrailingBlank(Headers, () => new KvEntry(), r => r.IsBlank);
+        KvAutoAppend.EnsureTrailingBlank(Variables, () => new KvEntry(), r => r.IsBlank);
+        KvAutoAppend.EnsureTrailingBlank(PostResponseVariables, () => new KvEntry(), r => r.IsBlank);
+        KvAutoAppend.EnsureTrailingBlank(FormUrlEncodedItems, () => new KvEntry(), r => r.IsBlank);
+        KvAutoAppend.EnsureTrailingBlank(OAuth2TokenParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank);
+        KvAutoAppend.EnsureTrailingBlank(OAuth2RefreshParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank);
     }
 
     /// <summary>Routes both collection-level (add/remove/clear) and item-level
@@ -1480,6 +1520,14 @@ public partial class RequestEditorViewModel : ObservableObject
     private void OnRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (!_loading) IsDirty = true;
+        // A row flipping between blank and non-blank changes the ghost-row-aware tab badges
+        // even when the collection itself didn't change (e.g. the user cleared a cell).
+        if (e.PropertyName == nameof(KvEntry.IsBlank))
+        {
+            OnPropertyChanged(nameof(ParamsCount));
+            OnPropertyChanged(nameof(HeadersCount));
+            OnPropertyChanged(nameof(VarsTotalCount));
+        }
     }
 
     /// <summary>Posts the GraphQL introspection query to the current URL and renders a
@@ -2688,6 +2736,10 @@ public partial class RequestEditorViewModel : ObservableObject
             SoapWsaMessageId         = soap?.Addressing?.MessageId ?? string.Empty;
             SoapWsaAutoMessageId     = soap?.Addressing?.AutoMessageId ?? true;
 
+            // Trailing ghost rows come back after the Clear+repopulate above. Still inside
+            // _loading so the adds don't mark the freshly-loaded request dirty.
+            EnsureGhostRows();
+
             _loadedItem = item;
             SourcePath = sourcePath;
             IsDirty = false;
@@ -2710,10 +2762,12 @@ public partial class RequestEditorViewModel : ObservableObject
         {
             Method = Method,
             Url = Url,
-            Headers = Headers.Select(h => new KvPair(h.Name, h.Value, h.Enabled)).ToList(),
-            Params = Params.Select(p => new KvPair(p.Name, p.Value, p.Enabled)).ToList(),
-            PreRequestVars = Variables.Select(v => new KvPair(v.Name, v.Value, v.Enabled)).ToList(),
-            PostResponseVars = PostResponseVariables.Select(v => new KvPair(v.Name, v.Value, v.Enabled)).ToList(),
+            // IsBlank filters drop the auto-appended ghost row (and any manually blanked
+            // rows) so placeholder chrome never reaches the .bru on disk.
+            Headers = Headers.Where(h => !h.IsBlank).Select(h => new KvPair(h.Name, h.Value, h.Enabled)).ToList(),
+            Params = Params.Where(p => !p.IsBlank).Select(p => new KvPair(p.Name, p.Value, p.Enabled)).ToList(),
+            PreRequestVars = Variables.Where(v => !v.IsBlank).Select(v => new KvPair(v.Name, v.Value, v.Enabled)).ToList(),
+            PostResponseVars = PostResponseVariables.Where(v => !v.IsBlank).Select(v => new KvPair(v.Name, v.Value, v.Enabled)).ToList(),
             Body = new BodyConfig
             {
                 Mode = BodyType switch
@@ -2729,7 +2783,7 @@ public partial class RequestEditorViewModel : ObservableObject
                     _                 => BodyMode.None,
                 },
                 Content          = string.IsNullOrEmpty(BodyContent) ? null : BodyContent,
-                FormData         = FormUrlEncodedItems.Select(f => new KvPair(f.Name, f.Value, f.IsActive)).ToList(),
+                FormData         = FormUrlEncodedItems.Where(f => !f.IsBlank).Select(f => new KvPair(f.Name, f.Value, f.IsActive)).ToList(),
                 MultipartItems   = MultipartItems.Select(m => new MultipartFormItem
                                    {
                                        Name = m.Name, Value = m.Value, Kind = m.Kind,
@@ -2974,7 +3028,9 @@ public partial class RequestEditorViewModel : ObservableObject
     /// without surprise. Used by both Token and Refresh sections (same shape).</summary>
     internal static string SerializeAdditionalParams(IEnumerable<OAuth2AdditionalParameter> rows)
     {
-        var list = rows.Select(r => new { key = r.Key, value = r.Value, sendIn = r.SendIn, enabled = r.IsActive });
+        // Ghost (blank) rows are UI chrome — never persist them.
+        var list = rows.Where(r => !r.IsBlank)
+                       .Select(r => new { key = r.Key, value = r.Value, sendIn = r.SendIn, enabled = r.IsActive });
         return System.Text.Json.JsonSerializer.Serialize(list);
     }
 
@@ -3532,10 +3588,20 @@ public sealed record TimelinePhase(string Name, double DurationMs, double WidthR
 /// </summary>
 public partial class OAuth2AdditionalParameter : ObservableObject
 {
-    [ObservableProperty] private string _key = string.Empty;
-    [ObservableProperty] private string _value = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBlank))]
+    private string _key = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBlank))]
+    private string _value = string.Empty;
+
     [ObservableProperty] private string _sendIn = "body";
     [ObservableProperty] private bool _isActive = true;
+
+    /// <summary>True for the auto-appended placeholder row (both cells empty) — see
+    /// <see cref="KvEntry.IsBlank"/>.</summary>
+    public bool IsBlank => string.IsNullOrEmpty(Key) && string.IsNullOrEmpty(Value);
 }
 
 /// <summary>

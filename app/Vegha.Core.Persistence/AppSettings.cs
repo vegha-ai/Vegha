@@ -52,10 +52,11 @@ public sealed record AppSettings(
     bool CacheSslSessions = true,
 
     // ─── Request defaults ───
-    /// <summary>Persist response bodies (and request blobs used by Replay) into the history
-    /// store. Default false for compliance posture. When off, history rows are still recorded
-    /// (method/url/status/duration/timestamp) so the activity list works; only payloads are
-    /// suppressed. Toggling off does not delete already-stored history.</summary>
+    /// <summary>Persist response bodies into the history store. Default false for compliance
+    /// posture. When off, history rows are still recorded in full — method/url/status/duration/
+    /// timestamp AND the request snapshot used by Replay (the user's own request, already
+    /// persisted by the session-tab store); only the response payload is suppressed. Toggling
+    /// off does not delete already-stored history.</summary>
     bool SaveResponsesToHistory = false,
     /// <summary>Truncate response previews (and history-store body persistence) larger than this.</summary>
     int MaxBodySizeMb = 50,

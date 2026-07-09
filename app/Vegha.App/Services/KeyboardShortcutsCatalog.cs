@@ -21,6 +21,8 @@ public static class KeyboardShortcutsCatalog
 
         ("Edit",    "Save request",        "Ctrl+S"),
         ("Edit",    "Find request",        "Ctrl+K"),
+        ("Edit",    "Rename",              "F2"),
+        ("Edit",    "Switch collection",   "Ctrl+E"),
 
         ("View",    "Zoom in",             "Ctrl+="),
         ("View",    "Zoom out",            "Ctrl+-"),

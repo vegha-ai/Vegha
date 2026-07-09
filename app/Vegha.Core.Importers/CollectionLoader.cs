@@ -44,6 +44,7 @@ public static class CollectionLoader
             PostResponseScript = collectionMeta?.PostResponseScript,
             TestsScript = collectionMeta?.TestsScript,
             Docs = collectionMeta?.Docs,
+            Presets = collectionMeta?.Presets,
         };
     }
 
@@ -180,8 +181,26 @@ public static class CollectionLoader
         var tests = ReadTextBlock(doc, "tests");
         var docsText = ReadTextBlock(doc, "docs");
         var auth = ReadAuthBlock(doc);
+        var presets = ReadPresetsBlock(doc);
 
-        return new NodeMeta(name, auth, headers, vars, preRequest, postResponse, tests, docsText);
+        return new NodeMeta(name, auth, headers, vars, preRequest, postResponse, tests, docsText, presets);
+    }
+
+    /// <summary>Reads the <c>presets { type: …, url: … }</c> block (collection-level defaults
+    /// for new requests). Returns null when absent or empty. Only <c>collection.bru</c>
+    /// carries this; folders never do.</summary>
+    private static RequestPresets? ReadPresetsBlock(BruDocument doc)
+    {
+        var block = doc.Blocks.OfType<DictBlock>().FirstOrDefault(b => b.Name == "presets");
+        if (block is null) return null;
+        var type = (block.Pairs.FirstOrDefault(p => p.Name == "type")?.Value as StringValue)?.Text;
+        var url = (block.Pairs.FirstOrDefault(p => p.Name == "url")?.Value as StringValue)?.Text;
+        var presets = new RequestPresets
+        {
+            RequestType = string.IsNullOrEmpty(type) ? "http" : type,
+            BaseUrl = url ?? string.Empty,
+        };
+        return presets.IsEmpty ? null : presets;
     }
 
     private static List<KvPair> ReadKvBlock(BruDocument doc, string blockName)
@@ -248,5 +267,6 @@ public static class CollectionLoader
         string? PreRequestScript,
         string? PostResponseScript,
         string? TestsScript,
-        string? Docs);
+        string? Docs,
+        RequestPresets? Presets);
 }

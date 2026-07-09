@@ -264,8 +264,12 @@
                                     <DataTemplate DataType="tabs:CollectionRunTabViewModel">
                                         <ws:CollectionRunTab />
                                     </DataTemplate>
-                                    <!-- Workspace editor used to live here as a tab template;
-                                         it's now a modal dialog (WorkspaceEditorDialog). -->
+                                    <DataTemplate DataType="tabs:CollectionSettingsTabViewModel">
+                                        <ws:CollectionSettingsTab />
+                                    </DataTemplate>
+                                    <!-- (The workspace editor tab/dialog was retired; workspaces
+                                         rename inline in Manage Workspaces, global envs have their
+                                         own dialog.) -->
                                 </ContentControl.DataTemplates>
                             </ContentControl>
                         </Panel>

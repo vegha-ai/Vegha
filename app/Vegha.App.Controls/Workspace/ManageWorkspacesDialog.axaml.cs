@@ -66,20 +66,17 @@ public partial class ManageWorkspacesDialog : Window
             _vm.RemoveWorkspaceCommand.Execute(item);
     }
 
-    /// <summary>Raised when the user clicks "Edit" on a workspace row. The host
-    /// (MainWindow) opens a WorkspaceEditor tab for the picked workspace — the dialog
-    /// itself doesn't reach into <c>OpenTabsViewModel</c> to avoid a circular reference.</summary>
-    public event EventHandler<WorkspaceItemViewModel>? EditRequested;
-
-    private void OnEdit_Click(object? sender, RoutedEventArgs e)
+    /// <summary>Renames the row's workspace in place — no activation side effect (the old
+    /// "Edit" action activated the workspace before opening the retired workspace editor,
+    /// which surprised users who only wanted to change a name).</summary>
+    private async void OnRename_Click(object? sender, RoutedEventArgs e)
     {
         if (_vm is null) return;
         if (sender is not Button btn || btn.Tag is not WorkspaceItemViewModel item) return;
-        // Activate (so the editor shows the current workspace's state) then fire the
-        // EditRequested event. Close the dialog so the user lands on the new tab.
-        _vm.ActiveWorkspace = item;
-        EditRequested?.Invoke(this, item);
-        Close();
+        var dlg = new RenameDialog("Rename workspace", "Workspace name", item.Name);
+        var ok = await dlg.ShowDialog<bool>(this);
+        if (!ok || string.IsNullOrWhiteSpace(dlg.ResultName)) return;
+        _vm.RenameWorkspace(item, dlg.ResultName);
     }
 
     private void OnClose_Click(object? sender, RoutedEventArgs e) => Close();

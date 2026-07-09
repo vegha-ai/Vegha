@@ -1,0 +1,47 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Vegha.App.ViewModels"
+        xmlns:shell="using:Vegha.App.Controls.Shell"
+        x:Class="Vegha.App.Controls.Workspace.ManageGlobalEnvironmentsDialog"
+        x:DataType="vm:EnvironmentsViewModel"
+        Title="Global Environments"
+        Width="980" Height="620"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner">
+    <DockPanel>
+        <!-- Header — names the scope so this dialog can't be confused with the sidebar's
+             collection-scoped Environments panel. -->
+        <Border DockPanel.Dock="Top"
+                Padding="14,10"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <StackPanel Spacing="2">
+                <TextBlock Text="GLOBAL ENVIRONMENTS"
+                           Classes="sectionHeaderMinor" />
+                <TextBlock Text="Shared across every collection in this workspace. The active collection's environments (edited from the sidebar) override same-named variables."
+                           FontSize="11"
+                           Foreground="{DynamicResource Text2Brush}"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!-- Footer -->
+        <Border DockPanel.Dock="Bottom"
+                Padding="14,10"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,1,0,0">
+            <Button Content="Close" Click="OnClose_Click"
+                    HorizontalAlignment="Right"
+                    Background="{DynamicResource Bg3Brush}"
+                    Foreground="{DynamicResource Text0Brush}"
+                    Padding="14,6" />
+        </Border>
+
+        <!-- The full env manager UserControl — same view the sidebar uses, feature parity
+             for free (create / F2 + context-menu rename / duplicate / delete / color /
+             import / export / secret binding / ghost rows). Scope comes from the
+             global-scoped EnvironmentsViewModel set as this window's DataContext. -->
+        <shell:EnvironmentsPanel />
+    </DockPanel>
+</Window>

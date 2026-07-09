@@ -60,10 +60,14 @@ public partial class MarkdownView : UserControl
             return;
         }
         var doc = Markdig.Markdown.Parse(src, s_pipeline);
-        foreach (var block in doc) body.Children.Add(RenderBlock(block));
+        foreach (var block in doc)
+        {
+            var rendered = RenderBlock(block);
+            if (rendered is not null) body.Children.Add(rendered);
+        }
     }
 
-    private Control RenderBlock(Block block) => block switch
+    private Control? RenderBlock(Block block) => block switch
     {
         HeadingBlock heading => MakeHeading(heading),
         ParagraphBlock para => MakeInlineBlock(para.Inline, fontSize: 12),
@@ -77,7 +81,10 @@ public partial class MarkdownView : UserControl
             Background = TryBrush("Border0Brush"),
             Margin = new Thickness(0, 6, 0, 6),
         },
-        _ => new TextBlock { Text = block.ToString() ?? string.Empty, FontSize = 11 },
+        // Invisible metadata blocks (e.g. LinkReferenceDefinitionGroup — the collected
+        // [id]: url link definitions) produce no output; the old default rendered their
+        // ToString() type name into the preview. Skip any unhandled block silently.
+        _ => null,
     };
 
     private Control MakeHeading(HeadingBlock heading)
@@ -168,7 +175,8 @@ public partial class MarkdownView : UserControl
     private Control MakeQuoteBlock(QuoteBlock quote)
     {
         var inner = new StackPanel { Spacing = 4 };
-        foreach (var b in quote) inner.Children.Add(RenderBlock(b));
+        foreach (var b in quote)
+            if (RenderBlock(b) is { } c) inner.Children.Add(c);
         return new Border
         {
             BorderBrush = TryBrush("Border1Brush"),
@@ -195,7 +203,8 @@ public partial class MarkdownView : UserControl
                 MinWidth = 16,
             });
             var inner = new StackPanel();
-            foreach (var b in li) inner.Children.Add(RenderBlock(b));
+            foreach (var b in li)
+                if (RenderBlock(b) is { } c) inner.Children.Add(c);
             row.Children.Add(inner);
             panel.Children.Add(row);
             index++;

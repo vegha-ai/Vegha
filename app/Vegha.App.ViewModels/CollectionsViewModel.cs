@@ -393,6 +393,30 @@ public partial class CollectionsViewModel : ObservableObject
         if (ActiveEnvironment is null) ActiveEnvironment = environment;
     }
 
+    /// <summary>Registers a NEW workspace-level (global) environment across every list that
+    /// tracks it: the <see cref="WorkspaceEnvironments"/> source-of-truth (so the next
+    /// <see cref="RebuildEnvironments"/> — e.g. on a collection switch — doesn't drop it),
+    /// the <see cref="GlobalEnvironments"/> observable, and the back-compat union.</summary>
+    public void AddWorkspaceEnvironment(DomainEnv env)
+    {
+        var copy = WorkspaceEnvironments.ToList();
+        copy.Add(env);
+        WorkspaceEnvironments = copy;
+        GlobalEnvironments.Add(env);
+        if (!Environments.Contains(env)) Environments.Add(env);
+    }
+
+    /// <summary>Removes a workspace-level (global) environment from every tracking list and
+    /// clears <see cref="ActiveGlobalEnvironment"/> when it pointed at it.</summary>
+    public void RemoveWorkspaceEnvironment(DomainEnv env)
+    {
+        var copy = WorkspaceEnvironments.Where(e => !SameEnv(e, env)).ToList();
+        WorkspaceEnvironments = copy;
+        GlobalEnvironments.Remove(env);
+        Environments.Remove(env);
+        if (SameEnv(ActiveGlobalEnvironment, env)) ActiveGlobalEnvironment = null;
+    }
+
     /// <summary>Swaps an environment instance for a replacement (e.g. after a rename or color
     /// change) across every list the UI binds against: <see cref="CollectionEnvironments"/>,
     /// <see cref="GlobalEnvironments"/>, the back-compat union <see cref="Environments"/>,
@@ -1123,6 +1147,11 @@ public partial class CollectionsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Raised after a request FILE is renamed on disk (tree rename). The host uses it
+    /// to re-key any open tab bound to the old path so the tab title / save target follow the
+    /// file instead of pointing at a deleted path.</summary>
+    public event EventHandler<RequestFileRenamedEventArgs>? RequestFileRenamed;
+
     [RelayCommand]
     private async Task RenameNodeAsync(CollectionNodeViewModel? node)
     {
@@ -1141,12 +1170,26 @@ public partial class CollectionsViewModel : ObservableObject
             {
                 var ext = System.IO.Path.GetExtension(path);
                 var dest = System.IO.Path.Combine(dir, Sanitize(node.Name) + ext);
-                if (!string.Equals(path, dest, StringComparison.OrdinalIgnoreCase))
+                var moved = !string.Equals(path, dest, StringComparison.OrdinalIgnoreCase);
+                if (moved)
                 {
+                    if (File.Exists(dest))
+                    {
+                        StatusMessage = $"A request named “{node.Name}” already exists here.";
+                        ReloadParentRoot(node); // snap the edited label back to the on-disk name
+                        return;
+                    }
                     File.Move(path, dest);
-                    StatusMessage = $"Renamed to “{node.Name}”.";
-                    ReloadParentRoot(node);
                 }
+                // CollectionLoader prefers the .bru's inner meta.name over the file name, so a
+                // rename must patch the meta block too — otherwise the reload below re-parses
+                // the file and the tree label snaps back to the old name. (Folder renames
+                // already do this via UpdateFolderBruMetaName; clone via TryRewriteBruMetaName.)
+                if (string.Equals(ext, ".bru", StringComparison.OrdinalIgnoreCase))
+                    TryRewriteBruMetaName(dest, node.Name);
+                RequestFileRenamed?.Invoke(this, new RequestFileRenamedEventArgs(path, dest, node.Name));
+                StatusMessage = $"Renamed to “{node.Name}”.";
+                ReloadParentRoot(node);
             }
             else if (Directory.Exists(path))
             {
@@ -1683,17 +1726,51 @@ public partial class CollectionsViewModel : ObservableObject
     public (Folder?, string?) GetFolderForSettings(CollectionFolderViewModel? folder) =>
         (folder?.Folder, folder is null ? null : FindRootOf(folder)?.SourcePath);
 
-    /// <summary>Raised when the user picks Properties on a collection or folder. The host
-    /// (CollectionsPanel) listens, opens the dialog, and on save calls
-    /// <see cref="ApplyNodeSnapshot"/> to write back to disk + reload.</summary>
+    /// <summary>Raised when the user picks Properties on a FOLDER. The host (CollectionsPanel)
+    /// listens, opens the dialog, and on save calls <see cref="ApplyNodeSnapshot"/> to write
+    /// back to disk + reload. Collection-level settings no longer use this — they open a tab
+    /// via <see cref="CollectionSettingsTabRequested"/> so the main window shows the selected
+    /// collection's own info (design ethos), leaving dialogs for parent-scope editing.</summary>
     public event EventHandler<NodePropertiesRequest>? NodePropertiesRequested;
+
+    /// <summary>Raised when the user opens collection-level Settings. The host opens a
+    /// Collection Settings workspace tab for the given root (Bruno-style Overview + Headers /
+    /// Vars / Auth / Script / Tests / Docs / Presets).</summary>
+    public event EventHandler<CollectionRootViewModel>? CollectionSettingsTabRequested;
 
     [RelayCommand]
     private void OpenCollectionSettings(CollectionRootViewModel? root)
     {
         if (root?.Collection is null) { StatusMessage = "No collection selected."; return; }
-        NodePropertiesRequested?.Invoke(this,
-            new NodePropertiesRequest(root, null));
+        CollectionSettingsTabRequested?.Invoke(this, root);
+    }
+
+    /// <summary>Writes edited collection settings back to <c>collection.bru</c> and reloads
+    /// the root — resolving it by <paramref name="sourcePath"/> rather than a captured
+    /// reference, because a prior reload swaps the <see cref="CollectionRootViewModel"/>
+    /// instance and any held reference goes stale. Returns the freshly-reloaded root so the
+    /// caller can rehydrate its editor from current-on-disk state.</summary>
+    public CollectionRootViewModel? ApplyCollectionSettings(string sourcePath, NodeSnapshot snapshot)
+    {
+        if (snapshot.Kind != NodePropertiesViewModel.Kind.Collection || snapshot.Collection is null)
+            return null;
+        var root = FindRootForDirectory(sourcePath);
+        if (root is null) { StatusMessage = "Collection is no longer open."; return null; }
+        try
+        {
+            var path = System.IO.Path.Combine(root.SourcePath, "collection.bru");
+            var text = Vegha.Core.Importers.BruMetaEmitter.EmitCollection(snapshot.Collection);
+            File.WriteAllText(path, text);
+            ReloadRootContaining(root);
+            StatusMessage = $"Saved collection settings → {root.Name}.";
+            return FindRootForDirectory(sourcePath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Save collection settings failed");
+            StatusMessage = $"Save failed: {ex.Message}";
+            return null;
+        }
     }
 
     [RelayCommand]
@@ -2353,6 +2430,10 @@ public partial class CollectionsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Total request count across the collection tree (requests + all nested
+    /// folders). Public so the Collection Settings tab's Overview can show it.</summary>
+    public static int CountRequestsPublic(Collection c) => CountRequests(c);
+
     private static int CountRequests(Collection c)
     {
         int total = c.Requests.Count;
@@ -2541,3 +2622,7 @@ public enum NewRequestKind { Http, GraphQL, WebSocket, Grpc, Soap, FromCurl }
 
 /// <summary>Payload for <see cref="CollectionsViewModel.ActiveCollectionChanged"/>.</summary>
 public sealed record ActiveCollectionChangedEventArgs(string? OldCollectionPath, string? NewCollectionPath);
+
+/// <summary>Payload for <see cref="CollectionsViewModel.RequestFileRenamed"/> — a tree rename
+/// moved a request file from <paramref name="OldPath"/> to <paramref name="NewPath"/>.</summary>
+public sealed record RequestFileRenamedEventArgs(string OldPath, string NewPath, string NewName);

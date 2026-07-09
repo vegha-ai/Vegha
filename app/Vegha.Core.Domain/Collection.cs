@@ -24,6 +24,26 @@ public sealed record Collection
     public string? TestsScript { get; init; }
     /// <summary>Markdown docs displayed at the collection level.</summary>
     public string? Docs { get; init; }
+    /// <summary>Defaults applied when creating a NEW request in this collection (request type
+    /// + base URL). Bruno's "Presets" collection setting. Null when no presets are configured —
+    /// new requests fall back to HTTP / empty URL. Persisted as the <c>presets { }</c> block
+    /// in <c>collection.bru</c>.</summary>
+    public RequestPresets? Presets { get; init; }
+}
+
+/// <summary>Per-collection defaults for new requests (Bruno's "Presets" settings tab).
+/// <see cref="RequestType"/> is one of "http" / "graphql" / "grpc" / "websocket" — the same
+/// tokens the New Request dialog uses. <see cref="BaseUrl"/> pre-fills the URL field.</summary>
+public sealed record RequestPresets
+{
+    public string RequestType { get; init; } = "http";
+    public string BaseUrl { get; init; } = string.Empty;
+
+    /// <summary>True when neither a non-default type nor a URL is set — such presets are
+    /// equivalent to "no presets" and don't need to be emitted.</summary>
+    public bool IsEmpty =>
+        (string.IsNullOrEmpty(RequestType) || RequestType == "http")
+        && string.IsNullOrEmpty(BaseUrl);
 }
 
 /// <summary>A named set of variables (e.g. "Local", "Prod") loaded from <c>environments/*.bru</c>.</summary>

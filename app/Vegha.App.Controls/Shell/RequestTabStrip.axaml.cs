@@ -63,20 +63,29 @@ public partial class RequestTabStrip : UserControl
 
     private void OnTabsScrollChanged(object? sender, ScrollChangedEventArgs e) => UpdateScrollArrows();
 
-    /// <summary>Enable / disable the left + right arrow buttons based on whether there's
-    /// content beyond the viewport in that direction. Both arrows stay rendered (so the strip
-    /// layout doesn't jitter when overflow appears) but go semi-transparent + disabled when
-    /// they have nothing to do.</summary>
+    /// <summary>Shows the left + right arrow buttons only while the strip actually overflows
+    /// its viewport — with few (or no) tabs the chevrons used to sit dimmed over an empty
+    /// gray band, which read as broken chrome. While overflowing, each arrow additionally
+    /// enables/disables based on whether there's content beyond the viewport on its side.</summary>
     private void UpdateScrollArrows()
     {
         if (TabsScrollViewer is null) return;
         var offset = TabsScrollViewer.Offset.X;
         var extent = TabsScrollViewer.Extent.Width;
         var viewport = TabsScrollViewer.Viewport.Width;
+        var overflows = extent > viewport + 0.5;
         var canScrollLeft = offset > 0.5;
         var canScrollRight = offset + viewport < extent - 0.5;
-        if (ScrollLeftButton is not null) ScrollLeftButton.IsEnabled = canScrollLeft;
-        if (ScrollRightButton is not null) ScrollRightButton.IsEnabled = canScrollRight;
+        if (ScrollLeftButton is not null)
+        {
+            ScrollLeftButton.IsVisible = overflows;
+            ScrollLeftButton.IsEnabled = canScrollLeft;
+        }
+        if (ScrollRightButton is not null)
+        {
+            ScrollRightButton.IsVisible = overflows;
+            ScrollRightButton.IsEnabled = canScrollRight;
+        }
     }
 
     private void OnScrollLeft_Click(object? sender, RoutedEventArgs e) =>

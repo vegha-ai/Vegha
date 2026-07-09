@@ -283,6 +283,15 @@ public partial class VariableAwareTextEditor : UserControl
         // visibly inconsistent with the sibling KEY cell / URL-bar TextBoxes.
         ApplySelectionTheme();
 
+        // Keyboard-focus visuals. Avalonia's default focus adorner draws its own rectangle
+        // around the focused TextArea, INSIDE the host border's padding — so tabbing into a
+        // KV value cell rendered a second, inset "shrunken box" that clicking never showed.
+        // Kill the adorners and mirror the TextBox:focus treatment instead: accent-colored
+        // host border while focus is within (see UpdateFocusBorder).
+        FocusAdorner = null;
+        _editor.FocusAdorner = null;
+        _editor.TextArea.FocusAdorner = null;
+
         _editor.TextArea.TextView.LineTransformers.Add(new VariableColorizer(this));
         // Mask non-{{var}} runs with bullet glyphs when IsPassword=true && !IsRevealed.
         // {{var}} placeholders pass through unmasked so the user can identify which variable
@@ -502,6 +511,12 @@ public partial class VariableAwareTextEditor : UserControl
         {
             UpdatePasswordChrome();
         }
+        else if (change.Property == IsKeyboardFocusWithinProperty)
+        {
+            // Property-change (not GotFocus/LostFocus routing) because AvaloniaEdit's
+            // TextArea marks its focus events handled — they never bubble up here.
+            UpdateFocusBorder();
+        }
     }
 
     private void UpdatePasswordChrome()
@@ -549,6 +564,20 @@ public partial class VariableAwareTextEditor : UserControl
         _editor.TextArea.SelectionForeground = null;
     }
 
+    /// <summary>Swaps the host border between the resting <c>Border1Brush</c> and the accent
+    /// while keyboard focus is anywhere inside the editor — the same focus signal the plain
+    /// TextBoxes get from the global <c>TextBox:focus</c> style, so tabbing into a KV value
+    /// cell looks identical to tabbing into the KEY cell next to it.</summary>
+    private void UpdateFocusBorder()
+    {
+        if (!Bordered) return;
+        var host = this.FindControl<global::Avalonia.Controls.Border>("HostBorder");
+        if (host is null) return;
+        var key = IsKeyboardFocusWithin ? "AccentBrush" : "Border1Brush";
+        if (this.TryFindResource(key, out var b) && b is IBrush brush)
+            host.BorderBrush = brush;
+    }
+
     private void ApplyBordered()
     {
         var host = this.FindControl<global::Avalonia.Controls.Border>("HostBorder");
@@ -579,6 +608,9 @@ public partial class VariableAwareTextEditor : UserControl
         // Padding may need to grow to reserve room for the eye toggle — re-apply here so
         // a Bordered/SingleLine change after construction picks up the password chrome too.
         UpdatePasswordChrome();
+        // Re-assert the focus tint — the block above just reset BorderBrush to the
+        // resting brush, which would drop the accent if focus is currently within.
+        UpdateFocusBorder();
     }
 
     private void ApplySyntaxHighlighting()

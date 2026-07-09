@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Vegha.App.ViewModels"
+        xmlns:ws="using:Vegha.App.Controls.Workspace"
         x:Class="Vegha.App.Controls.Workspace.NodePropertiesDialog"
         x:DataType="vm:NodePropertiesViewModel"
         Title="{Binding Title}"
@@ -61,21 +62,16 @@
             <!-- Variables -->
             <TabItem Header="Variables">
                 <DockPanel Margin="0,8,0,0">
-                    <Button DockPanel.Dock="Top"
-                            Command="{Binding AddVariableCommand}"
-                            Content="+ Add variable"
-                            HorizontalAlignment="Left"
-                            FontSize="11"
-                            Background="{DynamicResource Bg3Brush}"
-                            Foreground="{DynamicResource Text0Brush}"
-                            Padding="10,4" Margin="0,0,0,8" />
+                    <!-- No "+ Add" button — the table keeps a blank trailing row that
+                         grows as the user types into it (matches Params / Headers). -->
                     <ScrollViewer>
                         <ItemsControl ItemsSource="{Binding Variables}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:KvEntry">
-                                    <Grid ColumnDefinitions="Auto,200,*,Auto" Margin="0,2">
+                                    <Grid ColumnDefinitions="32,200,*,28" Margin="0,2">
                                         <CheckBox Grid.Column="0"
                                                   IsChecked="{Binding Enabled}"
+                                                  IsVisible="{Binding !IsBlank}"
                                                   ToolTip.Tip="Enabled" />
                                         <TextBox Grid.Column="1" Text="{Binding Name}"
                                                  Watermark="name"
@@ -92,6 +88,7 @@
                                         <Button Grid.Column="3"
                                                 Tag="{Binding}"
                                                 Click="OnRemoveVariable_Click"
+                                                IsVisible="{Binding !IsBlank}"
                                                 Content="✕"
                                                 ToolTip.Tip="Remove"
                                                 Background="Transparent" BorderThickness="0"
@@ -108,21 +105,16 @@
             <!-- Headers -->
             <TabItem Header="Headers">
                 <DockPanel Margin="0,8,0,0">
-                    <Button DockPanel.Dock="Top"
-                            Command="{Binding AddHeaderCommand}"
-                            Content="+ Add header"
-                            HorizontalAlignment="Left"
-                            FontSize="11"
-                            Background="{DynamicResource Bg3Brush}"
-                            Foreground="{DynamicResource Text0Brush}"
-                            Padding="10,4" Margin="0,0,0,8" />
+                    <!-- No "+ Add" button — the table keeps a blank trailing row that
+                         grows as the user types into it (matches Params / Headers). -->
                     <ScrollViewer>
                         <ItemsControl ItemsSource="{Binding Headers}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:KvEntry">
-                                    <Grid ColumnDefinitions="Auto,200,*,Auto" Margin="0,2">
+                                    <Grid ColumnDefinitions="32,200,*,28" Margin="0,2">
                                         <CheckBox Grid.Column="0"
                                                   IsChecked="{Binding Enabled}"
+                                                  IsVisible="{Binding !IsBlank}"
                                                   ToolTip.Tip="Enabled" />
                                         <TextBox Grid.Column="1" Text="{Binding Name}"
                                                  Watermark="header"
@@ -139,6 +131,7 @@
                                         <Button Grid.Column="3"
                                                 Tag="{Binding}"
                                                 Click="OnRemoveHeader_Click"
+                                                IsVisible="{Binding !IsBlank}"
                                                 Content="✕"
                                                 Background="Transparent" BorderThickness="0"
                                                 Foreground="{DynamicResource Text2Brush}"
@@ -181,23 +174,40 @@
                 </StackPanel>
             </TabItem>
 
-            <!-- Pre-request -->
-            <TabItem Header="Pre-request">
-                <DockPanel Margin="0,8,0,0">
-                    <TextBlock DockPanel.Dock="Top"
+            <!-- Script — pre-request + post-response. Both blocks round-trip through the
+                 .bru meta (script:pre-request / script:post-response); the dialog previously
+                 omitted post-response, which silently dropped it on save. -->
+            <TabItem Header="Script">
+                <Grid Margin="0,8,0,0" RowDefinitions="Auto,*,8,Auto,*">
+                    <TextBlock Grid.Row="0"
                                FontSize="10" FontStyle="Italic"
                                Foreground="{DynamicResource Text3Brush}"
                                TextWrapping="Wrap"
-                               Text="Runs before every request in this scope. Available: bru.setVar / getVar / setEnvVar / getEnvVar, plus the lodash + axios shims."
+                               Text="Pre-request — runs before every request in this scope. Available: bru.setVar / getVar / setEnvVar / getEnvVar, plus the lodash + axios shims."
                                Margin="0,0,0,6" />
-                    <TextBox Text="{Binding PreRequestScript}"
+                    <TextBox Grid.Row="1"
+                             Text="{Binding PreRequestScript}"
                              AcceptsReturn="True"
                              FontFamily="{StaticResource MonoFont}" FontSize="11"
                              Background="{DynamicResource CodeBgBrush}"
                              BorderBrush="{DynamicResource Border1Brush}"
                              Foreground="{DynamicResource Text0Brush}"
                              Padding="10,8" />
-                </DockPanel>
+                    <TextBlock Grid.Row="3"
+                               FontSize="10" FontStyle="Italic"
+                               Foreground="{DynamicResource Text3Brush}"
+                               TextWrapping="Wrap"
+                               Text="Post-response — runs after every response in this scope. Also sees res (status, headers, body)."
+                               Margin="0,0,0,6" />
+                    <TextBox Grid.Row="4"
+                             Text="{Binding PostResponseScript}"
+                             AcceptsReturn="True"
+                             FontFamily="{StaticResource MonoFont}" FontSize="11"
+                             Background="{DynamicResource CodeBgBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="10,8" />
+                </Grid>
             </TabItem>
 
             <!-- Tests -->
@@ -219,16 +229,23 @@
                 </DockPanel>
             </TabItem>
 
-            <!-- Docs -->
+            <!-- Docs — split: editable markdown on the left, rendered preview on the right
+                 (same layout as the request editor's Docs tab). -->
             <TabItem Header="Docs">
-                <TextBox Text="{Binding Docs}"
-                         AcceptsReturn="True"
-                         Margin="0,8,0,0"
-                         FontFamily="{StaticResource MonoFont}" FontSize="12"
-                         Background="{DynamicResource CodeBgBrush}"
-                         BorderBrush="{DynamicResource Border1Brush}"
-                         Foreground="{DynamicResource Text0Brush}"
-                         Padding="10,8" />
+                <Grid Margin="0,8,0,0" ColumnDefinitions="*,4,*">
+                    <TextBox Grid.Column="0"
+                             Text="{Binding Docs}"
+                             AcceptsReturn="True"
+                             FontFamily="{StaticResource MonoFont}" FontSize="12"
+                             Background="{DynamicResource CodeBgBrush}"
+                             BorderBrush="{DynamicResource Border1Brush}"
+                             Foreground="{DynamicResource Text0Brush}"
+                             Padding="10,8"
+                             Watermark="# Notes about this collection (Markdown)" />
+                    <GridSplitter Grid.Column="1" Classes="col" />
+                    <ws:MarkdownView Grid.Column="2"
+                                     Markdown="{Binding Docs}" />
+                </Grid>
             </TabItem>
         </TabControl>
     </DockPanel>

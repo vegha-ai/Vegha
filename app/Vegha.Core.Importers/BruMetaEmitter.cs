@@ -24,6 +24,7 @@ public static class BruMetaEmitter
         EmitTextBlock(sb, "script:post-response", c.PostResponseScript);
         EmitTextBlock(sb, "tests", c.TestsScript);
         EmitTextBlock(sb, "docs", c.Docs);
+        EmitPresets(sb, c.Presets);
         return sb.ToString();
     }
 
@@ -92,6 +93,20 @@ public static class BruMetaEmitter
         if (string.IsNullOrEmpty(content)) return;
         sb.Append(blockName).AppendLine(" {");
         sb.AppendLine(content.TrimEnd('\n', '\r'));
+        sb.AppendLine("}");
+        sb.AppendLine();
+    }
+
+    /// <summary>Emits the <c>presets { type: …, url: … }</c> block (new-request defaults).
+    /// Skipped entirely for empty presets so an untouched collection.bru stays clean.</summary>
+    private static void EmitPresets(StringBuilder sb, RequestPresets? presets)
+    {
+        if (presets is null || presets.IsEmpty) return;
+        sb.AppendLine("presets {");
+        if (!string.IsNullOrEmpty(presets.RequestType))
+            sb.Append("  type: ").AppendLine(presets.RequestType);
+        if (!string.IsNullOrEmpty(presets.BaseUrl))
+            sb.Append("  url: ").AppendLine(presets.BaseUrl);
         sb.AppendLine("}");
         sb.AppendLine();
     }
