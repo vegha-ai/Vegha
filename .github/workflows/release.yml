@@ -312,15 +312,19 @@ jobs:
 
   # ============================================================
   # Winget: regenerate the Vegha.Vegha manifests from the just-published
-  # x64/arm64 Setup.exe and upload them as an artifact. Submission to
-  # microsoft/winget-pkgs is left MANUAL (per project preference) — download the
-  # 'winget-manifests' artifact, eyeball it, then run `wingetcreate submit` (or
-  # open the PR) yourself.
+  # x64/arm64 Setup.exe, upload them as an artifact (record), and — when the
+  # WINGET_TOKEN secret is present — auto-open the update PR against
+  # microsoft/winget-pkgs. WINGET_TOKEN must be a classic PAT with public_repo
+  # scope: it forks winget-pkgs + opens the PR, which the built-in GITHUB_TOKEN
+  # cannot do. If the secret is absent, submission is skipped and you submit the
+  # 'winget-manifests' artifact manually with `wingetcreate submit`.
   # ============================================================
   winget:
-    name: winget manifests
+    name: winget submit
     needs: publish
     runs-on: windows-latest
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
       - name: Generate winget manifests
         shell: pwsh
@@ -331,14 +335,13 @@ jobs:
           $base = "https://github.com/${{ github.repository }}/releases/download/v$ver"
           Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
           # Update the existing Vegha.Vegha package to $ver from the two Setup.exe
-          # URLs (arch pinned so wingetcreate doesn't have to guess). No --submit:
-          # manifests are written to .\winget-out for manual review + submission.
+          # URLs (arch pinned so wingetcreate doesn't have to guess). --out writes
+          # the manifests locally; the submit step below opens the PR.
           ./wingetcreate.exe update Vegha.Vegha `
             --version $ver `
             --urls "$base/Vegha-win-x64-Setup.exe|x64" "$base/Vegha-win-arm64-Setup.exe|arm64" `
             --out winget-out `
             --token $env:GITHUB_TOKEN
-          Write-Host "::notice::To publish: wingetcreate submit .\winget-out --token <winget-pkgs PAT>"
 
       - name: Upload winget manifests
         uses: actions/upload-artifact@v4
@@ -346,6 +349,22 @@ jobs:
           name: winget-manifests
           path: winget-out/**
           if-no-files-found: error
+
+      - name: Submit PR to winget-pkgs
+        if: env.WINGET_TOKEN != ''
+        shell: pwsh
+        run: |
+          $dir = Get-ChildItem winget-out -Recurse -Filter 'Vegha.Vegha.yaml' |
+            Select-Object -First 1 | ForEach-Object { $_.DirectoryName }
+          if (-not $dir) { throw "Generated manifests not found under winget-out." }
+          Write-Host "Submitting $dir to microsoft/winget-pkgs"
+          ./wingetcreate.exe submit "$dir" --token $env:WINGET_TOKEN
+
+      - name: Note manual submission (no token)
+        if: env.WINGET_TOKEN == ''
+        shell: pwsh
+        run: |
+          Write-Host "::warning::WINGET_TOKEN secret absent — winget PR NOT auto-submitted. Download the 'winget-manifests' artifact and submit it manually with wingetcreate."
 
   # ============================================================
   # MSIX for the Microsoft Store, built in lockstep via the reusable msix.yml.
