@@ -1,14 +1,26 @@
 name: MAS
 
-# Builds a Mac App Store .pkg. Triggered manually because Apple's signing + notarization
-# expects identities pinned to a specific developer account; running this in fork CIs
-# would just produce unsigned bundles. Maintainer downloads the artifact and uploads to
-# App Store Connect via Transporter.
+# Builds, signs, and uploads a Mac App Store .pkg to App Store Connect.
+#
+# Manual only. When the MAS_* + ASC_* secrets are present this imports the
+# distribution certs into a throwaway keychain, runs eng/build-mas.sh (the same
+# sandbox 3-pass signing used locally) to produce a SIGNED .pkg, and uploads it
+# to App Store Connect with the App Store Connect API key (no interactive
+# keychain needed). You then attach the build to a version and Submit for Review
+# in App Store Connect — App Review is human, so that stays manual.
+#
+# Without the secrets it falls back to an UNSIGNED .pkg artifact (e.g. fork CI).
+#
+# Required secrets:
+#   MAS_APP_CERT_P12_BASE64 / MAS_APP_CERT_PASSWORD          3rd Party Mac Developer Application cert
+#   MAS_INSTALLER_CERT_P12_BASE64 / MAS_INSTALLER_CERT_PASSWORD  3rd Party Mac Developer Installer cert
+#   MAS_PROVISION_PROFILE_BASE64                            Vegha_MAS.provisionprofile
+#   ASC_KEY_ID / ASC_ISSUER_ID / ASC_API_KEY_P8_BASE64      App Store Connect API key
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Mac App Store version (e.g., 0.1.0)'
+        description: 'Mac App Store version (e.g., 1.2.3)'
         required: true
         type: string
 
@@ -19,6 +31,15 @@ env:
 jobs:
   package:
     runs-on: macos-14
+    env:
+      MAS_APP_CERT_P12_BASE64: ${{ secrets.MAS_APP_CERT_P12_BASE64 }}
+      MAS_APP_CERT_PASSWORD: ${{ secrets.MAS_APP_CERT_PASSWORD }}
+      MAS_INSTALLER_CERT_P12_BASE64: ${{ secrets.MAS_INSTALLER_CERT_P12_BASE64 }}
+      MAS_INSTALLER_CERT_PASSWORD: ${{ secrets.MAS_INSTALLER_CERT_PASSWORD }}
+      MAS_PROVISION_PROFILE_BASE64: ${{ secrets.MAS_PROVISION_PROFILE_BASE64 }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_API_KEY_P8_BASE64: ${{ secrets.ASC_API_KEY_P8_BASE64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,46 +48,73 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Patch Info.plist version
+      # ============================================================
+      # SIGNED path — secrets present. Import certs into a throwaway keychain
+      # (auto-discarded with the runner), stage the provisioning profile + ASC
+      # API key where build-mas.sh / altool expect them.
+      # ============================================================
+      - name: Import signing assets into a temp keychain
+        if: env.MAS_APP_CERT_P12_BASE64 != ''
         run: |
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ github.event.inputs.version }}" \
-            app/Vegha.App/Resources/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ github.event.inputs.version }}" \
-            app/Vegha.App/Resources/Info.plist
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/mas.keychain-db"
+          KPW="$(uuidgen)"
+          security create-keychain -p "$KPW" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KPW" "$KEYCHAIN"
 
-      - name: Restore + publish
+          echo "$MAS_APP_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/app.p12"
+          security import "$RUNNER_TEMP/app.p12" -k "$KEYCHAIN" -P "$MAS_APP_CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productbuild
+          echo "$MAS_INSTALLER_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/installer.p12"
+          security import "$RUNNER_TEMP/installer.p12" -k "$KEYCHAIN" -P "$MAS_INSTALLER_CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productbuild
+          rm -f "$RUNNER_TEMP/app.p12" "$RUNNER_TEMP/installer.p12"
+
+          # Authorize the Apple signing tools to use the keys non-interactively,
+          # and make this keychain the one codesign/productbuild search.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KPW" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+          mkdir -p "$HOME/apple-dev"
+          echo "$MAS_PROVISION_PROFILE_BASE64" | base64 --decode > "$HOME/apple-dev/Vegha_MAS.provisionprofile"
+
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "$ASC_API_KEY_P8_BASE64" | base64 --decode > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+
+      - name: Build signed .pkg
+        if: env.MAS_APP_CERT_P12_BASE64 != ''
         run: |
+          chmod +x eng/build-mas.sh
+          ./eng/build-mas.sh ${{ inputs.version }}
+
+      - name: Upload to App Store Connect
+        if: env.MAS_APP_CERT_P12_BASE64 != ''
+        run: |
+          xcrun altool --upload-app -f "build/Vegha-${{ inputs.version }}.pkg" -t macos \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      # ============================================================
+      # UNSIGNED fallback — no secrets. Produces an artifact only (not uploadable).
+      # ============================================================
+      - name: Build unsigned .pkg (no secrets)
+        if: env.MAS_APP_CERT_P12_BASE64 == ''
+        run: |
+          set -euo pipefail
+          echo "::warning::MAS signing secrets absent — building UNSIGNED .pkg (cannot upload to the Store)."
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ inputs.version }}" app/Vegha.App/Resources/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ inputs.version }}" app/Vegha.App/Resources/Info.plist
           dotnet restore
-          dotnet publish app/Vegha.App/Vegha.App.csproj \
-            -c Release -r osx-arm64 --self-contained true \
-            -p:VeghaFlavor=MAS \
-            -p:PublishReadyToRun=true \
-            -o publish/osx-arm64
-
-      - name: Build .app bundle
-        run: |
-          APP="Vegha.app"
-          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-          cp -R publish/osx-arm64/* "$APP/Contents/MacOS/"
-          cp app/Vegha.App/Resources/Info.plist "$APP/Contents/"
-          # Icon if present.
-          if [ -f app/Vegha.App/Assets/app.ico ]; then
-            cp app/Vegha.App/Assets/app.ico "$APP/Contents/Resources/"
-          fi
-
-      - name: Build .pkg with productbuild
-        run: |
-          # Without a real signing identity in CI, this produces an unsigned .pkg —
-          # the maintainer signs locally before uploading to App Store Connect.
-          productbuild --component Vegha.app /Applications \
-            --component-plist app/Vegha.App/Resources/Vegha.entitlements \
-            "Vegha-${{ github.event.inputs.version }}.pkg" || \
-            productbuild --component Vegha.app /Applications \
-            "Vegha-${{ github.event.inputs.version }}.pkg"
+          dotnet publish app/Vegha.App/Vegha.App.csproj -c Release -r osx-arm64 --self-contained true \
+            -p:VeghaFlavor=MAS -p:PublishReadyToRun=true -o publish/osx-arm64
+          mkdir -p build/Vegha.app/Contents/MacOS build/Vegha.app/Contents/Resources
+          cp -R publish/osx-arm64/* build/Vegha.app/Contents/MacOS/
+          cp app/Vegha.App/Resources/Info.plist build/Vegha.app/Contents/
+          productbuild --component build/Vegha.app /Applications "build/Vegha-${{ inputs.version }}.pkg"
 
       - name: Upload .pkg artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vegha-mas-${{ github.event.inputs.version }}
-          path: 'Vegha-*.pkg'
+          name: vegha-mas-${{ inputs.version }}
+          path: build/Vegha-*.pkg
           if-no-files-found: error
