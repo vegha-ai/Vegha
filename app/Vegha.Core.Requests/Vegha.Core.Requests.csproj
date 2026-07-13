@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Vegha.Core.Domain\Vegha.Core.Domain.csproj" />
+    <ProjectReference Include="..\Vegha.Core.GraphQL\Vegha.Core.GraphQL.csproj" />
     <ProjectReference Include="..\Vegha.Core.Interpolation\Vegha.Core.Interpolation.csproj" />
     <ProjectReference Include="..\Vegha.Core.Scripting\Vegha.Core.Scripting.csproj" />
   </ItemGroup>

@@ -1,0 +1,43 @@
+meta {
+  name: get-country
+  type: graphql
+  seq: 1
+}
+
+post {
+  url: {{gqlUrl}}
+  body: graphql
+  auth: none
+}
+
+body:graphql {
+  query GetCountry($code: ID!) {
+    country(code: $code) {
+      name
+      capital
+      currency
+      emoji
+      languages {
+        name
+      }
+    }
+  }
+}
+
+body:graphql:vars {
+  {
+    "code": "BR"
+  }
+}
+
+tests {
+  test('200 with country data', () => {
+    expect(res.status).toBe(200);
+    expect(res.body.data.country.name).toBe('Brazil');
+  });
+}
+
+docs {
+  Single-operation query with a $code variable. Change the variables pane
+  (or use "Generate" to scaffold it from the operation's declarations).
+}

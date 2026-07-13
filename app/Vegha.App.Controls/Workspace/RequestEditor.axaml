@@ -35,10 +35,12 @@
                                         Margin="0,0,6,0"
                                         VerticalAlignment="Center" />
 
-            <!-- Send (icon-only) -->
+            <!-- Send (icon-only). For GraphQL subscription operations the same button (and
+                 Ctrl+Enter) toggles the graphql-ws session — the icon flips to Stop while
+                 the subscription streams. -->
             <Button Grid.Column="2"
                     Command="{Binding SendCommand}"
-                    ToolTip.Tip="Send request"
+                    ToolTip.Tip="Send request (subscriptions: start / stop streaming)"
                     Width="36" Height="32" Padding="0" Margin="0,0,6,0"
                     Background="{DynamicResource AccentBrush}"
                     Foreground="White"
@@ -48,7 +50,12 @@
                     HorizontalContentAlignment="Center"
                     VerticalContentAlignment="Center"
                     VerticalAlignment="Center">
-                <icons:Icon Kind="Send" Size="16" />
+                <Grid>
+                    <icons:Icon Kind="Send" Size="16"
+                                IsVisible="{Binding !IsSubscriptionActive}" />
+                    <icons:Icon Kind="Stop" Size="16"
+                                IsVisible="{Binding IsSubscriptionActive}" />
+                </Grid>
             </Button>
 
             <!-- Save (icon-only; dot appears when dirty) -->

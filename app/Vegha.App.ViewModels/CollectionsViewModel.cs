@@ -1373,7 +1373,9 @@ public partial class CollectionsViewModel : ObservableObject
             });
     }
 
-    private static string BuildMinimalBru(NewRequestKind kind, string name, string method, string url)
+    /// <summary>Scaffolds the on-disk .bru for a dialog-created request. Public static so
+    /// tests can assert the scaffold round-trips through the Bru parser with the right kind.</summary>
+    public static string BuildMinimalBru(NewRequestKind kind, string name, string method, string url)
     {
         // Map dialog kind to the meta.type Bruno expects.
         var metaType = kind switch
@@ -1384,8 +1386,35 @@ public partial class CollectionsViewModel : ObservableObject
             NewRequestKind.Soap      => "soap",
             _                        => "http",
         };
-        var verb = string.IsNullOrWhiteSpace(method) ? "get" : method.Trim().ToLowerInvariant();
         var safeUrl = string.IsNullOrWhiteSpace(url) ? "https://example.com/" : url.Trim();
+
+        // GraphQL is always an HTTP POST with a graphql body — without `body: graphql` +
+        // a starter body:graphql block the file would load as a plain REST GET and the
+        // editor would never show the query/schema panes.
+        if (kind == NewRequestKind.GraphQL)
+        {
+            return
+                "meta {\n" +
+                $"  name: {name}\n" +
+                "  type: graphql\n" +
+                "  seq: 1\n" +
+                "}\n\n" +
+                "post {\n" +
+                $"  url: {safeUrl}\n" +
+                "  body: graphql\n" +
+                "  auth: none\n" +
+                "}\n\n" +
+                "body:graphql {\n" +
+                "  query {\n" +
+                "    __typename\n" +
+                "  }\n" +
+                "}\n\n" +
+                "body:graphql:vars {\n" +
+                "  {}\n" +
+                "}\n";
+        }
+
+        var verb = string.IsNullOrWhiteSpace(method) ? "get" : method.Trim().ToLowerInvariant();
         // For non-HTTP kinds we still emit a {verb} block to keep the file valid against the
         // Bruno parser; the workspace VM picks the right surface based on meta.type.
         return
@@ -2590,6 +2619,11 @@ public sealed partial class CollectionItemViewModel : CollectionNodeViewModel
 
     [ObservableProperty]
     private string _methodLabel = "GET";
+
+    /// <summary>True for GraphQL requests — the tree shows the GraphQL mark instead of the
+    /// method label. Derived once from the backing request; the tree is rebuilt on every
+    /// reload so no change notification is needed.</summary>
+    public bool IsGraphQL => Request?.Kind == RequestKind.GraphQL;
 
     public override bool IsLeaf => true;
 }

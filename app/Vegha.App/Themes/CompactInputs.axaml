@@ -1,0 +1,582 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:converters="using:Avalonia.Controls.Converters">
+    <!-- ============ Compact input control themes (app-wide) ============
+         Fluent sizes CheckBox / RadioButton / tree chevrons for touch: 20px marks inside a
+         fixed 32px strip, filled 12px chevron glyphs. Against this app's fixed 12px UI font
+         that reads oversized and inconsistent (Postman-scale is ~14px marks + thin stroke
+         chevrons). Template-inline sizes are LOCAL values that app styles cannot override,
+         so these are full ControlTheme replacements (adapted from Avalonia 11.3.0 Fluent
+         sources) keyed by control type — app resources win over FluentTheme's themes.
+         All state styles keep Fluent's dynamic-resource brushes so theme switching and
+         hover/pressed/disabled states behave exactly as stock. -->
+
+    <StreamGeometry x:Key="CheckMarkPathData">M5.5 10.586 1.707 6.793A1 1 0 0 0 .293 8.207l4.5 4.5a1 1 0 0 0 1.414 0l11-11A1 1 0 0 0 15.793.293L5.5 10.586Z</StreamGeometry>
+
+    <!-- ===================== CheckBox — 14px box, 20px strip ===================== -->
+    <ControlTheme x:Key="{x:Type CheckBox}" TargetType="CheckBox">
+        <Setter Property="Padding" Value="6,0,0,0" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+        <Setter Property="MinHeight" Value="20" />
+        <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundUnchecked}" />
+        <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundUnchecked}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushUnchecked}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Grid x:Name="RootGrid" ColumnDefinitions="14,*">
+                    <Border x:Name="PART_Border"
+                            Grid.ColumnSpan="2"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}" />
+
+                    <Grid VerticalAlignment="Top" Height="20">
+                        <Border x:Name="NormalRectangle"
+                                BorderBrush="{DynamicResource CheckBoxCheckBackgroundStrokeUnchecked}"
+                                Background="{DynamicResource CheckBoxCheckBackgroundFillUnchecked}"
+                                BorderThickness="{DynamicResource CheckBoxBorderThemeThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                UseLayoutRounding="False"
+                                Height="14"
+                                Width="14" />
+
+                        <Viewbox UseLayoutRounding="False" Width="14" Height="14">
+                            <Panel>
+                                <Panel Height="16" Width="16" />
+                                <Path x:Name="CheckGlyph"
+                                      Opacity="0"
+                                      Fill="{DynamicResource CheckBoxCheckGlyphForegroundUnchecked}"
+                                      Stretch="Uniform"
+                                      VerticalAlignment="Center"
+                                      FlowDirection="LeftToRight" />
+                            </Panel>
+                        </Viewbox>
+                    </Grid>
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Content="{TemplateBinding Content}"
+                                      Margin="{TemplateBinding Padding}"
+                                      RecognizesAccessKey="True"
+                                      HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      TextWrapping="Wrap"
+                                      Grid.Column="1" />
+                </Grid>
+            </ControlTemplate>
+        </Setter>
+
+        <!-- Unchecked PointerOver State -->
+        <Style Selector="^:pointerover">
+            <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundUncheckedPointerOver}" />
+            </Style>
+            <Style Selector="^ /template/ Border#PART_Border">
+                <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundUncheckedPointerOver}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushUncheckedPointerOver}" />
+            </Style>
+            <Style Selector="^ /template/ Border#NormalRectangle">
+                <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxCheckBackgroundStrokeUncheckedPointerOver}" />
+                <Setter Property="Background" Value="{DynamicResource CheckBoxCheckBackgroundFillUncheckedPointerOver}" />
+            </Style>
+            <Style Selector="^ /template/ Path#CheckGlyph">
+                <Setter Property="Fill" Value="{DynamicResource CheckBoxCheckGlyphForegroundUncheckedPointerOver}" />
+            </Style>
+        </Style>
+
+        <!-- Unchecked Pressed State -->
+        <Style Selector="^:pressed">
+            <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundUncheckedPressed}" />
+            </Style>
+            <Style Selector="^ /template/ Border#PART_Border">
+                <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundUncheckedPressed}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushUncheckedPressed}" />
+            </Style>
+            <Style Selector="^ /template/ Border#NormalRectangle">
+                <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxCheckBackgroundStrokeUncheckedPressed}" />
+                <Setter Property="Background" Value="{DynamicResource CheckBoxCheckBackgroundFillUncheckedPressed}" />
+            </Style>
+            <Style Selector="^ /template/ Path#CheckGlyph">
+                <Setter Property="Fill" Value="{DynamicResource CheckBoxCheckGlyphForegroundUncheckedPressed}" />
+            </Style>
+        </Style>
+
+        <!-- Unchecked Disabled state -->
+        <Style Selector="^:disabled">
+            <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundUncheckedDisabled}" />
+            </Style>
+            <Style Selector="^ /template/ Border#PART_Border">
+                <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundUncheckedDisabled}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushUncheckedDisabled}" />
+            </Style>
+            <Style Selector="^ /template/ Border#NormalRectangle">
+                <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxCheckBackgroundStrokeUncheckedDisabled}" />
+                <Setter Property="Background" Value="{DynamicResource CheckBoxCheckBackgroundFillUncheckedDisabled}" />
+            </Style>
+            <Style Selector="^ /template/ Path#CheckGlyph">
+                <Setter Property="Fill" Value="{DynamicResource CheckBoxCheckGlyphForegroundUncheckedDisabled}" />
+            </Style>
+        </Style>
+
+        <Style Selector="^:checked">
+            <!-- Checked Normal State — theme accent fill + white glyph (Postman-style),
+                 via the app's AccentBrush token so every theme variant matches. -->
+            <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundChecked}" />
+            <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundChecked}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushChecked}" />
+            <Style Selector="^ /template/ Border#NormalRectangle">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            </Style>
+            <Style Selector="^ /template/ Path#CheckGlyph">
+                <Setter Property="Fill" Value="White" />
+                <Setter Property="Data" Value="{StaticResource CheckMarkPathData}" />
+                <Setter Property="Width" Value="9" />
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+
+            <!-- Checked PointerOver State -->
+            <Style Selector="^:pointerover">
+                <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundCheckedPointerOver}" />
+                </Style>
+                <Style Selector="^ /template/ Border#PART_Border">
+                    <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundCheckedPointerOver}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushCheckedPointerOver}" />
+                </Style>
+                <Style Selector="^ /template/ Border#NormalRectangle">
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+                </Style>
+                <Style Selector="^ /template/ Path#CheckGlyph">
+                    <Setter Property="Fill" Value="White" />
+                </Style>
+            </Style>
+
+            <!-- Checked Pressed State -->
+            <Style Selector="^:pressed">
+                <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundCheckedPressed}" />
+                </Style>
+                <Style Selector="^ /template/ Border#PART_Border">
+                    <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundCheckedPressed}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushCheckedPressed}" />
+                </Style>
+                <Style Selector="^ /template/ Border#NormalRectangle">
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+                </Style>
+                <Style Selector="^ /template/ Path#CheckGlyph">
+                    <Setter Property="Fill" Value="White" />
+                </Style>
+            </Style>
+
+            <!-- Checked Disabled State -->
+            <Style Selector="^:disabled">
+                <Style Selector="^ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundCheckedDisabled}" />
+                </Style>
+                <Style Selector="^ /template/ Border#PART_Border">
+                    <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundCheckedDisabled}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushCheckedDisabled}" />
+                </Style>
+                <Style Selector="^ /template/ Border#NormalRectangle">
+                    <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxCheckBackgroundStrokeCheckedDisabled}" />
+                    <Setter Property="Background" Value="{DynamicResource CheckBoxCheckBackgroundFillCheckedDisabled}" />
+                </Style>
+                <Style Selector="^ /template/ Path#CheckGlyph">
+                    <Setter Property="Fill" Value="{DynamicResource CheckBoxCheckGlyphForegroundCheckedDisabled}" />
+                </Style>
+            </Style>
+        </Style>
+
+        <Style Selector="^:indeterminate">
+            <!-- Indeterminate Normal State — accent box + white dash, matching :checked. -->
+            <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundIndeterminate}" />
+            <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundIndeterminate}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushIndeterminate}" />
+            <Style Selector="^ /template/ Border#NormalRectangle">
+                <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            </Style>
+            <Style Selector="^ /template/ Path#CheckGlyph">
+                <Setter Property="Fill" Value="White" />
+                <Setter Property="Data" Value="M1536 1536v-1024h-1024v1024h1024z" />
+                <Setter Property="Width" Value="7" />
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+
+            <!-- Indeterminate PointerOver State -->
+            <Style Selector="^:pointerover">
+                <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundIndeterminatePointerOver}" />
+                </Style>
+                <Style Selector="^ /template/ Border#PART_Border">
+                    <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundIndeterminatePointerOver}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushIndeterminatePointerOver}" />
+                </Style>
+                <Style Selector="^ /template/ Border#NormalRectangle">
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+                </Style>
+                <Style Selector="^ /template/ Path#CheckGlyph">
+                    <Setter Property="Fill" Value="White" />
+                </Style>
+            </Style>
+
+            <!-- Indeterminate Pressed State -->
+            <Style Selector="^:pressed">
+                <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundIndeterminatePressed}" />
+                </Style>
+                <Style Selector="^ /template/ Border#PART_Border">
+                    <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundIndeterminatePressed}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushIndeterminatePressed}" />
+                </Style>
+                <Style Selector="^ /template/ Border#NormalRectangle">
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
+                    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+                </Style>
+                <Style Selector="^ /template/ Path#CheckGlyph">
+                    <Setter Property="Fill" Value="White" />
+                </Style>
+            </Style>
+
+            <!-- Indeterminate Disabled State -->
+            <Style Selector="^:disabled">
+                <Style Selector="^ /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Foreground" Value="{DynamicResource CheckBoxForegroundIndeterminateDisabled}" />
+                </Style>
+                <Style Selector="^ /template/ Border#PART_Border">
+                    <Setter Property="Background" Value="{DynamicResource CheckBoxBackgroundIndeterminateDisabled}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxBorderBrushIndeterminateDisabled}" />
+                </Style>
+                <Style Selector="^ /template/ Border#NormalRectangle">
+                    <Setter Property="BorderBrush" Value="{DynamicResource CheckBoxCheckBackgroundStrokeIndeterminateDisabled}" />
+                    <Setter Property="Background" Value="{DynamicResource CheckBoxCheckBackgroundFillIndeterminateDisabled}" />
+                </Style>
+                <Style Selector="^ /template/ Path#CheckGlyph">
+                    <Setter Property="Fill" Value="{DynamicResource CheckBoxCheckGlyphForegroundIndeterminateDisabled}" />
+                </Style>
+            </Style>
+        </Style>
+    </ControlTheme>
+
+    <!-- ===================== RadioButton — 14px ring + 6px dot ===================== -->
+    <ControlTheme x:Key="{x:Type RadioButton}" TargetType="RadioButton">
+        <Setter Property="Background" Value="{DynamicResource RadioButtonBackground}" />
+        <Setter Property="Foreground" Value="{DynamicResource RadioButtonForeground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource RadioButtonBorderBrush}" />
+        <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+        <Setter Property="Padding" Value="6,0,0,0" />
+        <Setter Property="MinHeight" Value="20" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate TargetType="RadioButton">
+                <Border Name="RootBorder"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="{TemplateBinding CornerRadius}">
+                    <Grid ColumnDefinitions="14,*">
+                        <Grid Height="20" VerticalAlignment="Top">
+                            <Ellipse Name="OuterEllipse"
+                                     Width="14"
+                                     Height="14"
+                                     Fill="{DynamicResource RadioButtonOuterEllipseFill}"
+                                     Stroke="{DynamicResource RadioButtonOuterEllipseStroke}"
+                                     StrokeThickness="{DynamicResource RadioButtonBorderThemeThickness}"
+                                     UseLayoutRounding="False" />
+                            <Ellipse Name="CheckOuterEllipse"
+                                     Width="14"
+                                     Height="14"
+                                     Fill="{DynamicResource RadioButtonOuterEllipseCheckedFill}"
+                                     Opacity="0"
+                                     Stroke="{DynamicResource RadioButtonOuterEllipseCheckedStroke}"
+                                     StrokeThickness="{DynamicResource RadioButtonBorderThemeThickness}"
+                                     UseLayoutRounding="False" />
+                            <Ellipse Name="CheckGlyph"
+                                     Width="6"
+                                     Height="6"
+                                     Fill="{DynamicResource RadioButtonCheckGlyphFill}"
+                                     Opacity="0"
+                                     Stroke="{DynamicResource RadioButtonCheckGlyphStroke}"
+                                     UseLayoutRounding="False" />
+                        </Grid>
+                        <ContentPresenter Name="PART_ContentPresenter"
+                                          Grid.Column="1"
+                                          Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          RecognizesAccessKey="True" />
+                    </Grid>
+                </Border>
+            </ControlTemplate>
+        </Setter>
+
+        <!--  PointerOver State  -->
+        <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource RadioButtonForegroundPointerOver}" />
+        </Style>
+        <Style Selector="^:pointerover /template/ Border#RootBorder">
+            <Setter Property="Background" Value="{DynamicResource RadioButtonBackgroundPointerOver}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource RadioButtonBorderBrushPointerOver}" />
+        </Style>
+        <Style Selector="^:pointerover /template/ Ellipse#OuterEllipse">
+            <Setter Property="Stroke" Value="{DynamicResource RadioButtonOuterEllipseStrokePointerOver}" />
+            <Setter Property="Fill" Value="{DynamicResource RadioButtonOuterEllipseFillPointerOver}" />
+        </Style>
+        <Style Selector="^:pointerover /template/ Ellipse#CheckOuterEllipse">
+            <Setter Property="Stroke" Value="{DynamicResource RadioButtonOuterEllipseCheckedStrokePointerOver}" />
+            <Setter Property="Fill" Value="{DynamicResource RadioButtonOuterEllipseCheckedFillPointerOver}" />
+        </Style>
+        <Style Selector="^:pointerover /template/ Ellipse#CheckGlyph">
+            <Setter Property="Stroke" Value="{DynamicResource RadioButtonCheckGlyphStrokePointerOver}" />
+            <Setter Property="Fill" Value="{DynamicResource RadioButtonCheckGlyphFillPointerOver}" />
+        </Style>
+
+        <!--  Pressed State  -->
+        <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource RadioButtonForegroundPressed}" />
+        </Style>
+        <Style Selector="^:pressed /template/ Border#RootBorder">
+            <Setter Property="Background" Value="{DynamicResource RadioButtonBackgroundPressed}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource RadioButtonBorderBrushPressed}" />
+        </Style>
+        <Style Selector="^:pressed /template/ Ellipse#OuterEllipse">
+            <Setter Property="Stroke" Value="{DynamicResource RadioButtonOuterEllipseStrokePressed}" />
+            <Setter Property="Fill" Value="{DynamicResource RadioButtonOuterEllipseFillPressed}" />
+        </Style>
+        <Style Selector="^:pressed /template/ Ellipse#CheckOuterEllipse">
+            <Setter Property="Stroke" Value="{DynamicResource RadioButtonOuterEllipseCheckedStrokePressed}" />
+            <Setter Property="Fill" Value="{DynamicResource RadioButtonOuterEllipseCheckedFillPressed}" />
+        </Style>
+        <Style Selector="^:pressed /template/ Ellipse#CheckGlyph">
+            <Setter Property="Stroke" Value="{DynamicResource RadioButtonCheckGlyphStrokePressed}" />
+            <Setter Property="Fill" Value="{DynamicResource RadioButtonCheckGlyphFillPressed}" />
+        </Style>
+
+        <!--  Disabled State  -->
+        <Style Selector="^:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource RadioButtonForegroundDisabled}" />
+        </Style>
+        <Style Selector="^:disabled /template/ Border#RootBorder">
+            <Setter Property="Background" Value="{DynamicResource RadioButtonBackgroundDisabled}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource RadioButtonBorderBrushDisabled}" />
+        </Style>
+        <Style Selector="^:disabled /template/ Ellipse#OuterEllipse">
+            <Setter Property="Stroke" Value="{DynamicResource RadioButtonOuterEllipseStrokeDisabled}" />
+            <Setter Property="Fill" Value="{DynamicResource RadioButtonOuterEllipseFillDisabled}" />
+        </Style>
+        <Style Selector="^:disabled /template/ Ellipse#CheckOuterEllipse">
+            <Setter Property="Stroke" Value="{DynamicResource RadioButtonOuterEllipseCheckedStrokeDisabled}" />
+            <Setter Property="Fill" Value="{DynamicResource RadioButtonOuterEllipseCheckedFillDisabled}" />
+        </Style>
+        <Style Selector="^:disabled /template/ Ellipse#CheckGlyph">
+            <Setter Property="Stroke" Value="{DynamicResource RadioButtonCheckGlyphFillDisabled}" />
+            <Setter Property="Fill" Value="{DynamicResource RadioButtonCheckGlyphStrokeDisabled}" />
+        </Style>
+
+        <!--  Checked State — accent ring + accent dot (Postman-style), via AccentBrush so
+              every theme variant matches. Declared last so it wins the pointerover ties.  -->
+        <Style Selector="^:checked /template/ Ellipse#CheckGlyph">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="Fill" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Stroke" Value="{x:Null}" />
+        </Style>
+        <Style Selector="^:checked /template/ Ellipse#OuterEllipse">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="^:checked /template/ Ellipse#CheckOuterEllipse">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="Stroke" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="^:checked:pointerover /template/ Ellipse#CheckGlyph">
+            <Setter Property="Fill" Value="{DynamicResource AccentHoverBrush}" />
+        </Style>
+        <Style Selector="^:checked:pointerover /template/ Ellipse#CheckOuterEllipse">
+            <Setter Property="Stroke" Value="{DynamicResource AccentHoverBrush}" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="^:checked:pressed /template/ Ellipse#CheckGlyph">
+            <Setter Property="Fill" Value="{DynamicResource AccentHoverBrush}" />
+        </Style>
+        <Style Selector="^:checked:pressed /template/ Ellipse#CheckOuterEllipse">
+            <Setter Property="Stroke" Value="{DynamicResource AccentHoverBrush}" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+    </ControlTheme>
+
+    <!-- ============ TreeViewItem — thin stroke chevron, tighter gutter ============
+         Same glyph language as the TreeView.compact custom template in Styles.axaml and
+         the icons:Icon Chevron* glyphs: 1.5px stroke, round caps. -->
+    <x:Double x:Key="TreeViewItemIndent">14</x:Double>
+    <x:Double x:Key="VeghaTreeChevronSize">14</x:Double>
+    <converters:MarginMultiplierConverter Indent="{StaticResource TreeViewItemIndent}"
+                                          Left="True"
+                                          x:Key="TreeViewItemLeftMarginConverter" />
+
+    <ControlTheme x:Key="VeghaTreeViewChevron" TargetType="ToggleButton">
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Width" Value="{StaticResource VeghaTreeChevronSize}" />
+        <Setter Property="Height" Value="{StaticResource VeghaTreeChevronSize}" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Border Background="Transparent"
+                        Width="{TemplateBinding Width}"
+                        Height="{TemplateBinding Height}"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                    <Path x:Name="ChevronPath"
+                          Data="M 0,0 L 4.5,4.5 L 0,9"
+                          Width="5" Height="9"
+                          Stroke="{DynamicResource Text2Brush}"
+                          StrokeThickness="1.5"
+                          StrokeJoin="Round"
+                          StrokeLineCap="Round"
+                          Stretch="Uniform"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center" />
+                </Border>
+            </ControlTemplate>
+        </Setter>
+
+        <Style Selector="^:checked /template/ Path#ChevronPath">
+            <Setter Property="Data" Value="M 0,0 L 4.5,4.5 L 9,0" />
+            <Setter Property="Width" Value="9" />
+            <Setter Property="Height" Value="5" />
+        </Style>
+    </ControlTheme>
+
+    <ControlTheme x:Key="{x:Type TreeViewItem}" TargetType="TreeViewItem">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="{DynamicResource TreeViewItemBackground}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrush}" />
+        <Setter Property="BorderThickness" Value="{DynamicResource TreeViewItemBorderThemeThickness}" />
+        <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForeground}" />
+        <Setter Property="MinHeight" Value="22" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Template">
+            <ControlTemplate>
+                <StackPanel>
+                    <Border Name="PART_LayoutRoot"
+                            Classes="TreeViewItemLayoutRoot"
+                            Focusable="True"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            MinHeight="{TemplateBinding MinHeight}"
+                            TemplatedControl.IsTemplateFocusTarget="True">
+                        <Grid Name="PART_Header"
+                              ColumnDefinitions="Auto, *"
+                              Margin="{TemplateBinding Level, Mode=OneWay, Converter={StaticResource TreeViewItemLeftMarginConverter}}">
+                            <Panel Name="PART_ExpandCollapseChevronContainer"
+                                   Margin="2,0,4,0">
+                                <ToggleButton Name="PART_ExpandCollapseChevron"
+                                              Theme="{StaticResource VeghaTreeViewChevron}"
+                                              Focusable="False"
+                                              IsChecked="{TemplateBinding IsExpanded, Mode=TwoWay}" />
+                            </Panel>
+                            <ContentPresenter Name="PART_HeaderPresenter"
+                                              Grid.Column="1"
+                                              Focusable="False"
+                                              Background="Transparent"
+                                              Content="{TemplateBinding Header}"
+                                              ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalAlignment}"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Grid>
+                    </Border>
+                    <ItemsPresenter Name="PART_ItemsPresenter"
+                                    IsVisible="{TemplateBinding IsExpanded}"
+                                    ItemsPanel="{TemplateBinding ItemsPanel}" />
+                </StackPanel>
+            </ControlTemplate>
+        </Setter>
+
+        <!--  PointerOver state  -->
+        <Style Selector="^ /template/ Border#PART_LayoutRoot:pointerover">
+            <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundPointerOver}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushPointerOver}" />
+        </Style>
+        <Style Selector="^ /template/ Border#PART_LayoutRoot:pointerover > ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundPointerOver}" />
+        </Style>
+
+        <!--  Pressed state  -->
+        <Style Selector="^:pressed /template/ Border#PART_LayoutRoot:pointerover">
+            <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundPressed}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushPressed}" />
+        </Style>
+        <Style Selector="^:pressed /template/ Border#PART_LayoutRoot:pointerover > ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundPressed}" />
+        </Style>
+
+        <!--  Disabled state  -->
+        <Style Selector="^:disabled /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundDisabled}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushDisabled}" />
+        </Style>
+        <Style Selector="^:disabled /template/ ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundDisabled}" />
+        </Style>
+
+        <!--  Selected state  -->
+        <Style Selector="^:selected /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundSelected}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushSelected}" />
+        </Style>
+        <Style Selector="^:selected /template/ Border#PART_LayoutRoot > ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundSelected}" />
+        </Style>
+
+        <!--  Selected PointerOver state  -->
+        <Style Selector="^:selected /template/ Border#PART_LayoutRoot:pointerover">
+            <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundSelectedPointerOver}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushSelectedPointerOver}" />
+        </Style>
+        <Style Selector="^:selected /template/ Border#PART_LayoutRoot:pointerover > ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundSelectedPointerOver}" />
+        </Style>
+
+        <!--  Selected Pressed state  -->
+        <Style Selector="^:pressed:selected /template/ Border#PART_LayoutRoot:pointerover">
+            <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundSelectedPressed}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushSelectedPressed}" />
+        </Style>
+        <Style Selector="^:pressed:selected /template/ Border#PART_LayoutRoot:pointerover > ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundSelectedPressed}" />
+        </Style>
+
+        <!--  Disabled Selected state  -->
+        <Style Selector="^:disabled:selected /template/ Border#PART_LayoutRoot">
+            <Setter Property="Background" Value="{DynamicResource TreeViewItemBackgroundSelectedDisabled}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource TreeViewItemBorderBrushSelectedDisabled}" />
+        </Style>
+        <Style Selector="^:disabled:selected /template/ Border#PART_LayoutRoot > ContentPresenter#PART_HeaderPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource TreeViewItemForegroundSelectedDisabled}" />
+        </Style>
+
+        <Style Selector="^:empty /template/ ToggleButton#PART_ExpandCollapseChevron">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="^:empty /template/ Panel#PART_ExpandCollapseChevronContainer">
+            <Setter Property="Width" Value="{StaticResource VeghaTreeChevronSize}" />
+        </Style>
+    </ControlTheme>
+</ResourceDictionary>

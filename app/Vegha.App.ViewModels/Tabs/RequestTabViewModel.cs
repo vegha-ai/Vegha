@@ -23,7 +23,12 @@ public abstract partial class RequestTabViewModel : ObservableObject
     private string _method = "GET";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsGraphQL))]
     private RequestKind _kind = RequestKind.Http;
+
+    /// <summary>True for GraphQL requests — the tab strip shows the GraphQL mark instead of
+    /// the HTTP method badge (a GraphQL request's "POST" is transport detail, not identity).</summary>
+    public bool IsGraphQL => Kind == RequestKind.GraphQL;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanRevert))]

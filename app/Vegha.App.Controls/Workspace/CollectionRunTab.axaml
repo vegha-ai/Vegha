@@ -5,6 +5,7 @@
              xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:tabs="using:Vegha.App.ViewModels.Tabs"
              xmlns:flow="using:Vegha.Core.Flow"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
              x:Class="Vegha.App.Controls.Workspace.CollectionRunTab"
              x:DataType="tabs:CollectionRunTabViewModel"
@@ -217,18 +218,27 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="tabs:RunRequestRow">
                                 <Grid ColumnDefinitions="Auto,Auto,*" Margin="0,1,0,1">
-                                    <CheckBox Grid.Column="0"
+                                    <CheckBox Grid.Column="0" Classes="compact"
                                               IsChecked="{Binding IsSelected}"
                                               IsVisible="{Binding !IsFolderHeader}"
-                                              MinWidth="0" Margin="0,0,4,0" />
+                                              MinWidth="0" Margin="0,0,4,0"
+                                              VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1"
                                                Text="{Binding Method}"
+                                               IsVisible="{Binding !IsGraphQL}"
                                                FontFamily="{StaticResource MonoFont}"
                                                FontSize="9"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource Text2Brush}"
                                                Margin="0,0,6,0"
                                                VerticalAlignment="Center" />
+                                    <!-- GraphQL requests identify by the GraphQL mark, not the POST verb. -->
+                                    <icons:Icon Grid.Column="1"
+                                                Kind="GraphQL" Size="12"
+                                                IsVisible="{Binding IsGraphQL}"
+                                                Foreground="{StaticResource GraphQLBrush}"
+                                                Margin="0,0,6,0"
+                                                VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="2"
                                                Text="{Binding Name}"
                                                FontSize="11"
@@ -279,6 +289,7 @@
                                                                    MinWidth="56" />
                                                         <TextBlock Grid.Column="1"
                                                                    Text="{Binding Method}"
+                                                                   IsVisible="{Binding !IsGraphQL}"
                                                                    FontFamily="{StaticResource MonoFont}"
                                                                    FontSize="10"
                                                                    FontWeight="SemiBold"
@@ -286,6 +297,13 @@
                                                                    Margin="0,0,6,0"
                                                                    VerticalAlignment="Center"
                                                                    MinWidth="48" />
+                                                        <!-- GraphQL results identify by the GraphQL mark, not the POST verb. -->
+                                                        <icons:Icon Grid.Column="1"
+                                                                    Kind="GraphQL" Size="13"
+                                                                    IsVisible="{Binding IsGraphQL}"
+                                                                    Foreground="{StaticResource GraphQLBrush}"
+                                                                    Margin="0,0,41,0"
+                                                                    VerticalAlignment="Center" />
                                                         <TextBlock Grid.Column="2"
                                                                    Text="{Binding Name}"
                                                                    FontSize="12"

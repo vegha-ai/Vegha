@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:tabs="using:Vegha.App.ViewModels.Tabs"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="36"
              x:Class="Vegha.App.Controls.Shell.RequestTabStrip"
              x:DataType="tabs:OpenTabsViewModel">
@@ -75,31 +76,61 @@
                                      code-behind read the tab from each item's Tag. -->
                                 <Border.ContextFlyout>
                                     <MenuFlyout Placement="BottomEdgeAlignedLeft">
-                                        <MenuItem Header="New Request" Tag="{Binding}" Click="OnMenuNewRequest_Click" />
-                                        <MenuItem Header="Clone Request" Tag="{Binding}" Click="OnMenuClone_Click" />
-                                        <MenuItem Header="Rename…" InputGesture="F2" Tag="{Binding}" Click="OnMenuRename_Click" />
+                                        <MenuItem Header="New Request" Tag="{Binding}" Click="OnMenuNewRequest_Click">
+                                            <MenuItem.Icon><icons:Icon Kind="Plus" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Header="Clone Request" Tag="{Binding}" Click="OnMenuClone_Click">
+                                            <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Header="Rename…" InputGesture="F2" Tag="{Binding}" Click="OnMenuRename_Click">
+                                            <MenuItem.Icon><icons:Icon Kind="Pencil" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                        </MenuItem>
                                         <MenuItem Header="Revert Changes" Tag="{Binding}"
-                                                  IsEnabled="{Binding CanRevert}" Click="OnMenuRevert_Click" />
+                                                  IsEnabled="{Binding CanRevert}" Click="OnMenuRevert_Click">
+                                            <MenuItem.Icon><icons:Icon Kind="Undo" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                        </MenuItem>
                                         <Separator />
                                         <MenuItem Header="Save to collection…" Tag="{Binding}"
-                                                  Click="OnMenuSaveToCollection_Click" />
+                                                  Click="OnMenuSaveToCollection_Click">
+                                            <MenuItem.Icon><icons:Icon Kind="Save" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                        </MenuItem>
                                         <Separator />
-                                        <MenuItem Header="Close" Tag="{Binding}" Click="OnMenuClose_Click" />
-                                        <MenuItem Header="Close Others" Tag="{Binding}" Click="OnMenuCloseOthers_Click" />
-                                        <MenuItem Header="Close to the Left" Tag="{Binding}" Click="OnMenuCloseLeft_Click" />
-                                        <MenuItem Header="Close to the Right" Tag="{Binding}" Click="OnMenuCloseRight_Click" />
-                                        <MenuItem Header="Close Saved" Tag="{Binding}" Click="OnMenuCloseSaved_Click" />
-                                        <MenuItem Header="Close All" Tag="{Binding}" Click="OnMenuCloseAll_Click" />
+                                        <MenuItem Header="Close" Tag="{Binding}" Click="OnMenuClose_Click">
+                                            <MenuItem.Icon><icons:Icon Kind="Close" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Header="Close Others" Tag="{Binding}" Click="OnMenuCloseOthers_Click">
+                                            <MenuItem.Icon><icons:Icon Kind="Close" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Header="Close to the Left" Tag="{Binding}" Click="OnMenuCloseLeft_Click">
+                                            <MenuItem.Icon><icons:Icon Kind="Close" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Header="Close to the Right" Tag="{Binding}" Click="OnMenuCloseRight_Click">
+                                            <MenuItem.Icon><icons:Icon Kind="Close" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Header="Close Saved" Tag="{Binding}" Click="OnMenuCloseSaved_Click">
+                                            <MenuItem.Icon><icons:Icon Kind="Close" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                        </MenuItem>
+                                        <MenuItem Header="Close All" Tag="{Binding}" Click="OnMenuCloseAll_Click">
+                                            <MenuItem.Icon><icons:Icon Kind="Close" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                        </MenuItem>
                                     </MenuFlyout>
                                 </Border.ContextFlyout>
                                 <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
                                     <TextBlock Grid.Column="0"
                                                Text="{Binding Method}"
+                                               IsVisible="{Binding !IsGraphQL}"
                                                FontFamily="{StaticResource MonoFont}"
                                                FontSize="10" FontWeight="SemiBold"
                                                Foreground="{Binding Method, Converter={StaticResource MethodToBrushConverter}}"
                                                VerticalAlignment="Center"
                                                Margin="10,0,8,0" />
+                                    <!-- GraphQL tabs identify by the GraphQL mark, not the POST verb. -->
+                                    <icons:Icon Grid.Column="0"
+                                                Kind="GraphQL" Size="13"
+                                                IsVisible="{Binding IsGraphQL}"
+                                                Foreground="{StaticResource GraphQLBrush}"
+                                                VerticalAlignment="Center"
+                                                Margin="10,0,8,0" />
                                     <TextBlock Grid.Column="1"
                                                Text="●"
                                                IsVisible="{Binding IsDirty}"

@@ -76,6 +76,11 @@
                            TextWrapping="Wrap" />
             </Border>
 
+            <!-- GraphQL subscription timeline — docked above the response tabs while a
+                 graphql-ws session has produced frames; picking a row shows it below. -->
+            <ws:GraphQLSubscriptionView DockPanel.Dock="Top"
+                                        IsVisible="{Binding HasSubscriptionFrames}" />
+
             <!-- Body area: response subtabs once a response exists, otherwise a
                  designed empty state (audit §07.3). The Grid lets the empty state
                  fill the body region below the status line. -->

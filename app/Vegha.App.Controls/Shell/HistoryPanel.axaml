@@ -147,10 +147,18 @@
                             <Grid ColumnDefinitions="46,*,Auto" RowDefinitions="Auto,Auto">
                                 <TextBlock Grid.Column="0" Grid.Row="0"
                                            Text="{Binding Method}"
+                                           IsVisible="{Binding !IsGraphQL}"
                                            FontFamily="{StaticResource MonoFont}"
                                            FontSize="10" FontWeight="SemiBold"
                                            Foreground="{Binding Method, Converter={StaticResource MethodToBrushConverter}}"
                                            VerticalAlignment="Center" />
+                                <!-- GraphQL sends identify by the GraphQL mark, not the POST verb. -->
+                                <icons:Icon Grid.Column="0" Grid.Row="0"
+                                            Kind="GraphQL" Size="13"
+                                            IsVisible="{Binding IsGraphQL}"
+                                            Foreground="{StaticResource GraphQLBrush}"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="1" Grid.Row="0"
                                            Text="{Binding Url}"
                                            FontSize="11"

@@ -1,0 +1,82 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             x:Class="Vegha.App.Controls.Workspace.GraphQLSchemaExplorer"
+             x:DataType="vm:GraphQLSchemaExplorerViewModel">
+    <DockPanel>
+        <!-- Nav bar: back chevron + breadcrumb -->
+        <Border DockPanel.Dock="Top" Padding="6,2" MinHeight="24"
+                BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <Button DockPanel.Dock="Left"
+                        Command="{Binding BackCommand}"
+                        IsVisible="{Binding CanGoBack}"
+                        Content="‹"
+                        FontSize="13"
+                        Background="Transparent"
+                        Foreground="{DynamicResource Text2Brush}"
+                        Padding="6,0" Height="20"
+                        ToolTip.Tip="Back (Backspace)" />
+                <TextBlock Text="{Binding Breadcrumb}"
+                           FontSize="10"
+                           Foreground="{DynamicResource Text2Brush}"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           Margin="4,0,0,0" />
+            </DockPanel>
+        </Border>
+
+        <!-- Search -->
+        <TextBox x:Name="SearchBox"
+                 DockPanel.Dock="Top"
+                 Text="{Binding SearchText, Mode=TwoWay}"
+                 Watermark="Search types &amp; fields  ( / )"
+                 FontSize="11"
+                 Margin="6,4"
+                 Padding="6,2" MinHeight="24" />
+
+        <!-- Rows (virtualized) — activating a row navigates to its linked type -->
+        <ListBox x:Name="RowsList"
+                 ItemsSource="{Binding Rows}"
+                 SelectionMode="Single"
+                 Background="Transparent"
+                 FontSize="11">
+            <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="8,2" />
+                    <Setter Property="MinHeight" Value="0" />
+                </Style>
+                <Style Selector="TextBlock.rowTitle.header">
+                    <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                    <Setter Property="FontSize" Value="9" />
+                </Style>
+                <Style Selector="TextBlock.rowTitle.navigable">
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                </Style>
+                <Style Selector="TextBlock.rowTitle.deprecated">
+                    <Setter Property="TextDecorations" Value="Strikethrough" />
+                </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:SchemaExplorerRow">
+                    <StackPanel Spacing="1">
+                        <TextBlock Classes="rowTitle"
+                                   Classes.header="{Binding IsHeader}"
+                                   Classes.navigable="{Binding IsNavigable}"
+                                   Classes.deprecated="{Binding IsDeprecated}"
+                                   Text="{Binding Title}"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   TextWrapping="Wrap"
+                                   FontSize="11" />
+                        <TextBlock Text="{Binding Subtitle}"
+                                   IsVisible="{Binding HasSubtitle}"
+                                   FontSize="10"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Text3Brush}" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</UserControl>

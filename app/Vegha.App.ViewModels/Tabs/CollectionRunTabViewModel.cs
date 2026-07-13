@@ -88,7 +88,7 @@ public sealed partial class CollectionRunTabViewModel : RequestTabViewModel
     {
         RequestRows.Clear();
         foreach (var r in TargetCollection.Requests)
-            RequestRows.Add(new RunRequestRow(r.Name, r.Method, indentLevel: 0));
+            RequestRows.Add(new RunRequestRow(r.Name, r.Method, indentLevel: 0, isGraphQL: r.Kind == RequestKind.GraphQL));
         foreach (var folder in TargetCollection.Folders)
             AddFolder(folder, depth: 1);
     }
@@ -97,7 +97,7 @@ public sealed partial class CollectionRunTabViewModel : RequestTabViewModel
     {
         RequestRows.Add(new RunRequestRow(folder.Name, "FOLDER", depth, isFolderHeader: true));
         foreach (var r in folder.Requests)
-            RequestRows.Add(new RunRequestRow(r.Name, r.Method, depth + 1));
+            RequestRows.Add(new RunRequestRow(r.Name, r.Method, depth + 1, isGraphQL: r.Kind == RequestKind.GraphQL));
         foreach (var f in folder.Folders) AddFolder(f, depth + 1);
     }
 
@@ -263,13 +263,16 @@ public partial class RunRequestRow : ObservableObject
     public string Method { get; }
     public int IndentLevel { get; }
     public bool IsFolderHeader { get; }
+    /// <summary>True for GraphQL requests — the row shows the GraphQL mark instead of the verb.</summary>
+    public bool IsGraphQL { get; }
 
     [ObservableProperty] private bool _isSelected = true;
 
-    public RunRequestRow(string name, string method, int indentLevel, bool isFolderHeader = false)
+    public RunRequestRow(string name, string method, int indentLevel, bool isFolderHeader = false, bool isGraphQL = false)
     {
         Name = name; Method = method;
         IndentLevel = indentLevel; IsFolderHeader = isFolderHeader;
+        IsGraphQL = isGraphQL;
     }
 }
 

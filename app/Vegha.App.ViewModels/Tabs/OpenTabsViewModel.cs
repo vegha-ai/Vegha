@@ -478,6 +478,11 @@ public partial class OpenTabsViewModel : ObservableObject
         var indexInAll = Tabs.IndexOf(tab);
         if (indexInAll < 0) return;
 
+        // A live GraphQL subscription must not outlive its tab — tear the socket down
+        // (fire-and-forget; never blocks the close gesture).
+        if (tab is HttpRequestTabViewModel httpTab)
+            httpTab.Editor.TeardownGraphQLSubscription();
+
         Tabs.RemoveAt(indexInAll);
         if (ActiveTab == tab)
         {

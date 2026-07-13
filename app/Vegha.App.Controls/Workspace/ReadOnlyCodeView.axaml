@@ -3,7 +3,11 @@
              xmlns:edit="using:AvaloniaEdit"
              x:Name="Root"
              x:Class="Vegha.App.Controls.Workspace.ReadOnlyCodeView">
-    <Border Name="HostBorder" Background="{DynamicResource CodeBgBrush}">
+    <!-- Padding lives on the host Border, NOT on the TextEditor: AvaloniaEdit forwards its
+         own Padding into the internal ScrollViewer, which shifts the line-number margin into
+         the clipped area (digits render cut off at the left edge). Same hosting pattern as
+         VariableAwareTextEditor. -->
+    <Border Name="HostBorder" Background="{DynamicResource CodeBgBrush}" Padding="10,8,4,4">
         <edit:TextEditor x:Name="Editor"
                          IsReadOnly="True"
                          ShowLineNumbers="True"
@@ -11,7 +15,6 @@
                          FontSize="{DynamicResource EditorFontSize}"
                          HorizontalScrollBarVisibility="Auto"
                          VerticalScrollBarVisibility="Auto"
-                         Padding="6,4"
                          Background="Transparent"
                          Foreground="{DynamicResource Text0Brush}" />
     </Border>

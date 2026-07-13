@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GraphQL syntax highlighting. Base colors are the "generic dark" fallbacks; at runtime
+     EditorSyntaxTheme.Apply remaps every named color to the active theme's Code*Brush token
+     by category (Comment→CodeCommentBrush, String→CodeStringBrush, …), so keep the color
+     NAMES stable — they are the mapping contract. -->
+<SyntaxDefinition name="GraphQL" extensions=".graphql;.gql" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment"     foreground="#6A9955" />
+  <Color name="String"      foreground="#CE9178" />
+  <Color name="Number"      foreground="#B5CEA8" />
+  <Color name="Keyword"     foreground="#C586C0" />
+  <Color name="BoolNull"    foreground="#569CD6" />
+  <Color name="GqlVar"      foreground="#9CDCFE" />
+  <Color name="Directive"   foreground="#DCDCAA" />
+  <Color name="TypeName"    foreground="#4EC9B0" />
+  <Color name="Punctuation" foreground="#808080" />
+
+  <RuleSet>
+    <Span color="Comment" begin="#" />
+
+    <!-- Block string before the plain string so `"""` doesn't lex as empty-string + quote. -->
+    <Span color="String" multiline="true" begin="&quot;&quot;&quot;" end="&quot;&quot;&quot;" />
+    <Span color="String" begin="&quot;" end="&quot;">
+      <RuleSet>
+        <!-- Escape sequences: don't let \" terminate the span. -->
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+
+    <Keywords color="Keyword">
+      <Word>query</Word>
+      <Word>mutation</Word>
+      <Word>subscription</Word>
+      <Word>fragment</Word>
+      <Word>on</Word>
+      <Word>schema</Word>
+      <Word>type</Word>
+      <Word>interface</Word>
+      <Word>union</Word>
+      <Word>enum</Word>
+      <Word>input</Word>
+      <Word>scalar</Word>
+      <Word>directive</Word>
+      <Word>implements</Word>
+      <Word>extend</Word>
+      <Word>repeatable</Word>
+    </Keywords>
+
+    <Keywords color="BoolNull">
+      <Word>true</Word>
+      <Word>false</Word>
+      <Word>null</Word>
+    </Keywords>
+
+    <!-- $variables and @directives -->
+    <Rule color="GqlVar">\$[A-Za-z_][A-Za-z0-9_]*</Rule>
+    <Rule color="Directive">@[A-Za-z_][A-Za-z0-9_]*</Rule>
+
+    <!-- PascalCase names are (by GraphQL convention) type references: vardef types,
+         fragment conditions, inline fragments. Lowercase field names keep default text. -->
+    <Rule color="TypeName">\b[A-Z][A-Za-z0-9_]*\b</Rule>
+
+    <Rule color="Number">\b\d+(\.\d+)?([eE][+-]?\d+)?\b</Rule>
+
+    <Rule color="Punctuation">[{}()\[\]:=|&amp;!,.]</Rule>
+  </RuleSet>
+</SyntaxDefinition>

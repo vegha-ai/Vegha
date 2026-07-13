@@ -101,7 +101,8 @@ public static class CollectionRunOrchestrator
                                     req.Name, req.Method, req.Url,
                                     StatusCode: 0, ElapsedMs: 0, Succeeded: false,
                                     ErrorMessage: ex.Message,
-                                    Status: RequestRunStatus.Errored);
+                                    Status: RequestRunStatus.Errored,
+                                    Kind: req.Kind);
                             }
 
                             progress?.Report(new RequestCompleted(iterIndex, result));

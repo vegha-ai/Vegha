@@ -8,7 +8,7 @@ namespace Vegha.Core.Codegen;
 public sealed class JavaOkHttpEmitter : ICodegenEmitter
 {
     public string Language => "java";
-    public string DisplayName => "Java (OkHttp)";
+    public string DisplayName => "Java - OkHttp";
 
     public string Emit(RequestItem request, IReadOnlyDictionary<string, string>? vars = null)
     {

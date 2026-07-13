@@ -204,6 +204,12 @@ public static class BruToRequestConverter
         if (doc.Blocks.Any(b => b.Name == "ws")) return RequestKind.WebSocket;
         if (doc.Blocks.OfType<TextBlock>().Any(b => b.Name == "body:graphql"))
             return RequestKind.GraphQL;
+        // A declared graphql body (`body: graphql` in the verb block) also marks the request
+        // as GraphQL — the body:graphql text block is absent while the query is still empty
+        // (the emitter skips empty text blocks).
+        if (doc.Blocks.OfType<DictBlock>().Any(b =>
+                b.Pairs.Any(p => p.Name == "body" && p.Value is StringValue { Text: "graphql" })))
+            return RequestKind.GraphQL;
         return RequestKind.Http;
     }
 

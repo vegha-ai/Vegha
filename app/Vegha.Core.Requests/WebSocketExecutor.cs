@@ -39,6 +39,10 @@ public sealed class WebSocketExecutor : IAsyncDisposable
 
     public WebSocketState State => _client.State;
 
+    /// <summary>Subprotocol the server accepted during the handshake (null when none was
+    /// negotiated). Lets protocol layers (graphql-ws) pick their dialect.</summary>
+    public string? NegotiatedSubProtocol => _client.SubProtocol;
+
     /// <summary>Connect to the URL. Adds the supplied subprotocols + headers (e.g., Authorization)
     /// before opening. Throws on failure — the caller decides whether to surface to the user.</summary>
     public async Task ConnectAsync(

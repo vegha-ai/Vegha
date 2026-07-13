@@ -104,7 +104,8 @@ public sealed class HttpExecutor
         if (_cookieStore is not null)
             await _cookieStore.ReadyAsync.ConfigureAwait(false);
         var timing = new RequestTiming();
-        var (client, ownedClient) = GetClientFor(request.Options);
+        var decompression = ResolveDecompression(request.Headers);
+        var (client, ownedClient) = GetClientFor(request.Options, decompression);
         string sentRequestText = string.Empty;
         try
         {
@@ -113,7 +114,7 @@ public sealed class HttpExecutor
             timing.IsHttps = string.Equals(request.Url.Scheme, "https", StringComparison.OrdinalIgnoreCase);
             // Snapshot the outgoing request as HTTP text BEFORE send so it's preserved even
             // when the call later throws (transport errors etc.).
-            sentRequestText = await RenderOutgoingRequestAsync(msg, request.Body, cancellationToken)
+            sentRequestText = await RenderOutgoingRequestAsync(msg, request.Body, decompression, cancellationToken)
                 .ConfigureAwait(false);
 
             timing.MarkStart();
@@ -177,19 +178,20 @@ public sealed class HttpExecutor
     }
 
     /// <summary>Returns the HttpClient to use plus an owned client (if a one-off was constructed for this request).</summary>
-    private (HttpClient Client, HttpClient? Owned) GetClientFor(HttpRequestOptions? options)
+    private (HttpClient Client, HttpClient? Owned) GetClientFor(
+        HttpRequestOptions? options, System.Net.DecompressionMethods decompression)
     {
-        if (options is null) return (_defaultClient, null);
-
-        var followRedirects = options.FollowRedirects ?? true;
-        var verifySsl = options.VerifySsl ?? true;
-        var useCookies = options.UseCookies ?? true;
-        var ntlm = options.NtlmCredential;
-        var clientCert = options.ClientCertificate;
+        var followRedirects = options?.FollowRedirects ?? true;
+        var verifySsl = options?.VerifySsl ?? true;
+        var useCookies = options?.UseCookies ?? true;
+        var ntlm = options?.NtlmCredential;
+        var clientCert = options?.ClientCertificate;
 
         // If the override happens to match defaults and there's no NTLM creds + no mTLS cert,
-        // reuse the shared client.
-        if (followRedirects && verifySsl && useCookies && ntlm is null && clientCert is null)
+        // reuse the shared client. A non-default decompression set (user supplied their own
+        // Accept-Encoding header) needs its own handler.
+        if (followRedirects && verifySsl && useCookies && ntlm is null && clientCert is null
+            && decompression == System.Net.DecompressionMethods.All)
             return (_defaultClient, null);
 
         // NTLM requires HttpClientHandler.Credentials — SocketsHttpHandler doesn't expose
@@ -208,7 +210,7 @@ public sealed class HttpExecutor
                 ServerCertificateCustomValidationCallback = verifySsl ? null : (_, _, _, _) => true,
                 // Same parity as the SocketsHttpHandler path — NTLM endpoints often return
                 // gzipped responses too and the user expects Postman-like wire sizes.
-                AutomaticDecompression = System.Net.DecompressionMethods.All,
+                AutomaticDecompression = decompression,
             };
             if (clientCert is not null)
             {
@@ -219,7 +221,7 @@ public sealed class HttpExecutor
         }
         else
         {
-            var sockets = BuildHandler(followRedirects, verifySsl, useCookies, CookieJar);
+            var sockets = BuildHandler(followRedirects, verifySsl, useCookies, CookieJar, decompression);
             if (clientCert is not null)
             {
                 sockets.SslOptions.ClientCertificates ??=
@@ -233,7 +235,8 @@ public sealed class HttpExecutor
     }
 
     private SocketsHttpHandler BuildHandler(
-        bool followRedirects, bool verifySsl, bool useCookies, System.Net.CookieContainer cookieJar)
+        bool followRedirects, bool verifySsl, bool useCookies, System.Net.CookieContainer cookieJar,
+        System.Net.DecompressionMethods decompression = System.Net.DecompressionMethods.All)
     {
         var h = new SocketsHttpHandler
         {
@@ -242,12 +245,16 @@ public sealed class HttpExecutor
             CookieContainer = useCookies ? cookieJar : new System.Net.CookieContainer(),
             ConnectCallback = ConnectAsync,
             PlaintextStreamFilter = PlaintextStreamFilter,
-            // Match Postman / browsers / curl --compressed: advertise gzip+deflate+brotli
-            // in Accept-Encoding and transparently decompress the response. Without this,
-            // servers that would have returned a 1 MB gzipped body instead return the
-            // full 15 MB uncompressed payload (some users saw exactly this with their
-            // notification-tree endpoint).
-            AutomaticDecompression = System.Net.DecompressionMethods.All,
+            // Default (no user Accept-Encoding header): match Postman / browsers /
+            // curl --compressed — advertise gzip+deflate+brotli and transparently
+            // decompress. Without this, servers that would have returned a 1 MB gzipped
+            // body instead return the full 15 MB uncompressed payload (some users saw
+            // exactly this with their notification-tree endpoint). When the user supplies
+            // their own Accept-Encoding header, the flags mirror exactly the encodings
+            // they listed — otherwise .NET's DecompressionHandler appends the missing
+            // tokens (e.g. "br") to the header, which some gateways (Apigee) reject with
+            // protocol.http.UnsupportedEncoding.
+            AutomaticDecompression = decompression,
         };
         if (_proxy is not null)
         {
@@ -520,12 +527,46 @@ public sealed class HttpExecutor
     private static bool IsContentHeader(string name) =>
         name.StartsWith("Content-", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Maps the user's Accept-Encoding header (if any) to the decompression flags the
+    /// handler should use. No header → All (the Postman-parity default: gzip, deflate, br).
+    /// With a header, only the encodings the user listed are enabled, so the handler sends the
+    /// header verbatim instead of appending unlisted tokens — without this, a request with
+    /// "Accept-Encoding: gzip" still goes out as "gzip, deflate, br" and gateways that don't
+    /// support brotli reject it.</summary>
+    private static System.Net.DecompressionMethods ResolveDecompression(
+        IReadOnlyList<KeyValuePair<string, string>>? headers)
+    {
+        var accept = headers?
+            .FirstOrDefault(h => string.Equals(h.Key, "Accept-Encoding", StringComparison.OrdinalIgnoreCase))
+            .Value;
+        if (string.IsNullOrWhiteSpace(accept))
+            return System.Net.DecompressionMethods.All;
+
+        var methods = System.Net.DecompressionMethods.None;
+        foreach (var raw in accept.Split(','))
+        {
+            // Strip q-values: "gzip;q=0.8" → "gzip".
+            var token = raw.Split(';')[0].Trim();
+            if (token.Equals("gzip", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("x-gzip", StringComparison.OrdinalIgnoreCase))
+                methods |= System.Net.DecompressionMethods.GZip;
+            else if (token.Equals("deflate", StringComparison.OrdinalIgnoreCase))
+                methods |= System.Net.DecompressionMethods.Deflate;
+            else if (token.Equals("br", StringComparison.OrdinalIgnoreCase))
+                methods |= System.Net.DecompressionMethods.Brotli;
+            // identity / * / unknown tokens still go on the wire, but the handler can't
+            // decompress them, so they contribute no flag.
+        }
+        return methods;
+    }
+
     /// <summary>Renders the outgoing request as HTTP-style text (request line + headers +
     /// blank line + body) so the user can compare it byte-for-byte against the curl they
     /// run from the terminal. Used by the "Sent" subtab on the response viewer.</summary>
     private static async Task<string> RenderOutgoingRequestAsync(
         HttpRequestMessage msg,
         string? originalBody,
+        System.Net.DecompressionMethods decompression,
         CancellationToken ct)
     {
         var sb = new StringBuilder();
@@ -538,6 +579,18 @@ public sealed class HttpExecutor
         // Request headers (non-content)
         foreach (var h in msg.Headers)
             sb.Append(h.Key).Append(": ").AppendLine(string.Join(", ", h.Value));
+        // Accept-Encoding is injected at send time by .NET's DecompressionHandler (per the
+        // AutomaticDecompression flags), so it isn't on msg.Headers yet — render the value
+        // the wire will carry. When the user set the header themselves it's already above.
+        if (msg.Headers.AcceptEncoding.Count == 0 && !msg.Headers.Contains("Accept-Encoding"))
+        {
+            var tokens = new List<string>(3);
+            if (decompression.HasFlag(System.Net.DecompressionMethods.GZip)) tokens.Add("gzip");
+            if (decompression.HasFlag(System.Net.DecompressionMethods.Deflate)) tokens.Add("deflate");
+            if (decompression.HasFlag(System.Net.DecompressionMethods.Brotli)) tokens.Add("br");
+            if (tokens.Count > 0)
+                sb.Append("Accept-Encoding: ").AppendLine(string.Join(", ", tokens));
+        }
         // Content headers
         if (msg.Content is not null)
         {

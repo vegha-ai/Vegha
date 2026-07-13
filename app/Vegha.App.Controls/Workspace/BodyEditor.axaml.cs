@@ -21,6 +21,39 @@ public partial class BodyEditor : UserControl
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
         DetachedFromVisualTree += (_, _) => DetachVm();
+        ViewSdlButton.Click += (_, _) => ShowSchemaSdl();
+    }
+
+    /// <summary>Double-click on the query/variables splitter resets the variables pane to
+    /// its default height (mirrors the main response splitter's reset gesture).</summary>
+    private void OnQueryVariablesSplitterDoubleTapped(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is not GridSplitter splitter || splitter.Parent is not Grid grid) return;
+        if (grid.RowDefinitions.Count >= 3)
+            grid.RowDefinitions[2].Height = new GridLength(160);
+    }
+
+    /// <summary>Renders the introspected schema as SDL into a lightweight read-only viewer
+    /// window. Lives in the view (not the VM) because it constructs Avalonia controls.</summary>
+    private void ShowSchemaSdl()
+    {
+        if (_attachedVm?.GetSchemaSdl() is not { } sdl) return;
+        Highlighting.GraphQLHighlighting.EnsureRegistered();
+        var owner = TopLevel.GetTopLevel(this) as Window;
+        var window = new Window
+        {
+            Title = "GraphQL schema (SDL)",
+            Width = 720,
+            Height = 640,
+            Content = new ReadOnlyCodeView
+            {
+                Text = sdl,
+                SyntaxHighlightingName = "GraphQL",
+                WordWrap = false,
+            },
+        };
+        if (owner is not null) window.Show(owner);
+        else window.Show();
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)

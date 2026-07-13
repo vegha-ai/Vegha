@@ -56,6 +56,34 @@ public static class GraphQLIntrospector
         string? SubscriptionType,
         IReadOnlyList<GraphQLType> Types);
 
+    /// <summary>POSTs an arbitrary introspection <paramref name="query"/> and returns the raw
+    /// response body without interpreting it. The caller (the editor VM) drives the
+    /// full→reduced→minimal fallback chain and parses via
+    /// <c>Vegha.Core.GraphQL.Schema.IntrospectionJsonReader</c>; the raw JSON is also what
+    /// gets persisted to the on-disk schema cache.</summary>
+    public static async Task<string> IntrospectRawAsync(
+        HttpExecutor executor,
+        Uri endpoint,
+        string query,
+        IReadOnlyList<KeyValuePair<string, string>>? headers = null,
+        CancellationToken cancellationToken = default)
+    {
+        var bodyJson = JsonSerializer.Serialize(new { query });
+        var request = new HttpExecutionRequest(
+            HttpMethod.Post, endpoint,
+            Headers: headers,
+            Body: bodyJson,
+            ContentType: "application/json");
+        var result = await executor.ExecuteAsync(request, cancellationToken);
+        // GraphQL servers answer validation rejections as 200 or 400 with a JSON errors
+        // body — pass those through for the reader to interpret (it may trigger the next
+        // fallback query). Only bodyless transport-level failures throw here.
+        if (string.IsNullOrWhiteSpace(result.Body))
+            throw new InvalidOperationException(
+                $"Introspection failed: HTTP {result.StatusCode} {result.ErrorMessage ?? result.ReasonPhrase}");
+        return result.Body;
+    }
+
     /// <summary>Sends the introspection query to the endpoint via the supplied executor and
     /// parses the response. <paramref name="headers"/> may carry auth — the caller is
     /// expected to pass the same headers a normal request would use.</summary>

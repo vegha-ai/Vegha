@@ -335,7 +335,8 @@ public sealed record HistoryRow(
     int StatusCode,
     long DurationMs,
     DateTimeOffset TimestampUtc,
-    string? ErrorMessage)
+    string? ErrorMessage,
+    string? RequestKind = null)
 {
     public string TimeAgo => FormatRelative(TimestampUtc);
     public bool IsError => StatusCode == 0 || ErrorMessage is not null;
@@ -343,8 +344,12 @@ public sealed record HistoryRow(
     public bool Is4xx => StatusCode is >= 400 and < 500;
     public bool Is5xx => StatusCode >= 500;
 
+    /// <summary>True for GraphQL sends — the panel shows the GraphQL mark instead of the
+    /// method badge. Rows written by older builds have no kind and render as plain HTTP.</summary>
+    public bool IsGraphQL => RequestKind == "graphql";
+
     public static HistoryRow From(HistoryEntry e) =>
-        new(e.Id, e.Method, e.Url, e.StatusCode, e.DurationMs, e.TimestampUtc, e.ErrorMessage);
+        new(e.Id, e.Method, e.Url, e.StatusCode, e.DurationMs, e.TimestampUtc, e.ErrorMessage, e.RequestKind);
 
     private static string FormatRelative(DateTimeOffset ts)
     {

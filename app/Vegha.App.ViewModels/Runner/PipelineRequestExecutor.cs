@@ -87,7 +87,8 @@ public sealed class PipelineRequestExecutor
                 ErrorMessage: outputs.ErrorMessage,
                 Status: status,
                 PassedTests: outputs.PassedTests,
-                FailedTests: outputs.FailedTests);
+                FailedTests: outputs.FailedTests,
+                Kind: request.Kind);
         };
     }
 

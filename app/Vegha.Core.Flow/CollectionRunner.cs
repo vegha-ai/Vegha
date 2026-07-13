@@ -25,20 +25,25 @@ public sealed record RequestRunResult(
     string? ErrorMessage,
     RequestRunStatus Status = RequestRunStatus.Passed,
     int PassedTests = 0,
-    int FailedTests = 0)
+    int FailedTests = 0,
+    RequestKind Kind = RequestKind.Http)
 {
+    /// <summary>True for GraphQL requests — result rows show the GraphQL mark instead of
+    /// the method label.</summary>
+    public bool IsGraphQL => Kind == RequestKind.GraphQL;
+
     /// <summary>Factory for a skipped row (selection filter excluded the request). Tests
     /// counts are zero; rendering treats it as a neutral row, not pass or fail.</summary>
     public static RequestRunResult Skipped(RequestItem item) =>
         new(item.Name, item.Method, item.Url,
             StatusCode: 0, ElapsedMs: 0, Succeeded: false,
-            ErrorMessage: null, Status: RequestRunStatus.Skipped);
+            ErrorMessage: null, Status: RequestRunStatus.Skipped, Kind: item.Kind);
 
     /// <summary>Factory for a canceled row (token tripped mid-run).</summary>
     public static RequestRunResult Canceled(RequestItem item) =>
         new(item.Name, item.Method, item.Url,
             StatusCode: 0, ElapsedMs: 0, Succeeded: false,
-            ErrorMessage: "Canceled", Status: RequestRunStatus.Canceled);
+            ErrorMessage: "Canceled", Status: RequestRunStatus.Canceled, Kind: item.Kind);
 }
 
 /// <summary>

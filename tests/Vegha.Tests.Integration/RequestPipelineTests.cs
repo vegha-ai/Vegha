@@ -78,6 +78,63 @@ public class RequestPipelineTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GraphQL_MultiOperationDocument_SendsFirstOperationName()
+    {
+        _server.Given(Request.Create().WithPath("/graphql").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("{\"data\":{}}"));
+
+        var body = new BodyConfig
+        {
+            Mode = BodyMode.GraphQL,
+            GraphQLQuery = "query First { a } mutation Second { b }",
+            GraphQLVariables = "{}",
+        };
+        var inputs = BuildInputs("POST", _server.Urls[0] + "/graphql", body: body);
+        var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+        result.StatusCode.Should().Be(200);
+        var received = _server.LogEntries
+            .Last(e => e.RequestMessage.Path == "/graphql").RequestMessage.Body;
+        received.Should().Contain("\"operationName\":\"First\"");
+    }
+
+    [Fact]
+    public async Task GraphQL_Subscription_FailsWithClearRunnerError()
+    {
+        var body = new BodyConfig
+        {
+            Mode = BodyMode.GraphQL,
+            GraphQLQuery = "subscription OnTick { tick }",
+        };
+        var inputs = BuildInputs("POST", _server.Urls[0] + "/graphql", body: body);
+        var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+        result.StatusCode.Should().Be(0);
+        result.ErrorMessage.Should().Contain("subscriptions are not supported in the collection runner");
+    }
+
+    [Fact]
+    public async Task GraphQL_SingleOperation_OmitsOperationName()
+    {
+        _server.Given(Request.Create().WithPath("/graphql").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("{\"data\":{}}"));
+
+        var body = new BodyConfig
+        {
+            Mode = BodyMode.GraphQL,
+            GraphQLQuery = "query Only { a }",
+        };
+        var inputs = BuildInputs("POST", _server.Urls[0] + "/graphql", body: body);
+        var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+        result.StatusCode.Should().Be(200);
+        var received = _server.LogEntries
+            .Last(e => e.RequestMessage.Path == "/graphql").RequestMessage.Body;
+        received.Should().NotContain("operationName");
+        received.Should().Contain("\"query\":");
+    }
+
+    [Fact]
     public async Task IterationVariables_resolve_in_url()
     {
         _server.Given(Request.Create().WithPath("/users/42").UsingGet())

@@ -68,6 +68,12 @@ public partial class ReadOnlyCodeView : UserControl
         // Find (Ctrl+F) match highlight — same legible translucent amber as the request editors.
         _editor.SearchResultsBrush = new SolidColorBrush(Color.Parse("#66FBBF24"));
 
+        // AvaloniaEdit renders the code flush against the line-number gutter's separator, so
+        // the text hugs the divider. Append a fixed-width transparent spacer as the last
+        // left-margin — margins stack left→right, so this sits between the separator and the
+        // text and gives the code the same breathing room the host border gives the gutter.
+        _editor.TextArea.LeftMargins.Add(new Border { Width = 8, Background = Brushes.Transparent });
+
         // Push the initial WordWrap value imperatively — relying on the XAML binding alone
         // proved unreliable (AvaloniaEdit didn't always pick up the inherited value on
         // first layout, so long single-line responses still showed horizontally even

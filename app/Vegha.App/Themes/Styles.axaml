@@ -31,18 +31,23 @@
                                     Width="{Binding Level, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource LevelToIndentConverter}}" />
                             <Panel Grid.Column="1" Name="PART_ExpandCollapseChevron"
                                    Width="14" Background="Transparent">
-                                <!-- Right-pointing triangle (collapsed) -->
-                                <Path Width="4" Height="8"
+                                <!-- Thin stroke chevrons (Postman-style) — same glyph language as
+                                     the icons:Icon Chevron* library glyphs and the Fluent-tree
+                                     override below. Right = collapsed, down = expanded. -->
+                                <Path Width="5" Height="9"
                                       Stretch="Uniform"
-                                      Data="M 0,0 L 4,4 L 0,8 Z"
-                                      Fill="{DynamicResource Text2Brush}"
+                                      Data="M 0,0 L 4.5,4.5 L 0,9"
+                                      Stroke="{DynamicResource Text2Brush}"
+                                      StrokeThickness="1.5"
+                                      StrokeJoin="Round" StrokeLineCap="Round"
                                       HorizontalAlignment="Center" VerticalAlignment="Center"
                                       IsVisible="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Converter={x:Static BoolConverters.Not}}" />
-                                <!-- Down-pointing triangle (expanded) -->
-                                <Path Width="8" Height="4"
+                                <Path Width="9" Height="5"
                                       Stretch="Uniform"
-                                      Data="M 0,0 L 8,0 L 4,4 Z"
-                                      Fill="{DynamicResource Text2Brush}"
+                                      Data="M 0,0 L 4.5,4.5 L 9,0"
+                                      Stroke="{DynamicResource Text2Brush}"
+                                      StrokeThickness="1.5"
+                                      StrokeJoin="Round" StrokeLineCap="Round"
                                       HorizontalAlignment="Center" VerticalAlignment="Center"
                                       IsVisible="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
                             </Panel>
@@ -73,6 +78,16 @@
     </Style>
     <Style Selector="TreeView.compact TreeViewItem:selected:pointerover /template/ Border#PART_LayoutRoot">
         <Setter Property="Background" Value="{DynamicResource AccentSoftStrongBrush}" />
+    </Style>
+
+    <!-- ============ Compact input controls (app-wide defaults) ============
+         The 14px CheckBox / RadioButton marks and the thin tree chevrons themselves live in
+         Themes/CompactInputs.axaml as full ControlTheme replacements (Fluent bakes its 20px
+         sizes into template elements as local values, which styles cannot override). Only the
+         dense-list CheckBox variant lives here: control-level props are style-overridable. -->
+    <Style Selector="CheckBox.compact">
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Padding" Value="0" />
     </Style>
 
     <!-- GridSplitter visuals — 4px hit area, accent on hover/drag -->
@@ -631,10 +646,36 @@
 
     <!-- MenuItem (used by MenuFlyout, ContextMenu, and any nested submenus) — FluentTheme
          defaults to 14pt which towers over the rest of the 12pt UI. Pin to the same
-         AppFontSize so the hamburger flyout File / Edit / View / Help match the chrome. -->
+         AppFontSize so the hamburger flyout File / Edit / View / Help match the chrome.
+         The side margin + rounded hover pill give menus the modern inset-highlight look
+         (VSCode/Raycast style) instead of Fluent's full-bleed row highlight. -->
     <Style Selector="MenuItem">
         <Setter Property="FontSize" Value="12" />
         <Setter Property="MinHeight" Value="28" />
+        <Setter Property="Margin" Value="4,1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+    </Style>
+    <Style Selector="MenuItem:selected /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="MenuItem:pointerover /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+        <Setter Property="CornerRadius" Value="4" />
+    </Style>
+
+    <!-- Non-interactive group labels inside menus (e.g. the body-type dropdown's
+         FORM / RAW / OTHER). Small-caps-style dim label, tighter row. -->
+    <Style Selector="MenuItem.menuHeader">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="MinHeight" Value="20" />
+        <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
+        <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="MenuItem.menuHeader:disabled /template/ ContentPresenter">
+        <Setter Property="Opacity" Value="1" />
     </Style>
 
     <!-- Submenu chevron — FluentTheme's MenuItem template hardcodes the Path's
@@ -875,12 +916,27 @@
         <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+        <Setter Property="Padding" Value="0,4" />
     </Style>
     <Style Selector="ContextMenu">
         <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+        <Setter Property="Padding" Value="0,4" />
+    </Style>
+
+    <!-- Menu separators: a soft inset hairline instead of Fluent's harsh full-bleed rule.
+         Indented on both sides so it reads as a grouping hint, not a wall. -->
+    <Style Selector="ContextMenu Separator">
+        <Setter Property="Background" Value="{DynamicResource Border0Brush}" />
+        <Setter Property="Height" Value="1" />
+        <Setter Property="Margin" Value="12,5" />
+    </Style>
+    <Style Selector="MenuFlyoutPresenter Separator">
+        <Setter Property="Background" Value="{DynamicResource Border0Brush}" />
+        <Setter Property="Height" Value="1" />
+        <Setter Property="Margin" Value="12,5" />
     </Style>
     <Style Selector="FlyoutPresenter">
         <Setter Property="Background" Value="{DynamicResource Bg2Brush}" />

@@ -74,6 +74,10 @@ internal static class ServiceRegistration
         services.AddSingleton<Vegha.Core.Persistence.OpenApiLinkStore>(_ => new Vegha.Core.Persistence.OpenApiLinkStore());
         services.AddSingleton<Vegha.Core.Persistence.SecretProviderConfigStore>(_ => new Vegha.Core.Persistence.SecretProviderConfigStore());
 
+        // GraphQL schema cache: shared across tabs so introspecting an endpoint once
+        // lights up docs + autocomplete in every tab pointed at it (memory + disk).
+        services.AddSingleton<Vegha.App.ViewModels.Services.GraphQLSchemaCache>();
+
         // Per-tab editor: transient. The OpenTabsViewModel asks for a fresh editor
         // for every tab the user opens.
         services.AddTransient<RequestEditorViewModel>();

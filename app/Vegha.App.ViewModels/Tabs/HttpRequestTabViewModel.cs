@@ -19,7 +19,7 @@ public class HttpRequestTabViewModel : RequestTabViewModel
         // Initial mirror.
         Method = request?.Method ?? Editor.Method;
         Name = request?.Name ?? "Untitled";
-        Kind = request?.Kind ?? RequestKind.Http;
+        Kind = Editor.BodyType == "graphql" ? RequestKind.GraphQL : request?.Kind ?? RequestKind.Http;
         IsDirty = Editor.IsDirty;
 
         // Forward editor changes onto the tab fields the strip displays.
@@ -29,6 +29,13 @@ public class HttpRequestTabViewModel : RequestTabViewModel
             {
                 case nameof(RequestEditorViewModel.Method): Method = Editor.Method; break;
                 case nameof(RequestEditorViewModel.IsDirty): IsDirty = Editor.IsDirty; break;
+                case nameof(RequestEditorViewModel.BodyType):
+                    // Keep the tab's GraphQL badge in sync when the body type flips. Only
+                    // toggle between Http/GraphQL — WS/gRPC drafts also ride this VM and
+                    // their Kind must not be clobbered by a body-type edit.
+                    if (Kind is RequestKind.Http or RequestKind.GraphQL)
+                        Kind = Editor.BodyType == "graphql" ? RequestKind.GraphQL : RequestKind.Http;
+                    break;
                 case nameof(RequestEditorViewModel.Url):
                     // When a draft has no name yet, mirror the URL so the user sees something.
                     if (request is null && !string.IsNullOrEmpty(Editor.Url))

@@ -9,4 +9,5 @@ public sealed record HistoryEntry(
     int StatusCode,
     long DurationMs,
     string? ResponseBodyPreview,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    string? RequestKind = null);

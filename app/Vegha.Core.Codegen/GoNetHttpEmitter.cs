@@ -8,7 +8,7 @@ namespace Vegha.Core.Codegen;
 public sealed class GoNetHttpEmitter : ICodegenEmitter
 {
     public string Language => "go";
-    public string DisplayName => "Go (net/http)";
+    public string DisplayName => "Go - Native";
 
     public string Emit(RequestItem request, IReadOnlyDictionary<string, string>? vars = null)
     {
