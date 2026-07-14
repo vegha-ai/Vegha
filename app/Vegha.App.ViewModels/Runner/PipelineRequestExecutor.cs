@@ -19,6 +19,9 @@ public sealed class PipelineRequestExecutor
     private readonly JintHost _scripting;
     private readonly RequestComposition.WorkspaceContext _workspace;
     private readonly Vegha.Integrations.Secrets.SecretRegistry? _secretRegistry;
+    private readonly bool _persistResponses;
+    private readonly bool _turnOffLogs;
+    private readonly bool _keepVariableValues;
 
     /// <summary>Per-iteration accumulator of runtime vars set by <c>bru.setVar</c> in earlier
     /// requests of that same iteration. Keyed by iteration index so workers don't trample
@@ -29,12 +32,18 @@ public sealed class PipelineRequestExecutor
         HttpExecutor http,
         JintHost scripting,
         RequestComposition.WorkspaceContext? workspace = null,
-        Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null)
+        Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null,
+        bool persistResponses = true,
+        bool turnOffLogs = false,
+        bool keepVariableValues = true)
     {
         _http = http;
         _scripting = scripting;
         _workspace = workspace ?? RequestComposition.WorkspaceContext.Empty;
         _secretRegistry = secretRegistry;
+        _persistResponses = persistResponses;
+        _turnOffLogs = turnOffLogs;
+        _keepVariableValues = keepVariableValues;
     }
 
     public CollectionRunOrchestrator.RequestExecutor AsDelegate(
@@ -67,16 +76,25 @@ public sealed class PipelineRequestExecutor
 
             var outputs = await RequestPipeline.ExecuteAsync(inputs, _http, _scripting, ct).ConfigureAwait(false);
 
-            // Capture runtime-var mutations for the next request in this same iteration.
-            foreach (var (k, v) in outputs.RuntimeVariableMutations)
-                carriedVars[k] = v;
-            // Carry bru.setEnvVar mutations forward the same way (as an iteration overlay) so a
-            // token extracted in request N's post-response resolves via {{token}} in request N+1.
-            // The overlay beats env at compose time, so the fresh value wins over the snapshot.
-            foreach (var (k, v) in outputs.EnvVarMutations)
-                carriedVars[k] = v;
+            // Carry variable mutations forward only when "Keep variable values" is on. When off,
+            // each request starts from the iteration's data row with no chained-in overlay.
+            if (_keepVariableValues)
+            {
+                // Runtime-var mutations for the next request in this same iteration.
+                foreach (var (k, v) in outputs.RuntimeVariableMutations)
+                    carriedVars[k] = v;
+                // bru.setEnvVar mutations carry forward the same way (as an iteration overlay) so a
+                // token extracted in request N's post-response resolves via {{token}} in request N+1.
+                // The overlay beats env at compose time, so the fresh value wins over the snapshot.
+                foreach (var (k, v) in outputs.EnvVarMutations)
+                    carriedVars[k] = v;
+            }
 
             var status = ClassifyResult(outputs);
+            var sizeBytes = ComputeSizeBytes(outputs);
+            var detail = _persistResponses ? BuildDetail(outputs) : null;
+            var folderPath = chain.Count == 0 ? string.Empty : string.Join(" / ", chain.Select(f => f.Name));
+
             return new RequestRunResult(
                 Name: request.Name,
                 Method: request.Method,
@@ -88,13 +106,41 @@ public sealed class PipelineRequestExecutor
                 Status: status,
                 PassedTests: outputs.PassedTests,
                 FailedTests: outputs.FailedTests,
-                Kind: request.Kind);
+                Kind: request.Kind,
+                ResponseSizeBytes: sizeBytes,
+                Detail: detail,
+                FolderPath: folderPath);
         };
     }
 
     private async Task<IReadOnlyDictionary<string, string>> ResolveEnvironmentAsync(
         IReadOnlyDictionary<string, string> environmentVariables) =>
         await _secretRegistry!.ResolveSecretsAsync(environmentVariables).ConfigureAwait(false);
+
+    /// <summary>Total response size = header bytes + body bytes, matching what Postman reports
+    /// in the result row. Header size approximates "Name: value\r\n" lines.</summary>
+    private static long ComputeSizeBytes(RequestPipeline.Outputs outputs)
+    {
+        long total = System.Text.Encoding.UTF8.GetByteCount(outputs.ResponseBody ?? string.Empty);
+        foreach (var (k, v) in outputs.ResponseHeaders)
+            total += System.Text.Encoding.UTF8.GetByteCount(k) + System.Text.Encoding.UTF8.GetByteCount(v ?? string.Empty) + 4;
+        return total;
+    }
+
+    /// <summary>Maps pipeline outputs into the Flow-layer detail record for the results detail
+    /// pane. Console lines are dropped when "Turn off logs during run" is set.</summary>
+    private RunResultDetail BuildDetail(RequestPipeline.Outputs outputs) =>
+        new(
+            ResponseBody: outputs.ResponseBody ?? string.Empty,
+            ResponseHeaders: outputs.ResponseHeaders,
+            RequestBody: outputs.RequestBody,
+            RequestHeaders: outputs.RequestHeaders,
+            Tests: outputs.Tests
+                .Select(t => new RunTestOutcome(t.Name, t.Passed, t.FailureMessage))
+                .ToList(),
+            Console: _turnOffLogs
+                ? Array.Empty<RunConsoleMessage>()
+                : outputs.ConsoleMessages.Select(m => new RunConsoleMessage(m.Level, m.Text)).ToList());
 
     private static RequestRunStatus ClassifyResult(RequestPipeline.Outputs outputs)
     {

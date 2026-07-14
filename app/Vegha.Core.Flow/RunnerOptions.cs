@@ -32,7 +32,27 @@ public sealed record RunnerOptions(
     /// <summary>On by default — each run gets a fresh cookie jar so workers don't bleed
     /// auth cookies into each other. Turn off only for runs that need cross-iteration
     /// session continuity.</summary>
-    bool IsolatedCookieJarPerRun = true)
+    bool IsolatedCookieJarPerRun = true,
+    /// <summary>Capture response/request bodies + headers into each result's
+    /// <see cref="RequestRunResult.Detail"/> so the results detail pane can render them.
+    /// Postman's "Persist responses for a session". Off trims memory on very large runs.</summary>
+    bool PersistResponses = true,
+    /// <summary>Abort the whole run the first time a request errors or a test fails
+    /// (Postman's "Stop run if an error occurs"). Off by default — the run continues and
+    /// records every row.</summary>
+    bool StopOnError = false,
+    /// <summary>Carry <c>bru.setVar</c>/<c>setEnvVar</c> mutations forward across requests and
+    /// iterations (Postman's "Keep variable values"). Off resets the overlay each iteration.</summary>
+    bool KeepVariableValues = true,
+    /// <summary>Drop console output from script execution (Postman's "Turn off logs during
+    /// run"). Off by default — console lines are captured into each row's detail.</summary>
+    bool TurnOffLogs = false,
+    /// <summary>Explicit run order (Postman's reorderable "Run Sequence"). When set, each
+    /// iteration runs exactly these requests, in this order, resolving names against the
+    /// collection tree (first match wins); requests not listed simply don't run. When null,
+    /// the runner walks the collection in tree order and honors
+    /// <see cref="SelectedRequestNames"/> for skipping.</summary>
+    IReadOnlyList<string>? OrderedRequestNames = null)
 {
     /// <summary>Sensible defaults: 1 iteration, sequential, no delay, no data source.</summary>
     public static RunnerOptions Default(Collection collection) =>

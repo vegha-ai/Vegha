@@ -570,8 +570,11 @@ public partial class MainWindow : Window
         // Initial env snapshot — workspace (global) env underneath the collection env so the
         // collection env wins. Mid-run env changes don't affect an in-flight run by design.
         if (collectionsVm is not null)
+        {
             tab.EnvironmentVariables = Vegha.App.ViewModels.CollectionsViewModel.SnapshotMerged(
                 collectionsVm.ActiveGlobalEnvironment, collectionsVm.ActiveEnvironment);
+            tab.EnvironmentName = collectionsVm.ActiveEnvironment?.Name;
+        }
     }
 
     private async Task RestoreOpenTabsAsync()

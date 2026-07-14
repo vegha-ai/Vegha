@@ -58,8 +58,8 @@ public static class ScriptApiCatalog
     public static IReadOnlyDictionary<string, ScriptObject> AllObjects { get; } = Build();
 
     // Top-level identifiers visible in each script kind.
-    private static readonly string[] PreRequestGlobals = { "bru", "req", "console", "_", "axios" };
-    private static readonly string[] PostGlobals = { "bru", "req", "res", "test", "expect", "console", "_", "axios" };
+    private static readonly string[] PreRequestGlobals = { "bru", "req", "console", "_", "axios", "require", "xml2Json", "atob", "btoa" };
+    private static readonly string[] PostGlobals = { "bru", "req", "res", "test", "expect", "console", "_", "axios", "require", "xml2Json", "atob", "btoa" };
 
     /// <summary>Objects offered by Ctrl+Space at the top level for the given script kind, sorted by name.</summary>
     public static IReadOnlyList<ScriptObject> TopLevel(ScriptKind kind)
@@ -339,6 +339,13 @@ public static class ScriptApiCatalog
                 M("patch", "patch(url, data, config)", "Send a PATCH request."),
                 M("delete", "delete(url, config)", "Send a DELETE request."),
             }),
+
+            // Postman-compatible require() + injected globals (see JsModules). Functions with no
+            // chainable surface, so no members — listed so autocomplete surfaces them.
+            new("require", "Load a bundled library: lodash, moment, uuid, crypto-js, chai, tv4, ajv, cheerio, csv-parse/lib/sync, xml2js, atob, btoa, and Node core (url, querystring, util, path, buffer, assert, events).", Array.Empty<ScriptMember>()),
+            new("xml2Json", "Parse an XML string into a JS object (xml2js shape: $ attrs, _ text, arrayed children).", Array.Empty<ScriptMember>()),
+            new("atob", "Decode a base64 string to binary text.", Array.Empty<ScriptMember>()),
+            new("btoa", "Base64-encode a binary string.", Array.Empty<ScriptMember>()),
         };
 
         return objects.ToDictionary(o => o.Name, o => o, StringComparer.Ordinal);

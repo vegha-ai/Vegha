@@ -5,7 +5,9 @@ namespace Vegha.Core.Scripting;
 
 /// <summary>
 /// Runs user scripts in a sandboxed Jint engine. Constraints: 64 MB memory, 10 s wall clock,
-/// 64-deep recursion. No file system, no <c>require</c>, no <c>setTimeout</c>/<c>setInterval</c>.
+/// 64-deep recursion. No file system, no <c>setTimeout</c>/<c>setInterval</c>. A Postman-
+/// compatible <c>require(...)</c> (see <see cref="JsModules"/>) exposes bundled libraries only —
+/// there is no file/network module loading.
 /// </summary>
 public sealed class JintHost
 {
@@ -127,13 +129,18 @@ public sealed class JintHost
             .TimeoutInterval(_timeout)
             .LimitRecursion(_recursionLimit)
             .CancellationToken(cancellationToken));
+        // Correctness-critical backing for the require() module shims (crypto, XML, base64,
+        // uuid). Bound before the preloads run since JsModules references it as `__vegha`.
+        engine.SetValue("__vegha", new ScriptModuleHost());
         setup(engine);
 
         try
         {
             // Inject lodash-lite + axios shim so user scripts can write `_.get(...)` and
-            // `axios.get(...)` without bringing their own polyfills.
+            // `axios.get(...)` without bringing their own polyfills, then the Postman-
+            // compatible require() registry + globals (xml2Json / atob / btoa).
             engine.Execute(JsPreloads.Source);
+            engine.Execute(JsModules.Source);
 
             engine.Execute(script ?? string.Empty);
             return ScriptResult.Success(runtime);
