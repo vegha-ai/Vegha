@@ -45,8 +45,14 @@ public class HttpExecutorContentTypeTests : IDisposable
 
         // Inspect the captured Sent text — the regression we're guarding against shows up
         // as "application/json; charset=utf-8, application/json" (comma-joined values).
+        // Scope the comma check to the Content-Type line: other headers (Accept-Encoding)
+        // legitimately carry comma-separated values.
         result.SentRequestText.Should().NotBeNull();
-        result.SentRequestText!.Should().NotContain(",", because: "Content-Type must be a single value, not comma-joined");
+        var contentTypeLine = result.SentRequestText!
+            .Split('\n')
+            .FirstOrDefault(l => l.StartsWith("Content-Type:", StringComparison.OrdinalIgnoreCase));
+        contentTypeLine.Should().NotBeNull();
+        contentTypeLine!.Should().NotContain(",", because: "Content-Type must be a single value, not comma-joined");
         result.SentRequestText.Should().Contain("Content-Type: application/json");
         // No charset suffix — the user's literal header wins.
         result.SentRequestText.Should().NotContain("charset=utf-8");
@@ -99,7 +105,10 @@ public class HttpExecutorContentTypeTests : IDisposable
 
         var result = await executor.ExecuteAsync(req);
         result.IsSuccess.Should().BeTrue();
-        result.SentRequestText!.Should().Contain("Content-Type: application/json; charset=utf-8")
-            .And.NotContain(",", because: "still a single header value");
+        result.SentRequestText!.Should().Contain("Content-Type: application/json; charset=utf-8");
+        var contentTypeLine = result.SentRequestText!
+            .Split('\n')
+            .FirstOrDefault(l => l.StartsWith("Content-Type:", StringComparison.OrdinalIgnoreCase));
+        contentTypeLine!.Should().NotContain(",", because: "still a single header value");
     }
 }

@@ -12,6 +12,19 @@ internal sealed record CodegenContext(
     string? Body,
     string? ContentType)
 {
+    /// <summary>Headers plus an inferred Content-Type row when the body implies one and the
+    /// user didn't set the header explicitly. Most emitters render this list verbatim.</summary>
+    public List<KvPair> HeadersWithContentType()
+    {
+        var list = Headers.ToList();
+        if (ContentType is not null && !list.Any(h =>
+                string.Equals(h.Name, "Content-Type", StringComparison.OrdinalIgnoreCase)))
+        {
+            list.Add(new KvPair("Content-Type", ContentType, true));
+        }
+        return list;
+    }
+
     public static CodegenContext From(RequestItem r, IReadOnlyDictionary<string, string>? vars)
     {
         string Resolve(string s) => vars is null ? s : Interpolator.Resolve(s, vars);
@@ -89,7 +102,14 @@ internal sealed record CodegenContext(
         var rawVars = body.GraphQLVariables is null ? "{}" : resolve(body.GraphQLVariables);
         var trimmed = rawVars.TrimStart();
         var vars = (trimmed.StartsWith('{') || trimmed.StartsWith('[')) ? rawVars : "{}";
-        return "{\"query\":" + System.Text.Json.JsonSerializer.Serialize(query) + ",\"variables\":" + vars + "}";
+        // First named operation for multi-op documents — keeps generated code's wire body
+        // identical to what the editor's Send produces.
+        var opName = Vegha.Core.GraphQL.GraphQLDocumentAnalyzer.ResolveOperationNameForSend(query);
+        return "{\"query\":" + System.Text.Json.JsonSerializer.Serialize(query) +
+            (opName is null
+                ? string.Empty
+                : ",\"operationName\":" + System.Text.Json.JsonSerializer.Serialize(opName)) +
+            ",\"variables\":" + vars + "}";
     }
 
     private static string BuildFormBody(IList<KvPair> fields, Func<string, string> resolve)

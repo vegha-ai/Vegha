@@ -30,6 +30,9 @@ public enum EditorCompletionMode
     Variables,
     /// <summary>JavaScript object/member autocomplete + syntax squiggles (script editors).</summary>
     Script,
+    /// <summary>GraphQL query editor: syntax squiggles now; schema-aware autocomplete when an
+    /// introspected schema is bound.</summary>
+    GraphQL,
 }
 
 /// <summary>
@@ -153,6 +156,12 @@ public partial class VariableAwareTextEditor : UserControl
     public static readonly StyledProperty<bool> HasErrorProperty =
         AvaloniaProperty.Register<VariableAwareTextEditor, bool>(nameof(HasError));
 
+    /// <summary>Introspected schema powering GraphQL autocomplete + schema validation
+    /// (GraphQL mode only). Null → syntax-only diagnostics, keyword-only completion.</summary>
+    public static readonly StyledProperty<Vegha.Core.GraphQL.Schema.GraphQLSchemaModel?> GraphQLSchemaProperty =
+        AvaloniaProperty.Register<VariableAwareTextEditor, Vegha.Core.GraphQL.Schema.GraphQLSchemaModel?>(
+            nameof(GraphQLSchema));
+
     public string Text
     {
         get => GetValue(TextProperty);
@@ -241,6 +250,12 @@ public partial class VariableAwareTextEditor : UserControl
     {
         get => GetValue(HasErrorProperty);
         set => SetValue(HasErrorProperty, value);
+    }
+
+    public Vegha.Core.GraphQL.Schema.GraphQLSchemaModel? GraphQLSchema
+    {
+        get => GetValue(GraphQLSchemaProperty);
+        set => SetValue(GraphQLSchemaProperty, value);
     }
 
     private TextEditor _editor = null!;
@@ -452,11 +467,19 @@ public partial class VariableAwareTextEditor : UserControl
             UpdateWatermark();
             // Text set via binding suppresses the editor's TextChanged, so re-analyze here so a
             // script loaded with pre-existing errors squiggles immediately, not only after typing.
-            if (CompletionMode == EditorCompletionMode.Script) ScheduleDiagnostics();
+            if (CompletionMode is EditorCompletionMode.Script or EditorCompletionMode.GraphQL)
+                ScheduleDiagnostics();
         }
         else if (change.Property == CompletionModeProperty)
         {
-            if (CompletionMode == EditorCompletionMode.Script) ScheduleDiagnostics();
+            if (CompletionMode is EditorCompletionMode.Script or EditorCompletionMode.GraphQL)
+                ScheduleDiagnostics();
+        }
+        else if (change.Property == GraphQLSchemaProperty)
+        {
+            // Schema just arrived (introspection or cache) — re-validate so schema squiggles
+            // appear/refresh without requiring a keystroke.
+            if (CompletionMode == EditorCompletionMode.GraphQL) ScheduleDiagnostics();
         }
         else if (change.Property == VariablesProperty)
         {
@@ -623,6 +646,10 @@ public partial class VariableAwareTextEditor : UserControl
         }
         try
         {
+            // GraphQL isn't a stock AvaloniaEdit definition — register our embedded xshd on
+            // first request (lazy: non-GraphQL editors never load it).
+            if (string.Equals(name, "GraphQL", StringComparison.OrdinalIgnoreCase))
+                Highlighting.GraphQLHighlighting.EnsureRegistered();
             // HighlightingManager.Instance.GetDefinition is case-insensitive and tolerant of
             // unknown names (returns null) — leave the editor unhighlighted on miss.
             var def = HighlightingManager.Instance.GetDefinition(name);
@@ -714,7 +741,8 @@ public partial class VariableAwareTextEditor : UserControl
         var t = _editor.Document.Text;
         if (Text != t) Text = t;
         UpdateWatermark();
-        if (CompletionMode == EditorCompletionMode.Script) ScheduleDiagnostics();
+        if (CompletionMode is EditorCompletionMode.Script or EditorCompletionMode.GraphQL)
+            ScheduleDiagnostics();
     }
 
     private void UpdateWatermark()
@@ -731,6 +759,15 @@ public partial class VariableAwareTextEditor : UserControl
             && e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             ShowScriptCompletion();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+Space → GraphQL schema-aware autocomplete at the caret.
+        if (CompletionMode == EditorCompletionMode.GraphQL
+            && e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            ShowGraphQLCompletion();
             e.Handled = true;
             return;
         }
@@ -766,7 +803,50 @@ public partial class VariableAwareTextEditor : UserControl
         if (CompletionMode == EditorCompletionMode.Script && e.Text == ".")
         {
             ShowScriptCompletion();
+            return;
         }
+
+        // GraphQL mode: structural characters open the context-appropriate list; the first
+        // identifier character opens it too (when no window is up) so fields complete while
+        // typing without an explicit Ctrl+Space.
+        if (CompletionMode == EditorCompletionMode.GraphQL && e.Text is { Length: 1 })
+        {
+            var c = e.Text[0];
+            if (c is '{' or '(' or ':' or '@' or '$')
+            {
+                ShowGraphQLCompletion();
+            }
+            else if (_completionWindow is null
+                     && (char.IsAsciiLetter(c) || c == '_')
+                     && !IsPrecededByIdentifierChar())
+            {
+                ShowGraphQLCompletion();
+            }
+        }
+    }
+
+    /// <summary>True when the char before the just-typed character is identifier-like —
+    /// i.e. the user is mid-word (the open window's filter handles that case).</summary>
+    private bool IsPrecededByIdentifierChar()
+    {
+        var caret = _editor.CaretOffset;
+        // caret is after the typed char; the char before the word start is at caret-2.
+        if (caret < 2) return false;
+        var prev = _editor.Document.GetCharAt(caret - 2);
+        return IsIdentChar(prev);
+    }
+
+    /// <summary>Opens the schema-aware GraphQL completion popup at the caret. No-ops when
+    /// the context yields nothing (unknown types, inside strings, …) — failing open.</summary>
+    private void ShowGraphQLCompletion()
+    {
+        if (CompletionMode != EditorCompletionMode.GraphQL) return;
+        var result = Vegha.Core.GraphQL.Editor.GraphQLCompletionEngine.GetCompletions(
+            _editor.Document.Text, _editor.CaretOffset, GraphQLSchema);
+        if (result.Items.Count == 0) return;
+
+        var items = result.Items.Select(i => (ICompletionData)new GraphQLCompletionData(i));
+        OpenCompletionWindow(items, result.ReplaceStart, _editor.CaretOffset);
     }
 
     private void ShowCompletion()
@@ -875,12 +955,16 @@ public partial class VariableAwareTextEditor : UserControl
     /// on the UI thread, dropping results superseded by a newer edit.</summary>
     private void RunDiagnostics()
     {
-        if (CompletionMode != EditorCompletionMode.Script) return;
+        var mode = CompletionMode;
+        if (mode is not (EditorCompletionMode.Script or EditorCompletionMode.GraphQL)) return;
         var text = _editor.Document.Text;
+        var schema = mode == EditorCompletionMode.GraphQL ? GraphQLSchema : null;
         var token = ++_diagnosticsToken;
         System.Threading.Tasks.Task.Run(() =>
         {
-            var diags = ScriptDiagnostics.Analyze(text);
+            var diags = mode == EditorCompletionMode.Script
+                ? ScriptDiagnostics.Analyze(text)
+                : AnalyzeGraphQL(text, schema);
             Dispatcher.UIThread.Post(() =>
             {
                 if (token != _diagnosticsToken) return;
@@ -902,6 +986,27 @@ public partial class VariableAwareTextEditor : UserControl
         });
     }
 
+    /// <summary>GraphQL diagnostics — syntax errors always; schema validation (unknown
+    /// fields/args/types/…) layered on when a schema is bound. Mapped into the editor's
+    /// squiggle currency (<see cref="ScriptDiagnostic"/> — same offset/length/line/column
+    /// shape). The analyzer's Column is 1-based while ScriptDiagnostic's is 0-based
+    /// (ErrorSummary renders <c>Column + 1</c>), hence the -1.</summary>
+    private static IReadOnlyList<ScriptDiagnostic> AnalyzeGraphQL(
+        string text, Vegha.Core.GraphQL.Schema.GraphQLSchemaModel? schema)
+    {
+        var errors = Vegha.Core.GraphQL.GraphQLDocumentAnalyzer.Analyze(text).SyntaxErrors;
+        IReadOnlyList<Vegha.Core.GraphQL.GraphQLDiagnostic> schemaErrors =
+            errors.Count == 0 && schema is not null
+                ? Vegha.Core.GraphQL.Validation.GraphQLDocumentValidator.Validate(text, schema)
+                : Array.Empty<Vegha.Core.GraphQL.GraphQLDiagnostic>();
+        if (errors.Count == 0 && schemaErrors.Count == 0) return Array.Empty<ScriptDiagnostic>();
+
+        var mapped = new List<ScriptDiagnostic>(errors.Count + schemaErrors.Count);
+        foreach (var d in errors.Concat(schemaErrors))
+            mapped.Add(new ScriptDiagnostic(d.Offset, d.Length, d.Line, Math.Max(0, d.Column - 1), d.Message));
+        return mapped;
+    }
+
     private void OnPointerHover(object? sender, PointerEventArgs e)
     {
         var pos = _editor.TextArea.TextView.GetPosition(e.GetPosition(_editor.TextArea.TextView) + _editor.TextArea.TextView.ScrollOffset);
@@ -915,8 +1020,9 @@ public partial class VariableAwareTextEditor : UserControl
         var col = pos.Value.Column - 1;
         if (col < 0) return;
 
-        // Script mode: show the syntax-error message when hovering over a squiggle.
-        if (CompletionMode == EditorCompletionMode.Script && _diagnostics.Count > 0)
+        // Script/GraphQL mode: show the syntax-error message when hovering over a squiggle.
+        if (CompletionMode is EditorCompletionMode.Script or EditorCompletionMode.GraphQL
+            && _diagnostics.Count > 0)
         {
             var hoverOffset = docLine.Offset + col;
             foreach (var d in _diagnostics)
@@ -1086,6 +1192,51 @@ public partial class VariableAwareTextEditor : UserControl
             var open = signature.IndexOf('(');
             return open >= 0 && open + 1 < signature.Length && signature[open + 1] != ')';
         }
+    }
+
+    /// <summary>Completion entry for GraphQL fields/args/types/enum values/directives.
+    /// Renders "label  detail" (detail dimmed) with strikethrough for deprecated members;
+    /// the schema description shows in the side panel.</summary>
+    private sealed class GraphQLCompletionData : ICompletionData
+    {
+        private readonly Vegha.Core.GraphQL.Editor.GraphQLCompletionItem _item;
+        public GraphQLCompletionData(Vegha.Core.GraphQL.Editor.GraphQLCompletionItem item) => _item = item;
+
+        public global::Avalonia.Media.IImage? Image => null;
+        public string Text => _item.Label;
+        public object Content => BuildRow();
+        public object Description => _item.Description
+            ?? (_item.Detail is null ? _item.Label : $"{_item.Label}: {_item.Detail}");
+        public double Priority => _item.IsDeprecated ? -1 : 0;
+
+        private Control BuildRow()
+        {
+            var label = new TextBlock
+            {
+                Text = _item.Label,
+                FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, monospace"),
+                FontSize = 12,
+                FontWeight = _item.Kind == Vegha.Core.GraphQL.Editor.GraphQLCompletionItemKind.Field
+                    ? FontWeight.SemiBold : FontWeight.Normal,
+            };
+            if (_item.IsDeprecated) label.TextDecorations = TextDecorations.Strikethrough;
+            if (_item.Detail is null) return label;
+
+            var row = new StackPanel { Orientation = global::Avalonia.Layout.Orientation.Horizontal, Spacing = 8 };
+            row.Children.Add(label);
+            row.Children.Add(new TextBlock
+            {
+                Text = _item.Detail,
+                FontFamily = new FontFamily("Cascadia Mono, Consolas, Menlo, monospace"),
+                FontSize = 11,
+                Opacity = 0.6,
+                VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+            });
+            return row;
+        }
+
+        public void Complete(TextArea textArea, ISegment completionSegment, EventArgs insertionRequestEventArgs) =>
+            textArea.Document.Replace(completionSegment, _item.InsertText);
     }
 
     /// <summary>Monospace popup row shared by the script completion entries.</summary>

@@ -17,6 +17,10 @@
                      Merged after the token palette so its DynamicResource brushes resolve, and in
                      Application.Resources so it overrides AvaloniaEdit's default SearchPanel theme. -->
                 <ResourceInclude Source="avares://Vegha.App/Themes/SearchPanelTheme.axaml" />
+                <!-- Compact CheckBox/RadioButton/TreeViewItem ControlThemes (Postman-scale marks,
+                     thin stroke tree chevrons). Full theme replacements: Fluent bakes its 20px
+                     sizes into template elements as local values, which styles can't override. -->
+                <ResourceInclude Source="avares://Vegha.App/Themes/CompactInputs.axaml" />
             </ResourceDictionary.MergedDictionaries>
             <conv:HexToBrushConverter x:Key="HexToBrushConverter" />
             <conv:RatioToWidthConverter x:Key="RatioToWidthConverter" />
@@ -24,6 +28,10 @@
             <conv:LevelToIndentConverter x:Key="LevelToIndentConverter" />
             <conv:BytesToBitmapConverter x:Key="BytesToBitmapConverter" />
             <conv:BoolToPasswordCharConverter x:Key="BoolToPasswordCharConverter" />
+
+            <!-- GraphQL brand pink — theme-invariant like the MethodToBrushConverter accents;
+                 colors the GraphQL mark shown in place of the method badge. -->
+            <SolidColorBrush x:Key="GraphQLBrush">#E10098</SolidColorBrush>
 
             <!-- UI font size — fixed 12px throughout the app for consistency. -->
             <x:Double x:Key="AppFontSize">12</x:Double>

@@ -40,6 +40,18 @@
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#22a78bfa" />
     <SolidColorBrush x:Key="AccentSoftStrongBrush" Color="#3aa78bfa" />
 
+    <!-- Fluent SystemAccentColor override — checked marks, toggle switches, sliders,
+         focus rings and selection tint with the theme accent instead of Fluent's default
+         system blue. Dark1-3 step toward pressed shades, Light1-3 toward hover tints;
+         derived from AccentBrush (10/20/30% blends). -->
+    <Color x:Key="SystemAccentColor">#a78bfa</Color>
+    <Color x:Key="SystemAccentColorDark1">#967de1</Color>
+    <Color x:Key="SystemAccentColorDark2">#866fc8</Color>
+    <Color x:Key="SystemAccentColorDark3">#7561af</Color>
+    <Color x:Key="SystemAccentColorLight1">#b097fa</Color>
+    <Color x:Key="SystemAccentColorLight2">#b9a2fb</Color>
+    <Color x:Key="SystemAccentColorLight3">#c1aefc</Color>
+
     <!-- Fluent input-state overrides (audit §04): keep the input background on hover/focus
          and use the accent border instead of Fluent's focused-state defaults. -->
     <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="#efe7f4" />

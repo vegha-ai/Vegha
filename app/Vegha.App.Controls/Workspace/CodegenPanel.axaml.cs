@@ -18,15 +18,6 @@ public partial class CodegenPanel : UserControl
         InitializeComponent();
     }
 
-    private void OnLanguage_Click(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is not CodegenViewModel vm) return;
-        if (sender is Button { Tag: ICodegenEmitter emitter })
-        {
-            vm.SelectedEmitter = emitter;
-        }
-    }
-
     private async void OnCopy_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not CodegenViewModel vm) return;

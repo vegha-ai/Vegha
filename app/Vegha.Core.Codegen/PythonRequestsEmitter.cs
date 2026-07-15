@@ -9,7 +9,7 @@ namespace Vegha.Core.Codegen;
 public sealed class PythonRequestsEmitter : ICodegenEmitter
 {
     public string Language => "python";
-    public string DisplayName => "Python (requests)";
+    public string DisplayName => "Python - Requests";
 
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {

@@ -25,21 +25,57 @@ public sealed record RequestRunResult(
     string? ErrorMessage,
     RequestRunStatus Status = RequestRunStatus.Passed,
     int PassedTests = 0,
-    int FailedTests = 0)
+    int FailedTests = 0,
+    RequestKind Kind = RequestKind.Http,
+    /// <summary>Total response size in bytes (headers + body). Shown in the Postman-style
+    /// result row and rolled up into the run summary. Zero for skipped/canceled/errored rows.</summary>
+    long ResponseSizeBytes = 0,
+    /// <summary>Captured response/request payload for the detail pane. Null for rows that never
+    /// produced an HTTP exchange (skipped, canceled, transport-errored) — the pane shows nothing.
+    /// Not captured when the run disables response persistence.</summary>
+    RunResultDetail? Detail = null,
+    /// <summary>Folder path of the request (e.g. "Auth / Login"), for disambiguating same-named
+    /// requests in the results list. Empty for root-level requests.</summary>
+    string FolderPath = "")
 {
+    /// <summary>True for GraphQL requests — result rows show the GraphQL mark instead of
+    /// the method label.</summary>
+    public bool IsGraphQL => Kind == RequestKind.GraphQL;
+
+    /// <summary>Total tests recorded for this request (passed + failed).</summary>
+    public int TotalTests => PassedTests + FailedTests;
+
     /// <summary>Factory for a skipped row (selection filter excluded the request). Tests
     /// counts are zero; rendering treats it as a neutral row, not pass or fail.</summary>
     public static RequestRunResult Skipped(RequestItem item) =>
         new(item.Name, item.Method, item.Url,
             StatusCode: 0, ElapsedMs: 0, Succeeded: false,
-            ErrorMessage: null, Status: RequestRunStatus.Skipped);
+            ErrorMessage: null, Status: RequestRunStatus.Skipped, Kind: item.Kind);
 
     /// <summary>Factory for a canceled row (token tripped mid-run).</summary>
     public static RequestRunResult Canceled(RequestItem item) =>
         new(item.Name, item.Method, item.Url,
             StatusCode: 0, ElapsedMs: 0, Succeeded: false,
-            ErrorMessage: "Canceled", Status: RequestRunStatus.Canceled);
+            ErrorMessage: "Canceled", Status: RequestRunStatus.Canceled, Kind: item.Kind);
 }
+
+/// <summary>Captured request/response payload + per-test + console detail for one run row.
+/// Feeds the Postman-style detail split pane (Response / Headers / Request tabs). Lives in
+/// Core.Flow with primitive-only fields so the flow layer stays free of a Scripting dependency;
+/// the executor maps <c>TestOutcome</c>/<c>ConsoleMessage</c> into these on the way out.</summary>
+public sealed record RunResultDetail(
+    string ResponseBody,
+    IReadOnlyList<KeyValuePair<string, string>> ResponseHeaders,
+    string? RequestBody,
+    IReadOnlyList<KeyValuePair<string, string>> RequestHeaders,
+    IReadOnlyList<RunTestOutcome> Tests,
+    IReadOnlyList<RunConsoleMessage> Console);
+
+/// <summary>One assertion outcome inside a run row's detail (name + pass/fail + message).</summary>
+public sealed record RunTestOutcome(string Name, bool Passed, string? Message);
+
+/// <summary>One console line captured while a run row executed (level + text).</summary>
+public sealed record RunConsoleMessage(string Level, string Text);
 
 /// <summary>
 /// Runs every request in a Collection or Folder in tree-order and reports per-request

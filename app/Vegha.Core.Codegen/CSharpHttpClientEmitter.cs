@@ -7,7 +7,7 @@ namespace Vegha.Core.Codegen;
 public sealed class CSharpHttpClientEmitter : ICodegenEmitter
 {
     public string Language => "csharp";
-    public string DisplayName => "C# (HttpClient)";
+    public string DisplayName => "C# - HttpClient";
 
     public string Emit(RequestItem request, IReadOnlyDictionary<string, string>? vars = null)
     {

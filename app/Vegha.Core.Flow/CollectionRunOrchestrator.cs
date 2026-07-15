@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Vegha.Core.Domain;
 
 namespace Vegha.Core.Flow;
@@ -54,6 +55,65 @@ public static class CollectionRunOrchestrator
         var iterations = Enumerable.Range(0, options.EffectiveIterations);
         var wasCanceled = false;
 
+        // StopOnError trips this linked source on the first failed/errored row without
+        // tripping the caller's token — so we can distinguish an early stop (WasCanceled=false)
+        // from a user cancel (WasCanceled=true) below.
+        using var stopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        // Pre-resolve the explicit run order (if any) against the tree once — the same plan is
+        // reused every iteration. Null when running in plain tree-walk mode.
+        var orderedPlan = options.OrderedRequestNames is { Count: > 0 }
+            ? BuildOrderedPlan(options.Collection, options.OrderedRequestNames)
+            : null;
+
+        // Executes one request with the full progress / error / stop-on-error / delay logic.
+        // Shared by both the tree-walk and explicit-order paths so the two never drift.
+        async Task<RequestRunResult> RunOneAsync(
+            int iterIndex, RequestItem req, IReadOnlyList<Folder> chain,
+            IReadOnlyDictionary<string, string> iterVars, CancellationToken c)
+        {
+            if (c.IsCancellationRequested)
+                return RequestRunResult.Canceled(req);
+
+            progress?.Report(new RequestStarted(iterIndex, req.Name, req.Method, req.Url));
+            RequestRunResult result;
+            try
+            {
+                result = await executor(iterIndex, req, chain, iterVars, c).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (c.IsCancellationRequested)
+            {
+                result = RequestRunResult.Canceled(req);
+            }
+            catch (Exception ex)
+            {
+                result = new RequestRunResult(
+                    req.Name, req.Method, req.Url,
+                    StatusCode: 0, ElapsedMs: 0, Succeeded: false,
+                    ErrorMessage: ex.Message,
+                    Status: RequestRunStatus.Errored,
+                    Kind: req.Kind);
+            }
+
+            progress?.Report(new RequestCompleted(iterIndex, result));
+
+            // Stop-on-error: cancel the shared source so the rest of the run unwinds.
+            if (options.StopOnError
+                && result.Status is RequestRunStatus.Failed or RequestRunStatus.Errored)
+            {
+                try { stopCts.Cancel(); } catch { /* already disposed/canceled */ }
+            }
+
+            if (options.DelayBetweenRequestsMs > 0
+                && result.Status != RequestRunStatus.Skipped
+                && !c.IsCancellationRequested)
+            {
+                try { await Task.Delay(options.DelayBetweenRequestsMs, c).ConfigureAwait(false); }
+                catch (OperationCanceledException) { /* swallowed; loop will exit */ }
+            }
+            return result;
+        }
+
         try
         {
             await Parallel.ForEachAsync(
@@ -61,7 +121,7 @@ public static class CollectionRunOrchestrator
                 new ParallelOptions
                 {
                     MaxDegreeOfParallelism = parallelism,
-                    CancellationToken = cancellationToken,
+                    CancellationToken = stopCts.Token,
                 },
                 async (iterIndex, ct) =>
                 {
@@ -70,60 +130,37 @@ public static class CollectionRunOrchestrator
 
                     var iterVars = options.DataSource?.GetRow(iterIndex)
                                    ?? (IReadOnlyDictionary<string, string>)new Dictionary<string, string>();
-                    var selected = options.SelectedRequestNames;
 
-                    var iterResults = await CollectionRunner.RunAsync(
-                        options.Collection,
-                        executeAsync: async (req, chain, c) =>
+                    if (orderedPlan is not null)
+                    {
+                        // Explicit run order: execute exactly the planned requests, in order.
+                        foreach (var (req, chain) in orderedPlan)
                         {
-                            if (c.IsCancellationRequested)
-                                return RequestRunResult.Canceled(req);
+                            if (ct.IsCancellationRequested) break;
+                            results.Add(await RunOneAsync(iterIndex, req, chain, iterVars, ct).ConfigureAwait(false));
+                        }
+                    }
+                    else
+                    {
+                        var selected = options.SelectedRequestNames;
+                        var iterResults = await CollectionRunner.RunAsync(
+                            options.Collection,
+                            executeAsync: (req, chain, c) =>
+                                selected is not null && selected.Count > 0 && !selected.Contains(req.Name)
+                                    ? Task.FromResult(RequestRunResult.Skipped(req))
+                                    : RunOneAsync(iterIndex, req, chain, iterVars, c),
+                            cancellationToken: ct).ConfigureAwait(false);
+                        foreach (var r in iterResults) results.Add(r);
+                    }
 
-                            if (selected is not null && selected.Count > 0
-                                && !selected.Contains(req.Name))
-                            {
-                                return RequestRunResult.Skipped(req);
-                            }
-
-                            progress?.Report(new RequestStarted(iterIndex, req.Name, req.Method, req.Url));
-                            RequestRunResult result;
-                            try
-                            {
-                                result = await executor(iterIndex, req, chain, iterVars, c).ConfigureAwait(false);
-                            }
-                            catch (OperationCanceledException) when (c.IsCancellationRequested)
-                            {
-                                result = RequestRunResult.Canceled(req);
-                            }
-                            catch (Exception ex)
-                            {
-                                result = new RequestRunResult(
-                                    req.Name, req.Method, req.Url,
-                                    StatusCode: 0, ElapsedMs: 0, Succeeded: false,
-                                    ErrorMessage: ex.Message,
-                                    Status: RequestRunStatus.Errored);
-                            }
-
-                            progress?.Report(new RequestCompleted(iterIndex, result));
-
-                            if (options.DelayBetweenRequestsMs > 0
-                                && result.Status != RequestRunStatus.Skipped
-                                && !c.IsCancellationRequested)
-                            {
-                                try { await Task.Delay(options.DelayBetweenRequestsMs, c).ConfigureAwait(false); }
-                                catch (OperationCanceledException) { /* swallowed; loop will exit */ }
-                            }
-                            return result;
-                        },
-                        cancellationToken: ct).ConfigureAwait(false);
-
-                    foreach (var r in iterResults) results.Add(r);
                     progress?.Report(new IterationCompleted(iterIndex, iterSw.ElapsedMilliseconds));
                 }).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            wasCanceled = true;
+            // User cancel trips the caller's token; stop-on-error trips only stopCts. Only the
+            // former counts as "canceled" in the summary — an early stop is a completed run.
+            wasCanceled = cancellationToken.IsCancellationRequested;
         }
 
         var resultList = results.ToList();
@@ -138,6 +175,54 @@ public static class CollectionRunOrchestrator
 
         return new RunSummary(passed, failed, errored, skipped, canceled,
             sw.ElapsedMilliseconds, wasCanceled, resultList);
+    }
+
+    /// <summary>Stable per-request identity for run ordering: the folder path plus the request
+    /// name (NUL-separated). Disambiguates same-named requests in different folders — critical
+    /// when a collection has, say, a "Request 1" under many endpoint folders. For a root-level
+    /// request (empty chain) the key is just the name, so flat collections keep name identity.</summary>
+    public static string RequestKey(IReadOnlyList<Folder> chain, RequestItem item) =>
+        RequestKey(chain.Select(f => f.Name), item.Name);
+
+    /// <inheritdoc cref="RequestKey(IReadOnlyList{Folder}, RequestItem)"/>
+    public static string RequestKey(IEnumerable<string> folderNames, string name)
+    {
+        var sb = new StringBuilder();
+        foreach (var f in folderNames) { sb.Append(f); sb.Append('\n'); }
+        sb.Append(name);
+        return sb.ToString();
+    }
+
+    /// <summary>Resolves an explicit run order into concrete (request, folder-chain) pairs.
+    /// Walks the collection once to map each request's <see cref="RequestKey(IReadOnlyList{Folder}, RequestItem)"/>
+    /// to its item + folder chain, then emits them in <paramref name="orderedKeys"/> order.
+    /// Keys with no match in the tree are silently dropped.</summary>
+    private static List<(RequestItem Request, IReadOnlyList<Folder> Chain)> BuildOrderedPlan(
+        Collection collection, IReadOnlyList<string> orderedKeys)
+    {
+        var byKey = new Dictionary<string, (RequestItem, IReadOnlyList<Folder>)>(StringComparer.Ordinal);
+
+        void Index(IList<RequestItem> requests, IList<Folder> folders, List<Folder> chain)
+        {
+            foreach (var r in requests)
+            {
+                var key = RequestKey(chain, r);
+                if (!byKey.ContainsKey(key)) byKey[key] = (r, chain.ToArray());
+            }
+            foreach (var f in folders)
+            {
+                chain.Add(f);
+                Index(f.Requests, f.Folders, chain);
+                chain.RemoveAt(chain.Count - 1);
+            }
+        }
+
+        Index(collection.Requests, collection.Folders, new List<Folder>());
+
+        var plan = new List<(RequestItem, IReadOnlyList<Folder>)>(orderedKeys.Count);
+        foreach (var key in orderedKeys)
+            if (byKey.TryGetValue(key, out var hit)) plan.Add(hit);
+        return plan;
     }
 
     /// <summary>Count of request leaves in a collection (root + all nested folders).</summary>

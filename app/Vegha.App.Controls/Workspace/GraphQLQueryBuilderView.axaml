@@ -1,0 +1,113 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             x:Class="Vegha.App.Controls.Workspace.GraphQLQueryBuilderView"
+             x:DataType="vm:GraphQLQueryBuilderViewModel">
+    <!-- Postman-style checkbox query builder: checking fields composes the query text;
+         argument rows take inline values. -->
+    <DockPanel>
+        <TextBox DockPanel.Dock="Top"
+                 Text="{Binding SearchText, Mode=TwoWay}"
+                 Watermark="Search fields (expanded branches)"
+                 FontSize="11"
+                 Margin="6,4"
+                 Padding="6,2" MinHeight="24" />
+
+        <Border DockPanel.Dock="Top"
+                IsVisible="{Binding ReadOnlyReason, Converter={x:Static ObjectConverters.IsNotNull}}"
+                Background="{DynamicResource Bg2Brush}"
+                BorderBrush="{DynamicResource Border1Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,4">
+            <TextBlock Text="{Binding ReadOnlyReason}"
+                       FontSize="10"
+                       Foreground="{DynamicResource Text2Brush}"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <TreeView ItemsSource="{Binding Roots}"
+                  Background="Transparent"
+                  SelectionMode="Single">
+            <TreeView.Styles>
+                <Style Selector="TreeViewItem">
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="MinHeight" Value="0" />
+                    <!-- Reflection bindings on purpose: rows are heterogeneous (root /
+                         field / arg / placeholder) but all expose these two members. -->
+                    <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}" />
+                    <Setter Property="IsVisible" Value="{ReflectionBinding IsVisible}" />
+                </Style>
+            </TreeView.Styles>
+            <TreeView.DataTemplates>
+                <TreeDataTemplate DataType="vm:BuilderRootViewModel" ItemsSource="{Binding Children}">
+                    <TextBlock Text="{Binding Label}"
+                               Classes="sectionHeaderMinor"
+                               FontSize="10"
+                               Margin="0,4,0,2" />
+                </TreeDataTemplate>
+
+                <TreeDataTemplate DataType="vm:BuilderFieldViewModel" ItemsSource="{Binding Children}">
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                Background="Transparent"
+                                ToolTip.Tip="{Binding Description}">
+                        <CheckBox Classes="compact"
+                                  IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                  MinWidth="0"
+                                  VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding Name}"
+                                   Classes.deprecatedField="{Binding IsDeprecated}"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text0Brush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding TypeDisplay}"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource Text3Brush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </TreeDataTemplate>
+
+                <DataTemplate DataType="vm:BuilderArgViewModel">
+                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                ToolTip.Tip="{Binding Description}">
+                        <TextBlock Text="{Binding Name}"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding TypeDisplay}"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="10"
+                                   Foreground="{DynamicResource Text3Brush}"
+                                   VerticalAlignment="Center" />
+                        <TextBox Text="{Binding Value, Mode=TwoWay}"
+                                 Watermark="value"
+                                 FontFamily="{StaticResource MonoFont}"
+                                 FontSize="10"
+                                 MinWidth="90" MinHeight="20" Height="20"
+                                 Padding="4,0"
+                                 VerticalAlignment="Center" />
+                        <TextBlock Text="*"
+                                   IsVisible="{Binding IsRequired}"
+                                   Foreground="{DynamicResource StatusErrBrush}"
+                                   FontSize="11"
+                                   ToolTip.Tip="Required argument"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </DataTemplate>
+
+                <DataTemplate DataType="vm:LazyPlaceholder">
+                    <TextBlock Text="…" FontSize="10"
+                               Foreground="{DynamicResource Text3Brush}" />
+                </DataTemplate>
+            </TreeView.DataTemplates>
+        </TreeView>
+    </DockPanel>
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.deprecatedField">
+            <Setter Property="TextDecorations" Value="Strikethrough" />
+        </Style>
+    </UserControl.Styles>
+</UserControl>

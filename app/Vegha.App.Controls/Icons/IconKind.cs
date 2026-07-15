@@ -54,7 +54,12 @@ public enum IconKind
     Copy,
     Trash,
     Play,
+    Stop,
     Pencil,
+    Terminal,
+    Info,
+    Paste,
+    Share,
 
     // Theme
     Sun,
@@ -70,4 +75,7 @@ public enum IconKind
 
     // Drop zones
     DropFile,
+
+    // Request kinds
+    GraphQL,
 }

@@ -4,6 +4,8 @@ using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Vegha.Core.Domain;
+using Vegha.Core.GraphQL;
+using Vegha.Core.GraphQL.Schema;
 using Vegha.Core.Importers;
 using Vegha.Core.Interpolation;
 using Vegha.Core.Requests;
@@ -75,6 +77,7 @@ public partial class RequestEditorViewModel : ObservableObject
     private readonly JintHost _scriptHost;
     private readonly Vegha.Core.History.HistoryStore? _historyStore;
     private readonly Vegha.Integrations.Secrets.SecretRegistry? _secretRegistry;
+    private readonly Services.GraphQLSchemaCache? _schemaCache;
 
     /// <summary>Pre-request script body. Set by LoadFromRequestItem; not currently editable in UI.</summary>
     [ObservableProperty]
@@ -485,13 +488,52 @@ public partial class RequestEditorViewModel : ObservableObject
     [ObservableProperty]
     private string _graphQLVariables = string.Empty;
 
-    /// <summary>Cached schema browser text (built from a successful introspection). Wired
-    /// into the GraphQL body editor's schema panel.</summary>
+    /// <summary>The introspected schema (from the endpoint or the per-endpoint cache).
+    /// Feeds the docs explorer and the query editor's schema-aware autocomplete.</summary>
     [ObservableProperty]
-    private string _graphQLSchemaSummary = string.Empty;
+    private GraphQLSchemaModel? _graphQLSchemaModel;
+
+    /// <summary>Docs explorer over <see cref="GraphQLSchemaModel"/> (the "Docs" mode of the
+    /// left-hand schema pane).</summary>
+    public GraphQLSchemaExplorerViewModel SchemaExplorer { get; } = new();
+
+    /// <summary>Postman-style checkbox query builder (the "Builder" mode of the left-hand
+    /// schema pane). Wired to the query text in the constructor.</summary>
+    public GraphQLQueryBuilderViewModel QueryBuilder { get; } = new();
+
+    /// <summary>False = Builder tree (default), true = Docs explorer, in the schema pane.</summary>
+    [ObservableProperty]
+    private bool _graphQLDocsMode;
+
+    private bool _applyingBuilderQuery;
+
+    /// <summary>Calm, persistent message for the schema pane when introspection can't work
+    /// (e.g. the endpoint disables it). Null when there's nothing to say.</summary>
+    [ObservableProperty]
+    private string? _graphQLSchemaHint;
 
     [ObservableProperty]
     private bool _graphQLSchemaLoaded;
+
+    /// <summary>Named operations parsed (debounced) from <see cref="GraphQLQuery"/>. Drives the
+    /// operation picker shown when the document defines more than one.</summary>
+    public ObservableCollection<string> GraphQLOperationNames { get; } = new();
+
+    /// <summary>The operation Send executes when the document has several. Session state only —
+    /// recomputed from the query text on restore (Bruno's .bru format has no operationName).</summary>
+    [ObservableProperty]
+    private string? _selectedGraphQLOperationName;
+
+    public bool HasMultipleGraphQLOperations => GraphQLOperationNames.Count > 1;
+
+    /// <summary>True when the active operation is a <c>subscription</c> — Send will route to the
+    /// graphql-ws transport instead of an HTTP POST (Phase 4).</summary>
+    [ObservableProperty]
+    private bool _isActiveOperationSubscription;
+
+    private IReadOnlyList<GraphQLOperationInfo> _graphQLOperations = Array.Empty<GraphQLOperationInfo>();
+    private CancellationTokenSource? _graphQLAnalysisCts;
+    private CancellationTokenSource? _schemaCacheLoadCts;
 
     // ---- Auth ----
     [ObservableProperty]
@@ -1419,7 +1461,8 @@ public partial class RequestEditorViewModel : ObservableObject
         JintHost scriptHost,
         ILogger<RequestEditorViewModel> logger,
         Vegha.Core.History.HistoryStore? historyStore = null,
-        Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null)
+        Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null,
+        Services.GraphQLSchemaCache? schemaCache = null)
     {
         _executor = executor;
         _oauth2 = oauth2;
@@ -1427,6 +1470,16 @@ public partial class RequestEditorViewModel : ObservableObject
         _logger = logger;
         _historyStore = historyStore;
         _secretRegistry = secretRegistry;
+        _schemaCache = schemaCache;
+
+        // Builder tree → query text. The guard stops the text change from bouncing back
+        // into SyncFromQuery (the builder already reflects what it just generated).
+        QueryBuilder.QueryRegenerated += text =>
+        {
+            _applyingBuilderQuery = true;
+            try { GraphQLQuery = text; }
+            finally { _applyingBuilderQuery = false; }
+        };
 
         Variables.CollectionChanged += (_, _) =>
         {
@@ -1530,10 +1583,12 @@ public partial class RequestEditorViewModel : ObservableObject
         }
     }
 
-    /// <summary>Posts the GraphQL introspection query to the current URL and renders a
-    /// browseable summary of the schema (types + fields) into <see cref="GraphQLSchemaSummary"/>.
-    /// Picks up the same headers + auth as a normal Send via the inheritance composer so
-    /// the introspection request sails through the same auth as queries do.</summary>
+    /// <summary>Posts the GraphQL introspection query to the current URL and publishes the
+    /// parsed schema to the docs explorer + completion engine. Walks the full → no-directives
+    /// → minimal query chain so older/locked-down servers that reject unknown introspection
+    /// fields still yield a schema. Picks up the same headers + auth as a normal Send via the
+    /// inheritance composer. The result is cached (memory + disk) per resolved endpoint URL —
+    /// this button is the ONLY thing that puts introspection traffic on the wire.</summary>
     [RelayCommand]
     private async Task IntrospectGraphQLAsync(CancellationToken cancellationToken)
     {
@@ -1543,6 +1598,7 @@ public partial class RequestEditorViewModel : ObservableObject
             return;
         }
         ResponseStatusText = "Introspecting…";
+        GraphQLSchemaHint = null;
         try
         {
             var composed = ComposeWithInheritance();
@@ -1555,12 +1611,47 @@ public partial class RequestEditorViewModel : ObservableObject
                     headers.Add(new(h.Name,
                         Vegha.Core.Interpolation.Interpolator.Resolve(h.Value ?? string.Empty, vars)));
 
-            var schema = await Vegha.Core.Requests.GraphQLIntrospector.IntrospectAsync(
-                _executor, new Uri(resolvedUrl), headers, cancellationToken);
+            string? raw = null;
+            GraphQLSchemaModel? model = null;
+            GraphQLIntrospectionException? lastRejection = null;
+            foreach (var query in IntrospectionQueries.Chain)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var candidate = await Vegha.Core.Requests.GraphQLIntrospector.IntrospectRawAsync(
+                    _executor, new Uri(resolvedUrl), query, headers, cancellationToken);
+                try
+                {
+                    model = await Task.Run(() => IntrospectionJsonReader.Parse(candidate), cancellationToken);
+                    raw = candidate;
+                    break;
+                }
+                catch (GraphQLIntrospectionException ex) when (ex.ServerRejected)
+                {
+                    // Validation rejection — retry with the next (smaller) query variant.
+                    lastRejection = ex;
+                }
+            }
+            if (model is null || raw is null)
+                throw lastRejection ?? new GraphQLIntrospectionException("Introspection produced no schema.");
 
-            GraphQLSchemaSummary = RenderSchemaSummary(schema);
-            GraphQLSchemaLoaded = true;
-            ResponseStatusText = $"Schema loaded — {schema.Types.Count} type(s).";
+            PublishGraphQLSchema(model);
+            ResponseStatusText = $"Schema loaded — {model.Types.Count} type(s).";
+            if (_schemaCache is not null)
+                await _schemaCache.StoreAsync(resolvedUrl, raw, model, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            ResponseStatusText = "Introspection cancelled.";
+        }
+        catch (GraphQLIntrospectionException ex) when (ex.ServerRejected)
+        {
+            _logger.LogWarning(ex, "GraphQL introspection rejected by server");
+            // Typical for production endpoints that disable introspection — show a calm,
+            // persistent hint in the schema pane rather than an error toast.
+            GraphQLSchemaHint =
+                "This endpoint rejected the introspection query (introspection is likely disabled). " +
+                "Schema docs and autocomplete are unavailable.\n\nServer said: " + ex.Message;
+            ResponseStatusText = "Introspection not available for this endpoint.";
         }
         catch (Exception ex)
         {
@@ -1569,33 +1660,77 @@ public partial class RequestEditorViewModel : ObservableObject
         }
     }
 
-    private static string RenderSchemaSummary(Vegha.Core.Requests.GraphQLIntrospector.GraphQLSchema schema)
+    /// <summary>Drops the cached schema for the current endpoint and re-introspects.</summary>
+    [RelayCommand]
+    private async Task RefreshGraphQLSchemaAsync(CancellationToken cancellationToken)
     {
-        var sb = new StringBuilder();
-        if (schema.QueryType is not null) sb.AppendLine($"# Query: {schema.QueryType}");
-        if (schema.MutationType is not null) sb.AppendLine($"# Mutation: {schema.MutationType}");
-        if (schema.SubscriptionType is not null) sb.AppendLine($"# Subscription: {schema.SubscriptionType}");
-        sb.AppendLine();
-        foreach (var t in schema.Types.OrderBy(x => x.Kind).ThenBy(x => x.Name))
+        if (_schemaCache is not null && !string.IsNullOrWhiteSpace(Url))
         {
-            sb.Append(t.Kind).Append(' ').AppendLine(t.Name);
-            if (t.EnumValues.Count > 0)
+            try
             {
-                sb.Append("    values: ").AppendLine(string.Join(", ", t.EnumValues));
+                var composed = ComposeWithInheritance();
+                var resolvedUrl = Vegha.Core.Interpolation.Interpolator.Resolve(
+                    Url, BuildVariableSnapshot(composed));
+                _schemaCache.Invalidate(resolvedUrl);
             }
-            foreach (var f in t.Fields)
-            {
-                sb.Append("    ").Append(f.Name);
-                if (f.Args.Count > 0)
-                    sb.Append('(')
-                      .Append(string.Join(", ", f.Args.Select(a => $"{a.Name}: {a.TypeRef}")))
-                      .Append(')');
-                sb.Append(": ").AppendLine(f.TypeRef);
-            }
-            sb.AppendLine();
+            catch { /* cache invalidation is best-effort */ }
         }
-        return sb.ToString();
+        await IntrospectGraphQLAsync(cancellationToken);
     }
+
+    private void PublishGraphQLSchema(GraphQLSchemaModel model)
+    {
+        GraphQLSchemaModel = model;
+        SchemaExplorer.SetSchema(model);
+        QueryBuilder.SetSchema(model, GraphQLQuery);
+        GraphQLSchemaLoaded = true;
+        GraphQLSchemaHint = null;
+    }
+
+    /// <summary>Silent per-endpoint cache probe (memory → disk, never network) so docs +
+    /// autocomplete light up immediately when a GraphQL tab opens or its URL changes.
+    /// Debounced — URL edits arrive per keystroke.</summary>
+    private void ScheduleCachedSchemaLoad()
+    {
+        if (_schemaCache is null || BodyType != "graphql" || string.IsNullOrWhiteSpace(Url)) return;
+        _schemaCacheLoadCts?.Cancel();
+        _schemaCacheLoadCts = new CancellationTokenSource();
+        var token = _schemaCacheLoadCts.Token;
+        var uiScheduler = SynchronizationContext.Current is not null
+            ? TaskScheduler.FromCurrentSynchronizationContext()
+            : TaskScheduler.Current;
+        // ComposeWithInheritance reads UI-bound collections — resolve the URL on the UI
+        // scheduler after the debounce, then only the cache read hops off-thread.
+        Task.Delay(400, token).ContinueWith(_ =>
+        {
+            if (token.IsCancellationRequested) return;
+            string resolvedUrl;
+            try
+            {
+                var composed = ComposeWithInheritance();
+                resolvedUrl = Vegha.Core.Interpolation.Interpolator.Resolve(
+                    Url, BuildVariableSnapshot(composed));
+            }
+            catch { return; }
+            _ = LoadCachedSchemaAsync(resolvedUrl, token);
+        }, token, TaskContinuationOptions.OnlyOnRanToCompletion, uiScheduler);
+    }
+
+    private async Task LoadCachedSchemaAsync(string resolvedUrl, CancellationToken token)
+    {
+        try
+        {
+            var model = await _schemaCache!.TryGetAsync(resolvedUrl, token);
+            if (model is null || token.IsCancellationRequested) return;
+            PublishGraphQLSchema(model); // resumes on the UI context that awaited
+        }
+        catch { /* silent probe — a miss must never surface */ }
+    }
+
+    /// <summary>SDL rendering of the loaded schema (for the View/Export SDL affordances),
+    /// or null when no schema is loaded.</summary>
+    public string? GetSchemaSdl() =>
+        GraphQLSchemaModel is { } model ? SdlRenderer.Render(model) : null;
 
     private static IReadOnlyDictionary<string, string> BuildVariableSnapshot(
         Vegha.Core.Requests.RequestComposition.Composed composed) =>
@@ -1635,6 +1770,19 @@ public partial class RequestEditorViewModel : ObservableObject
 
     [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendAsync(CancellationToken cancellationToken)
+    {
+        // GraphQL subscriptions never go over HTTP — Send toggles the graphql-ws session
+        // (subscribe ↔ stop), keeping Ctrl+Enter as the single "do it" gesture.
+        if (ShouldRouteSendToSubscription())
+        {
+            if (IsSubscriptionActive) await StopGraphQLSubscriptionAsync();
+            else await StartGraphQLSubscriptionAsync(cancellationToken);
+            return;
+        }
+        await SendHttpAsync(cancellationToken);
+    }
+
+    private async Task SendHttpAsync(CancellationToken cancellationToken)
     {
         // Compose the inheritance view (collection ⊕ folders ⊕ request) when the editor
         // is bound to a tab. For ad-hoc / draft tabs there's no parent context — the
@@ -1792,7 +1940,7 @@ public partial class RequestEditorViewModel : ObservableObject
         try
         {
             var (body, contentType) = BodyType == "graphql"
-                ? ComposeGraphQLBody(GraphQLQuery, GraphQLVariables, vars)
+                ? ComposeGraphQLBody(GraphQLQuery, GraphQLVariables, vars, ResolveGraphQLOperationNameForSend())
                 : ComposeBody(BodyType, BodyContent, vars);
 
             // SOAP WS-Security / WS-Addressing — inject the configured headers (a fresh
@@ -2034,7 +2182,8 @@ public partial class RequestEditorViewModel : ObservableObject
                         result.ErrorMessage,
                         sendToken,
                         requestBlob,
-                        HistoryWorkspaceIdProvider?.Invoke()).ConfigureAwait(true);
+                        HistoryWorkspaceIdProvider?.Invoke(),
+                        requestKind: BodyType == "graphql" ? "graphql" : null).ConfigureAwait(true);
                 }
                 catch (Exception histEx)
                 {
@@ -2401,7 +2550,10 @@ public partial class RequestEditorViewModel : ObservableObject
     [RelayCommand]
     private void Prettify()
     {
-        if (string.IsNullOrEmpty(BodyContent)) return;
+        // GraphQL keeps its content in GraphQLQuery/GraphQLVariables, not BodyContent —
+        // the empty-body guard must not swallow it (it previously made the graphql case
+        // unreachable).
+        if (BodyType != "graphql" && string.IsNullOrEmpty(BodyContent)) return;
         try
         {
             switch (BodyType)
@@ -2420,6 +2572,12 @@ public partial class RequestEditorViewModel : ObservableObject
                 }
                 case "graphql":
                 {
+                    // Query: parser-based formatter; returns the input unchanged when the
+                    // document doesn't parse, so a half-typed query is never corrupted.
+                    if (!string.IsNullOrEmpty(GraphQLQuery))
+                    {
+                        GraphQLQuery = GraphQLFormatter.Prettify(GraphQLQuery);
+                    }
                     if (!string.IsNullOrEmpty(GraphQLVariables))
                     {
                         try
@@ -2530,6 +2688,9 @@ public partial class RequestEditorViewModel : ObservableObject
         {
             TryApplyPastedCurl(value);
         }
+
+        // GraphQL: the endpoint changed → probe the schema cache for it (debounced; no network).
+        if (BodyType == "graphql") ScheduleCachedSchemaLoad();
     }
 
     private bool _applyingCurl;
@@ -2562,6 +2723,9 @@ public partial class RequestEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(IsBodyRaw));
         OnPropertyChanged(nameof(IsBodyXml));
         OnPropertyChanged(nameof(BodyHasData));
+        // Entering GraphQL mode: probe the per-endpoint schema cache (memory/disk only —
+        // no network) so docs + autocomplete restore instantly for known endpoints.
+        if (value == "graphql") ScheduleCachedSchemaLoad();
     }
     partial void OnBodyContentChanged(string value)
     {
@@ -2581,8 +2745,330 @@ public partial class RequestEditorViewModel : ObservableObject
         }
         return false;
     }
-    partial void OnGraphQLQueryChanged(string value) { if (!_loading) IsDirty = true; }
+    partial void OnGraphQLQueryChanged(string value)
+    {
+        if (!_loading) IsDirty = true;
+        ScheduleGraphQLAnalysis(value);
+    }
     partial void OnGraphQLVariablesChanged(string value) { if (!_loading) IsDirty = true; }
+    partial void OnSelectedGraphQLOperationNameChanged(string? value) => UpdateActiveGraphQLOperationKind();
+
+    /// <summary>Debounced background parse of the query document → operation picker +
+    /// subscription detection. Cheap enough to run on idle keystrokes (parser only, no schema).</summary>
+    private void ScheduleGraphQLAnalysis(string text)
+    {
+        _graphQLAnalysisCts?.Cancel();
+        _graphQLAnalysisCts = new CancellationTokenSource();
+        var token = _graphQLAnalysisCts.Token;
+        // Unit tests construct the VM without a UI sync context — fall back gracefully.
+        var uiScheduler = SynchronizationContext.Current is not null
+            ? TaskScheduler.FromCurrentSynchronizationContext()
+            : TaskScheduler.Current;
+        Task.Delay(250, token)
+            .ContinueWith(
+                _ => GraphQLDocumentAnalyzer.Analyze(text),
+                token, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default)
+            .ContinueWith(t =>
+            {
+                if (token.IsCancellationRequested || !t.IsCompletedSuccessfully) return;
+                ApplyGraphQLAnalysis(t.Result);
+            }, uiScheduler);
+    }
+
+    private void ApplyGraphQLAnalysis(GraphQLDocumentInfo info)
+    {
+        _graphQLOperations = info.Operations;
+        var names = info.Operations
+            .Where(o => !string.IsNullOrEmpty(o.Name))
+            .Select(o => o.Name!)
+            .ToList();
+        // Rebuild only on change so the picker doesn't lose selection on unrelated keystrokes.
+        if (!names.SequenceEqual(GraphQLOperationNames))
+        {
+            var previous = SelectedGraphQLOperationName;
+            GraphQLOperationNames.Clear();
+            foreach (var n in names) GraphQLOperationNames.Add(n);
+            SelectedGraphQLOperationName =
+                previous is not null && names.Contains(previous) ? previous : names.FirstOrDefault();
+            OnPropertyChanged(nameof(HasMultipleGraphQLOperations));
+        }
+        UpdateActiveGraphQLOperationKind();
+
+        // Hand-edited text → builder tree (SyncFromQuery no-ops on builder-generated text,
+        // but skip explicitly when the change originated from a checkbox to avoid churn).
+        if (!_applyingBuilderQuery) QueryBuilder.SyncFromQuery(GraphQLQuery);
+    }
+
+    /// <summary>The operation Send would execute right now: the selected one, else the first.</summary>
+    private GraphQLOperationInfo? ActiveGraphQLOperation =>
+        _graphQLOperations.Count == 0
+            ? null
+            : _graphQLOperations.FirstOrDefault(o => o.Name == SelectedGraphQLOperationName)
+              ?? _graphQLOperations[0];
+
+    private void UpdateActiveGraphQLOperationKind() =>
+        IsActiveOperationSubscription = ActiveGraphQLOperation?.Kind == GraphQLOperationKind.Subscription;
+
+    /// <summary>Synchronous (non-debounced) resolution of the operationName to put on the wire.
+    /// Null when the document has a single operation — servers don't need it and Bruno omits it.</summary>
+    private string? ResolveGraphQLOperationNameForSend() =>
+        GraphQLDocumentAnalyzer.ResolveOperationNameForSend(GraphQLQuery, SelectedGraphQLOperationName);
+
+    /// <summary>Fills the variables pane with a JSON skeleton for the active operation's
+    /// declared <c>$variables</c>; merges missing keys when the pane already has content.</summary>
+    [RelayCommand]
+    private void GenerateGraphQLVariables()
+    {
+        // Analyze synchronously — the debounced picker state may lag the last keystroke.
+        var info = GraphQLDocumentAnalyzer.Analyze(GraphQLQuery);
+        var op = info.Operations.Count == 0
+            ? null
+            : info.Operations.FirstOrDefault(o => o.Name == SelectedGraphQLOperationName) ?? info.Operations[0];
+        if (op is null || op.Variables.Count == 0)
+        {
+            ResponseStatusText = "The current operation declares no $variables.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(GraphQLVariables) || GraphQLVariables.Trim() == "{}")
+        {
+            GraphQLVariables = SampleVariablesGenerator.Generate(op.Variables);
+            return;
+        }
+        var merged = SampleVariablesGenerator.MergeMissing(GraphQLVariables, op.Variables);
+        if (merged is not null) GraphQLVariables = merged;
+        else ResponseStatusText = "Variables already cover every declared $variable.";
+    }
+
+    // ---- GraphQL subscriptions (graphql-ws over WebSocket) ----
+
+    private const int MaxSubscriptionFrames = 500;
+
+    public ObservableCollection<GraphQLSubscriptionFrame> SubscriptionFrames { get; } = new();
+
+    /// <summary>True while a subscription session is streaming — Send acts as Stop.</summary>
+    [ObservableProperty]
+    private bool _isSubscriptionActive;
+
+    public bool HasSubscriptionFrames => SubscriptionFrames.Count > 0;
+
+    /// <summary>Optional explicit WebSocket endpoint. Empty → derived from <see cref="Url"/>
+    /// (http→ws / https→wss). Session state only — not persisted to .bru (Bruno parity).</summary>
+    [ObservableProperty]
+    private string? _graphQLWsUrlOverride;
+
+    private GraphQLWsClient? _graphQLWsClient;
+    private string? _graphQLWsSubscriptionId;
+    private string _graphQLWsEndpointForHistory = string.Empty;
+    private DateTimeOffset _graphQLWsStartedAt;
+
+    /// <summary>True when Send should route to the subscription transport: GraphQL body and
+    /// the operation that would execute is a <c>subscription</c>. Computed synchronously so
+    /// it can't lag behind the last keystroke.</summary>
+    private bool ShouldRouteSendToSubscription()
+    {
+        if (BodyType != "graphql") return false;
+        var info = GraphQLDocumentAnalyzer.Analyze(GraphQLQuery);
+        if (info.Operations.Count == 0) return false;
+        var op = info.Operations.FirstOrDefault(o => o.Name == SelectedGraphQLOperationName)
+                 ?? info.Operations[0];
+        return op.Kind == GraphQLOperationKind.Subscription;
+    }
+
+    private async Task StartGraphQLSubscriptionAsync(CancellationToken cancellationToken)
+    {
+        TeardownGraphQLSubscription(); // restart semantics: a new Subscribe supersedes
+
+        var composed = ComposeWithInheritance();
+        var vars = BuildVariableSnapshot(composed);
+        var httpUrl = Vegha.Core.Interpolation.Interpolator.Resolve(Url, vars);
+        var wsUri = DeriveWsUri(httpUrl,
+            string.IsNullOrWhiteSpace(GraphQLWsUrlOverride)
+                ? null
+                : Vegha.Core.Interpolation.Interpolator.Resolve(GraphQLWsUrlOverride!, vars));
+
+        var headers = new List<KeyValuePair<string, string>>();
+        foreach (var h in composed.Headers)
+            if (h.Enabled && !string.IsNullOrWhiteSpace(h.Name))
+                headers.Add(new(h.Name,
+                    Vegha.Core.Interpolation.Interpolator.Resolve(h.Value ?? string.Empty, vars)));
+
+        var query = Vegha.Core.Interpolation.Interpolator.Resolve(GraphQLQuery, vars);
+        var variablesJson = string.IsNullOrWhiteSpace(GraphQLVariables)
+            ? null
+            : Vegha.Core.Interpolation.Interpolator.Resolve(GraphQLVariables, vars);
+        var operationName = ResolveGraphQLOperationNameForSend();
+
+        var client = new GraphQLWsClient();
+        try
+        {
+            ResponseStatusText = $"Connecting to {wsUri}…";
+            // Headers ride the HTTP upgrade; they're also sent as the connection_init
+            // payload — the Apollo-server convention for WebSocket auth.
+            var initPayload = headers.Count == 0
+                ? null
+                : System.Text.Json.JsonSerializer.Serialize(
+                    headers.ToDictionary(h => h.Key, h => h.Value));
+            await client.ConnectAsync(wsUri, headers, initPayload, cancellationToken);
+            _graphQLWsSubscriptionId = await client.SubscribeAsync(
+                query, variablesJson, operationName, cancellationToken);
+
+            _graphQLWsClient = client;
+            _graphQLWsEndpointForHistory = wsUri.ToString();
+            _graphQLWsStartedAt = DateTimeOffset.UtcNow;
+            SubscriptionFrames.Clear();
+            OnPropertyChanged(nameof(HasSubscriptionFrames));
+            IsSubscriptionActive = true;
+            HasResponse = true;
+            ResponseStatusText = $"Subscribed ({client.Dialect}) — waiting for events… Send again to stop.";
+            _ = PumpGraphQLSubscriptionAsync(client);
+        }
+        catch (Exception ex)
+        {
+            await client.DisposeAsync();
+            ErrorMessage = $"Subscription failed: {ex.Message}";
+            ResponseStatusText = $"Subscription failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>ws(s) endpoint for the session: the override verbatim when set, else the
+    /// HTTP url with the scheme swapped (http→ws, https→wss).</summary>
+    public static Uri DeriveWsUri(string httpUrl, string? overrideUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(overrideUrl)) return new Uri(overrideUrl);
+        var builder = new UriBuilder(httpUrl);
+        builder.Scheme = builder.Scheme.ToLowerInvariant() switch
+        {
+            "https" => "wss",
+            "http" => "ws",
+            _ => builder.Scheme, // already ws/wss
+        };
+        return builder.Uri;
+    }
+
+    private async Task PumpGraphQLSubscriptionAsync(GraphQLWsClient client)
+    {
+        // Invoked from the UI context — every continuation resumes there, so mutating
+        // SubscriptionFrames / response properties below is thread-safe.
+        try
+        {
+            await foreach (var e in client.Events.ReadAllAsync())
+            {
+                if (!ReferenceEquals(client, _graphQLWsClient)) return; // superseded session
+                var (kind, showInBody) = e.Kind switch
+                {
+                    GraphQLWsEventKind.Next => ("data", true),
+                    GraphQLWsEventKind.Error => ("error", true),
+                    GraphQLWsEventKind.Complete => ("complete", false),
+                    _ => ("system", false),
+                };
+                AddSubscriptionFrame(new GraphQLSubscriptionFrame(
+                    e.Timestamp, kind, PreviewOf(e.PayloadJson), e.PayloadJson));
+
+                if (showInBody)
+                {
+                    // Latest event doubles as the response body so the whole response
+                    // toolchain (pretty print, JSONPath filter, copy) applies to it.
+                    ResponseBody = e.PayloadJson;
+                    ResponseContentType = "application/json";
+                    HasResponse = true;
+                }
+                if (e.Kind == GraphQLWsEventKind.Next)
+                {
+                    var count = SubscriptionFrames.Count(f => f.Kind == "data");
+                    ResponseStatusText = $"Subscription streaming — {count} event(s).";
+                }
+                else if (e.Kind == GraphQLWsEventKind.Error)
+                {
+                    ResponseStatusText = "Subscription error — see response body.";
+                }
+            }
+        }
+        catch { /* channel teardown */ }
+        finally
+        {
+            if (ReferenceEquals(client, _graphQLWsClient))
+            {
+                _graphQLWsClient = null;
+                IsSubscriptionActive = false;
+                var dataFrames = SubscriptionFrames.Count(f => f.Kind == "data");
+                ResponseStatusText = $"Subscription ended — {dataFrames} event(s) received.";
+                AppendSubscriptionHistory(dataFrames);
+                _ = Task.Run(async () => { try { await client.DisposeAsync(); } catch { } });
+            }
+        }
+    }
+
+    private void AddSubscriptionFrame(GraphQLSubscriptionFrame frame)
+    {
+        SubscriptionFrames.Add(frame);
+        // Cap the timeline so a chatty subscription can't grow memory unboundedly.
+        while (SubscriptionFrames.Count > MaxSubscriptionFrames) SubscriptionFrames.RemoveAt(0);
+        OnPropertyChanged(nameof(HasSubscriptionFrames));
+    }
+
+    private void AppendSubscriptionHistory(int dataFrames)
+    {
+        if (_historyStore is null || string.IsNullOrEmpty(_graphQLWsEndpointForHistory)) return;
+        var duration = (long)(DateTimeOffset.UtcNow - _graphQLWsStartedAt).TotalMilliseconds;
+        // Capped frame payloads ride along as the response body preview; the request blob
+        // restores the editor state like any HTTP entry.
+        var preview = string.Join("\n", SubscriptionFrames
+            .Where(f => f.Kind is "data" or "error")
+            .Take(200)
+            .Select(f => f.PayloadJson));
+        if (preview.Length > 1_000_000) preview = preview[..1_000_000];
+        var blob = SerializeRequestBlob();
+        _ = _historyStore.AppendAsync(
+            "SUB", _graphQLWsEndpointForHistory, 0, duration, preview,
+            errorMessage: null, requestBlob: blob,
+            workspaceId: HistoryWorkspaceIdProvider?.Invoke(),
+            requestKind: "graphql");
+    }
+
+    private async Task StopGraphQLSubscriptionAsync()
+    {
+        var client = _graphQLWsClient;
+        if (client is null) return;
+        ResponseStatusText = "Stopping subscription…";
+        try
+        {
+            if (_graphQLWsSubscriptionId is { } id) await client.StopAsync(id);
+            await client.CloseAsync();
+            // The pump's finally block flips IsSubscriptionActive and logs history.
+        }
+        catch { /* socket already gone — pump teardown handles state */ }
+    }
+
+    /// <summary>One-line flattened preview for the frames list.</summary>
+    private static string PreviewOf(string payloadJson)
+    {
+        var flat = payloadJson.Replace('\n', ' ').Replace('\r', ' ').Trim();
+        return flat.Length <= 160 ? flat : flat[..160] + "…";
+    }
+
+    /// <summary>Pushes a frame's payload into the response viewer (invoked when the user
+    /// picks a row in the subscription timeline).</summary>
+    [RelayCommand]
+    private void ShowSubscriptionFrame(GraphQLSubscriptionFrame? frame)
+    {
+        if (frame is null) return;
+        ResponseBody = frame.PayloadJson;
+        ResponseContentType = "application/json";
+        HasResponse = true;
+    }
+
+    /// <summary>Hard teardown for tab close / session replacement — fire-and-forget so the
+    /// UI never blocks on a socket close handshake.</summary>
+    public void TeardownGraphQLSubscription()
+    {
+        var client = _graphQLWsClient;
+        _graphQLWsClient = null;
+        _graphQLWsSubscriptionId = null;
+        if (client is null) return;
+        IsSubscriptionActive = false;
+        _ = Task.Run(async () => { try { await client.DisposeAsync(); } catch { } });
+    }
     partial void OnAuthTypeChanged(string value)
     {
         if (!_loading) IsDirty = true;
@@ -2861,9 +3347,12 @@ public partial class RequestEditorViewModel : ObservableObject
         };
     }
 
-    /// <summary>Compose a GraphQL JSON body from query + variables (both optionally interpolated).</summary>
+    /// <summary>Compose a GraphQL JSON body from query + variables (both optionally interpolated).
+    /// <paramref name="operationName"/> is emitted only when non-null — required by servers when
+    /// the document defines more than one operation.</summary>
     public static (string? Body, string? ContentType) ComposeGraphQLBody(
-        string query, string variables, IReadOnlyDictionary<string, string>? vars = null)
+        string query, string variables, IReadOnlyDictionary<string, string>? vars = null,
+        string? operationName = null)
     {
         if (string.IsNullOrWhiteSpace(query)) return (null, null);
 
@@ -2877,6 +3366,9 @@ public partial class RequestEditorViewModel : ObservableObject
         // The server is responsible for rejecting malformed variables.
         var json =
             "{\"query\":" + System.Text.Json.JsonSerializer.Serialize(resolvedQuery) +
+            (operationName is null
+                ? string.Empty
+                : ",\"operationName\":" + System.Text.Json.JsonSerializer.Serialize(operationName)) +
             ",\"variables\":" + (LooksLikeJson(resolvedVarsText) ? resolvedVarsText : "{}") +
             "}";
         return (json, "application/json");

@@ -171,6 +171,74 @@ public class CollectionRunOrchestratorTests
     }
 
     [Fact]
+    public async Task OrderedRequestNames_runs_in_specified_order_only()
+    {
+        var coll = BuildCollection("A", "B", "C", "D");
+        var opts = RunnerOptions.Default(coll) with
+        {
+            OrderedRequestNames = new[] { "C", "A" },  // reordered subset; B/D excluded
+        };
+        var executed = new List<string>();
+
+        var summary = await CollectionRunOrchestrator.RunAsync(opts,
+            executor: (iter, req, chain, vars, ct) =>
+            {
+                executed.Add(req.Name);
+                return Task.FromResult(Ok(req));
+            });
+
+        executed.Should().Equal("C", "A");
+        summary.Results.Should().HaveCount(2);
+        summary.Passed.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task OrderedByKey_disambiguates_same_named_requests_in_different_folders()
+    {
+        // Two folders each holding a request literally named "Request 1".
+        var f1 = new Folder { Name = "Alpha", Requests = new List<RequestItem> { new() { Name = "Request 1", Method = "GET", Url = "http://alpha" } } };
+        var f2 = new Folder { Name = "Beta", Requests = new List<RequestItem> { new() { Name = "Request 1", Method = "GET", Url = "http://beta" } } };
+        var coll = new Collection { Name = "c", Folders = new List<Folder> { f1, f2 } };
+
+        var keyAlpha = CollectionRunOrchestrator.RequestKey(new[] { "Alpha" }, "Request 1");
+        var keyBeta = CollectionRunOrchestrator.RequestKey(new[] { "Beta" }, "Request 1");
+        keyAlpha.Should().NotBe(keyBeta);
+
+        var opts = RunnerOptions.Default(coll) with { OrderedRequestNames = new[] { keyBeta, keyAlpha } };
+        var urls = new List<string>();
+
+        await CollectionRunOrchestrator.RunAsync(opts,
+            executor: (iter, req, chain, vars, ct) => { urls.Add(req.Url); return Task.FromResult(Ok(req)); });
+
+        // Ran the correct, distinct requests in the requested order — not two copies of the first.
+        urls.Should().Equal("http://beta", "http://alpha");
+    }
+
+    [Fact]
+    public async Task StopOnError_halts_run_without_marking_canceled()
+    {
+        var coll = BuildCollection("A", "B", "C", "D", "E");
+        var opts = RunnerOptions.Default(coll) with { StopOnError = true };
+        var executed = new List<string>();
+
+        var summary = await CollectionRunOrchestrator.RunAsync(opts,
+            executor: (iter, req, chain, vars, ct) =>
+            {
+                executed.Add(req.Name);
+                // B fails; the run should stop and not execute D/E.
+                var res = req.Name == "B"
+                    ? new RequestRunResult(req.Name, req.Method, req.Url, 500, 10, false, null, RequestRunStatus.Failed)
+                    : Ok(req);
+                return Task.FromResult(res);
+            });
+
+        // The run stopped early — a stop-on-error is a completed run, not a user cancel.
+        summary.WasCanceled.Should().BeFalse();
+        executed.Should().NotContain("E");
+        summary.Failed.Should().BeGreaterThanOrEqualTo(1);
+    }
+
+    [Fact]
     public async Task Delay_between_requests_is_honored()
     {
         var coll = BuildCollection("A", "B", "C");

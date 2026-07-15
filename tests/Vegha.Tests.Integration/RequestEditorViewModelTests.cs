@@ -404,6 +404,133 @@ public class RequestEditorViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task IntrospectCommand_PublishesSchemaModel_AndExplorer()
+    {
+        _server.Given(Request.Create().WithPath("/graphql").UsingPost()
+                .WithBody(b => b!.Contains("__schema")))
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("""
+                { "data": { "__schema": {
+                  "queryType": { "name": "Query" },
+                  "types": [ { "kind": "OBJECT", "name": "Query",
+                    "fields": [ { "name": "ping", "type": { "kind": "SCALAR", "name": "String" }, "args": [] } ] } ]
+                } } }
+                """));
+
+        _vm.BodyType = "graphql";
+        _vm.Url = $"{_server.Url}/graphql";
+        await _vm.IntrospectGraphQLCommand.ExecuteAsync(null);
+
+        _vm.GraphQLSchemaLoaded.Should().BeTrue();
+        _vm.GraphQLSchemaModel.Should().NotBeNull();
+        _vm.GraphQLSchemaModel!.QueryTypeName.Should().Be("Query");
+        _vm.SchemaExplorer.Rows.Should().Contain(r => r.Title == "query: Query");
+        _vm.GetSchemaSdl().Should().Contain("type Query");
+    }
+
+    [Fact]
+    public async Task IntrospectCommand_Disabled_SetsCalmHint_NoSchema()
+    {
+        _server.Given(Request.Create().WithPath("/graphql").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithBody("""{ "errors": [ { "message": "introspection is disabled" } ] }"""));
+
+        _vm.BodyType = "graphql";
+        _vm.Url = $"{_server.Url}/graphql";
+        await _vm.IntrospectGraphQLCommand.ExecuteAsync(null);
+
+        _vm.GraphQLSchemaLoaded.Should().BeFalse();
+        _vm.GraphQLSchemaHint.Should().Contain("introspection is disabled");
+    }
+
+    [Fact]
+    public async Task SendCommand_GraphQL_MultiOperation_SendsSelectedOperationName()
+    {
+        _server.Given(Request.Create()
+                .WithPath("/graphql")
+                .UsingPost()
+                .WithBody(b => b!.Contains("\"operationName\":\"Second\"")))
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("{\"data\":{}}"));
+
+        _vm.Method = "POST";
+        _vm.Url = $"{_server.Url}/graphql";
+        _vm.BodyType = "graphql";
+        _vm.GraphQLQuery = "query First { a } mutation Second { b }";
+        _vm.SelectedGraphQLOperationName = "Second";
+
+        await _vm.SendCommand.ExecuteAsync(null);
+
+        _vm.ResponseStatusCode.Should().Be(200);
+    }
+
+    [Fact]
+    public async Task SendCommand_GraphQL_SingleOperation_OmitsOperationName()
+    {
+        _server.Given(Request.Create()
+                .WithPath("/graphql")
+                .UsingPost()
+                .WithBody(b => b!.Contains("\"query\":") && !b.Contains("operationName")))
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("{\"data\":{}}"));
+
+        _vm.Method = "POST";
+        _vm.Url = $"{_server.Url}/graphql";
+        _vm.BodyType = "graphql";
+        _vm.GraphQLQuery = "query Only { a }";
+
+        await _vm.SendCommand.ExecuteAsync(null);
+
+        _vm.ResponseStatusCode.Should().Be(200);
+    }
+
+    [Fact]
+    public async Task GraphQLOperationPicker_PopulatesFromDocument_AfterDebounce()
+    {
+        _vm.BodyType = "graphql";
+        _vm.GraphQLQuery = "query First { a } mutation Second { b }";
+
+        // Analysis is debounced (250 ms) and marshaled back — poll briefly.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (_vm.GraphQLOperationNames.Count < 2 && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+
+        _vm.GraphQLOperationNames.Should().Equal("First", "Second");
+        _vm.HasMultipleGraphQLOperations.Should().BeTrue();
+        _vm.SelectedGraphQLOperationName.Should().Be("First");
+    }
+
+    [Fact]
+    public void GenerateGraphQLVariables_FillsSkeleton_ForDeclaredVariables()
+    {
+        _vm.BodyType = "graphql";
+        _vm.GraphQLQuery = "query Q($id: ID!, $limit: Int) { node(id: $id) { id } }";
+        _vm.GraphQLVariables = "";
+
+        _vm.GenerateGraphQLVariablesCommand.Execute(null);
+
+        var parsed = System.Text.Json.JsonDocument.Parse(_vm.GraphQLVariables).RootElement;
+        parsed.GetProperty("id").GetString().Should().Be("");
+        parsed.GetProperty("limit").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public void Prettify_GraphQL_FormatsQueryAndVariables_LeavesBrokenQueryAlone()
+    {
+        _vm.BodyType = "graphql";
+        _vm.GraphQLQuery = "query Q($id:ID!){user(id:$id){id email}}";
+        _vm.GraphQLVariables = "{\"id\":\"u1\"}";
+
+        _vm.PrettifyCommand.Execute(null);
+
+        _vm.GraphQLQuery.Should().Contain("query Q($id: ID!)");
+        _vm.GraphQLQuery.Split('\n').Length.Should().BeGreaterThan(2);
+        _vm.GraphQLVariables.Should().Contain("\"id\": \"u1\"");
+
+        var broken = "query { user { id ";
+        _vm.GraphQLQuery = broken;
+        _vm.PrettifyCommand.Execute(null);
+        _vm.GraphQLQuery.Should().Be(broken);
+    }
+
+    [Fact]
     public async Task SendCommand_AwsV4_SignsRequestAndAttachesAwsHeaders()
     {
         // We can't easily verify the signature math against a live AWS endpoint, but we can

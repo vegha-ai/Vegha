@@ -90,16 +90,32 @@
                     <icons:Icon Kind="More" Size="14" />
                     <Button.Flyout>
                         <MenuFlyout Placement="BottomEdgeAlignedRight">
-                            <MenuItem Header="New Request" Click="OnHeaderNewRequest_Click" />
-                            <MenuItem Header="New Folder" Click="OnHeaderNewFolder_Click" />
+                            <MenuItem Header="New Request" Click="OnHeaderNewRequest_Click">
+                                <MenuItem.Icon><icons:Icon Kind="Plus" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="New Folder" Click="OnHeaderNewFolder_Click">
+                                <MenuItem.Icon><icons:Icon Kind="Folder" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                            </MenuItem>
                             <Separator />
-                            <MenuItem Header="Run" Click="OnHeaderRun_Click" />
-                            <MenuItem Header="Clone" Click="OnHeaderClone_Click" />
-                            <MenuItem Header="Rename" Click="OnHeaderRename_Click" />
-                            <MenuItem Header="Reveal in File Explorer" Click="OnHeaderReveal_Click" />
+                            <MenuItem Header="Run" Click="OnHeaderRun_Click">
+                                <MenuItem.Icon><icons:Icon Kind="Play" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="Clone" Click="OnHeaderClone_Click">
+                                <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="Rename" Click="OnHeaderRename_Click">
+                                <MenuItem.Icon><icons:Icon Kind="Pencil" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="Reveal in File Explorer" Click="OnHeaderReveal_Click">
+                                <MenuItem.Icon><icons:Icon Kind="FolderOpen" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                            </MenuItem>
                             <Separator />
-                            <MenuItem Header="Settings" Click="OnHeaderSettings_Click" />
-                            <MenuItem Header="Remove" Click="OnHeaderRemove_Click" />
+                            <MenuItem Header="Settings" Click="OnHeaderSettings_Click">
+                                <MenuItem.Icon><icons:Icon Kind="Settings" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="Remove" Click="OnHeaderRemove_Click">
+                                <MenuItem.Icon><icons:Icon Kind="Close" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                            </MenuItem>
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
@@ -170,121 +186,189 @@
                 <MenuFlyout x:Key="CollectionMenu">
                     <MenuItem Header="New Request"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CreateRequestCommand}"
-                              CommandParameter="{Binding}" />
-                    <MenuItem Header="New Folder" Click="OnTreeNewFolder_Click" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Plus" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="New Folder" Click="OnTreeNewFolder_Click">
+                        <MenuItem.Icon><icons:Icon Kind="Folder" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="New JS File"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CreateJsFileCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Code" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Run"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).RunCollectionCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Play" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Clone"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CloneNodeCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Rename" InputGesture="F2"
                               Tag="{Binding}"
-                              Click="OnTreeRename_Click" />
+                              Click="OnTreeRename_Click">
+                        <MenuItem.Icon><icons:Icon Kind="Pencil" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Collapse"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CollapseAllCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="ChevronUp" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Paste"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).PasteNodeCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Paste" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Properties..."
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenCollectionSettingsCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Settings" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Reveal in File Explorer"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).RevealInFileExplorerCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="FolderOpen" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Open in Terminal"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenInTerminalCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Terminal" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <Separator />
                     <!-- Remove is gated on a confirmation dialog handled in code-behind so
                          the user can verify the on-disk path before detaching. -->
-                    <MenuItem Header="Remove" Click="OnTreeRemoveCollection_Click" />
+                    <MenuItem Header="Remove" Click="OnTreeRemoveCollection_Click">
+                        <MenuItem.Icon><icons:Icon Kind="Close" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                 </MenuFlyout>
 
                 <!-- Folder menu -->
                 <MenuFlyout x:Key="FolderMenu">
                     <MenuItem Header="New Request"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CreateRequestCommand}"
-                              CommandParameter="{Binding}" />
-                    <MenuItem Header="New Folder" Click="OnTreeNewFolder_Click" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Plus" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
+                    <MenuItem Header="New Folder" Click="OnTreeNewFolder_Click">
+                        <MenuItem.Icon><icons:Icon Kind="Folder" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="New JS File"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CreateJsFileCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Code" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Run"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).RunFolderCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Play" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Clone"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CloneNodeCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Copy"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CopyNodeCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Paste"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).PasteNodeCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Paste" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Rename" InputGesture="F2"
                               Tag="{Binding}"
-                              Click="OnTreeRename_Click" />
+                              Click="OnTreeRename_Click">
+                        <MenuItem.Icon><icons:Icon Kind="Pencil" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Properties..."
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenFolderSettingsCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Settings" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Reveal in File Explorer"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).RevealInFileExplorerCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="FolderOpen" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Info"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).ShowNodeInfoCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Info" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Open in Terminal"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenInTerminalCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Terminal" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Delete"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).DeleteNodeCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Trash" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                 </MenuFlyout>
 
                 <!-- Request menu -->
                 <MenuFlyout x:Key="RequestMenu">
                     <MenuItem Header="Open"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenRequestCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="FileText" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Clone"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CloneNodeCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Copy"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CopyNodeCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Rename" InputGesture="F2"
                               Tag="{Binding}"
-                              Click="OnTreeRename_Click" />
+                              Click="OnTreeRename_Click">
+                        <MenuItem.Icon><icons:Icon Kind="Pencil" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Create Example"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CreateExampleCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Plus" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Generate Code"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).GenerateCodeCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Code" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Reveal in File Explorer"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).RevealInFileExplorerCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="FolderOpen" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <MenuItem Header="Info"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).ShowNodeInfoCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Info" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                     <Separator />
                     <MenuItem Header="Delete"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).DeleteNodeCommand}"
-                              CommandParameter="{Binding}" />
+                              CommandParameter="{Binding}">
+                        <MenuItem.Icon><icons:Icon Kind="Trash" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                    </MenuItem>
                 </MenuFlyout>
 
             </TreeView.Resources>
@@ -333,11 +417,19 @@
                     <Grid ColumnDefinitions="34,*,Auto" ContextFlyout="{StaticResource RequestMenu}">
                         <TextBlock Grid.Column="0"
                                    Text="{Binding MethodLabel}"
+                                   IsVisible="{Binding !IsGraphQL}"
                                    FontFamily="{StaticResource MonoFont}"
                                    FontSize="10"
                                    FontWeight="SemiBold"
                                    Foreground="{Binding MethodLabel, Converter={StaticResource MethodToBrushConverter}}"
                                    VerticalAlignment="Center" />
+                        <!-- GraphQL requests identify by the GraphQL mark, not the POST verb. -->
+                        <icons:Icon Grid.Column="0"
+                                    Kind="GraphQL" Size="13"
+                                    IsVisible="{Binding IsGraphQL}"
+                                    Foreground="{StaticResource GraphQLBrush}"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1"
                                    Text="{Binding Name}"
                                    FontSize="12" Margin="2,0,0,0"

@@ -1,0 +1,73 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             x:Class="Vegha.App.Controls.Workspace.GraphQLSubscriptionView"
+             x:DataType="vm:RequestEditorViewModel">
+    <!-- Streamed subscription frames. Selecting a row pushes its payload into the response
+         body viewer below, so pretty-print / JSONPath / save all apply to any frame. -->
+    <DockPanel MaxHeight="150">
+        <Border DockPanel.Dock="Top" Padding="10,2" Height="20"
+                Background="{DynamicResource Bg2Brush}"
+                BorderBrush="{DynamicResource Border0Brush}"
+                BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Column="0" Text="STREAM" Classes="sectionHeaderMinor"
+                           VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1"
+                           Text="{Binding SubscriptionFrames.Count, StringFormat='{}{0} frame(s)'}"
+                           FontSize="10"
+                           Foreground="{DynamicResource Text3Brush}"
+                           Margin="8,0,0,0"
+                           VerticalAlignment="Center" />
+                <Ellipse Grid.Column="2" Width="7" Height="7"
+                         Fill="{DynamicResource StatusOkBrush}"
+                         IsVisible="{Binding IsSubscriptionActive}"
+                         VerticalAlignment="Center"
+                         ToolTip.Tip="Subscription live — Send (Ctrl+Enter) stops it" />
+            </Grid>
+        </Border>
+        <ListBox x:Name="FramesList"
+                 ItemsSource="{Binding SubscriptionFrames}"
+                 SelectionMode="Single"
+                 Background="{DynamicResource Bg3Brush}"
+                 FontSize="11">
+            <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="8,1" />
+                    <Setter Property="MinHeight" Value="0" />
+                </Style>
+                <Style Selector="TextBlock.frameKind">
+                    <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
+                </Style>
+                <Style Selector="TextBlock.frameKind.data">
+                    <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}" />
+                </Style>
+                <Style Selector="TextBlock.frameKind.error">
+                    <Setter Property="Foreground" Value="{DynamicResource StatusErrBrush}" />
+                </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:GraphQLSubscriptionFrame">
+                    <Grid ColumnDefinitions="Auto,Auto,*">
+                        <TextBlock Grid.Column="0" Text="{Binding TimeDisplay}"
+                                   FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                   Foreground="{DynamicResource Text3Brush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding Kind}"
+                                   Classes="frameKind"
+                                   Classes.data="{Binding IsData}"
+                                   Classes.error="{Binding IsError}"
+                                   FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                   Width="60" Margin="10,0"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding Preview}"
+                                   FontFamily="{StaticResource MonoFont}" FontSize="10"
+                                   Foreground="{DynamicResource Text1Brush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</UserControl>

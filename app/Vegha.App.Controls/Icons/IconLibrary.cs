@@ -76,6 +76,16 @@ internal static class IconLibrary
                 yield return Stroke("M10.725 10.45 A2.475 2.475 0 1 1 13.75 12.87 C13.09 13.09 12.925 13.915 12.925 14.575", stroke);
                 yield return Dot(13.2, 18.15, stroke, 0.825);
                 break;
+            case IconKind.GraphQL:
+                // GraphQL mark — hexagon with the inscribed triangle, nodes on the vertices.
+                yield return Stroke("M12 3.5 L19.36 7.75 V16.25 L12 20.5 L4.64 16.25 V7.75 Z M12 3.5 L19.36 16.25 H4.64 Z", stroke);
+                yield return Dot(12, 3.5, stroke, 1.6);
+                yield return Dot(19.36, 7.75, stroke, 1.6);
+                yield return Dot(19.36, 16.25, stroke, 1.6);
+                yield return Dot(12, 20.5, stroke, 1.6);
+                yield return Dot(4.64, 16.25, stroke, 1.6);
+                yield return Dot(4.64, 7.75, stroke, 1.6);
+                break;
             case IconKind.Cookie:
                 // Bitten circle with a few "chip" dots inside.
                 yield return Stroke("M12 3 A9 9 0 1 0 21 12 A3 3 0 0 1 18 9 A3 3 0 0 1 15 6 A3 3 0 0 1 12 3 Z", stroke);
@@ -101,6 +111,32 @@ internal static class IconLibrary
                 break;
             case IconKind.Close:
                 yield return Stroke("M6 6 L18 18 M18 6 L6 18", stroke);
+                break;
+            case IconKind.Stop:
+                // Rounded stop square — pairs with Send on the request bar when a GraphQL
+                // subscription is streaming.
+                yield return Stroke("M7 7 H17 V17 H7 Z", stroke);
+                break;
+            case IconKind.Terminal:
+                // ">_" prompt in a rounded frame.
+                yield return Stroke("M4 5 H20 V19 H4 Z M7.5 9.5 L10.5 12 L7.5 14.5 M12.5 15.5 H16.5", stroke);
+                break;
+            case IconKind.Info:
+                yield return StrokeEllipse(12, 12, 8.5, stroke);
+                yield return Stroke("M12 11 V16", stroke);
+                yield return Dot(12, 8, stroke, 0.9);
+                break;
+            case IconKind.Paste:
+                // Clipboard: board with a top clip.
+                yield return Stroke("M8 5 H6 V20 H18 V5 H16 M9 3.5 H15 V6.5 H9 Z", stroke);
+                break;
+            case IconKind.Share:
+                // Share nodes: two dots linked to one (classic share glyph, as in the
+                // reference context-menu design).
+                yield return StrokeEllipse(17, 6, 2.5, stroke);
+                yield return StrokeEllipse(7, 12, 2.5, stroke);
+                yield return StrokeEllipse(17, 18, 2.5, stroke);
+                yield return Stroke("M9.2 10.8 L14.8 7.2 M9.2 13.2 L14.8 16.8", stroke);
                 break;
             case IconKind.Menu:
                 yield return Stroke("M4 7 H20 M4 12 H20 M4 17 H20", stroke);

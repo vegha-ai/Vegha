@@ -18,10 +18,95 @@
              RequestWorkspace.axaml so they sit on the same line as Body / Headers / Auth /
              etc., right-aligned. They appear only when the Body sub-tab is active.) -->
 
-        <!-- GraphQL editor (query + variables + introspected schema) -->
+        <!-- GraphQL editor, Postman-style layout: schema pane (Builder tree / Docs explorer)
+             on the LEFT composes the query; the query text + variables live on the right. -->
         <Grid IsVisible="{Binding BodyType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=graphql}"
-              ColumnDefinitions="*,4,260">
-            <Grid Grid.Column="0">
+              ColumnDefinitions="340,4,*">
+
+            <!-- Schema pane: Builder (checkbox tree) / Docs (explorer) toggle. Populated by
+                 Introspect or silently from the per-endpoint schema cache. -->
+            <DockPanel Grid.Column="0" Background="{DynamicResource Bg3Brush}">
+                <Border DockPanel.Dock="Top" Padding="10,2" Height="22"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,0,0,1">
+                    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                        <ToggleButton Grid.Column="0"
+                                      IsChecked="{Binding !GraphQLDocsMode}"
+                                      Content="Builder"
+                                      FontSize="10"
+                                      Padding="8,0" Height="18" MinHeight="0"
+                                      ToolTip.Tip="Compose the query by checking schema fields" />
+                        <ToggleButton Grid.Column="1"
+                                      IsChecked="{Binding GraphQLDocsMode}"
+                                      Content="Docs"
+                                      FontSize="10"
+                                      Padding="8,0" Height="18" MinHeight="0"
+                                      Margin="4,0,0,0"
+                                      ToolTip.Tip="Browse the schema documentation" />
+                        <Button Grid.Column="3" x:Name="ViewSdlButton"
+                                IsVisible="{Binding GraphQLSchemaLoaded}"
+                                Content="SDL"
+                                FontSize="10"
+                                Background="Transparent"
+                                Foreground="{DynamicResource Text2Brush}"
+                                Padding="6,0" Height="18"
+                                ToolTip.Tip="View the schema as SDL text" />
+                        <Button Grid.Column="4"
+                                IsVisible="{Binding GraphQLSchemaLoaded}"
+                                Command="{Binding RefreshGraphQLSchemaCommand}"
+                                Content="↻"
+                                FontSize="11"
+                                Background="Transparent"
+                                Foreground="{DynamicResource Text2Brush}"
+                                Padding="6,0" Height="18"
+                                ToolTip.Tip="Re-introspect the endpoint (drops the cached schema)" />
+                    </Grid>
+                </Border>
+                <Grid>
+                    <!-- No schema yet: hint + the Introspect entry point. -->
+                    <StackPanel IsVisible="{Binding !GraphQLSchemaLoaded}" Spacing="8" Margin="10,8">
+                        <TextBlock IsVisible="{Binding GraphQLSchemaHint, Converter={x:Static ObjectConverters.IsNull}}"
+                                   Text="No schema loaded. Introspect the endpoint to build queries by checking fields, browse docs, and get autocomplete. Known endpoints restore from the local cache automatically."
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text3Brush}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock IsVisible="{Binding GraphQLSchemaHint, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   Text="{Binding GraphQLSchemaHint}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text3Brush}"
+                                   TextWrapping="Wrap" />
+                        <Button Command="{Binding IntrospectGraphQLCommand}"
+                                Content="Introspect schema"
+                                FontSize="11"
+                                Background="{DynamicResource AccentBrush}"
+                                Foreground="White"
+                                Padding="10,4"
+                                HorizontalAlignment="Left"
+                                ToolTip.Tip="POST the standard introspection query to the URL (uses the request's headers + auth)" />
+                    </StackPanel>
+
+                    <!-- Border keeps the editor VM DataContext so IsVisible can bind to it;
+                         only the child control's DataContext switches to the child VM. -->
+                    <Border IsVisible="{Binding GraphQLSchemaLoaded}">
+                        <Grid>
+                            <Border IsVisible="{Binding !GraphQLDocsMode}">
+                                <ws:GraphQLQueryBuilderView DataContext="{Binding QueryBuilder}" />
+                            </Border>
+                            <Border IsVisible="{Binding GraphQLDocsMode}">
+                                <ws:GraphQLSchemaExplorer DataContext="{Binding SchemaExplorer}" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </DockPanel>
+
+            <!-- Visible resting background: a transparent 4px strip between two identical
+                 dark panes is undiscoverable — the hairline says "grab here". -->
+            <GridSplitter Grid.Column="1" Classes="col"
+                          Background="{DynamicResource Border0Brush}"
+                          ToolTip.Tip="Drag to resize the schema pane" />
+
+            <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" MinHeight="120" />
                     <RowDefinition Height="4" />
@@ -32,80 +117,140 @@
                     <Border DockPanel.Dock="Top" Padding="12,2" Height="22"
                             BorderBrush="{DynamicResource Border0Brush}"
                             BorderThickness="0,0,0,1">
-                        <Grid ColumnDefinitions="*,Auto">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
                             <TextBlock Grid.Column="0" Text="QUERY"
                                        Classes="sectionHeaderMinor"
                                        VerticalAlignment="Center" />
-                            <Button Grid.Column="1"
-                                    Command="{Binding IntrospectGraphQLCommand}"
-                                    Content="Introspect schema"
-                                    FontSize="10"
-                                    Background="Transparent"
-                                    Foreground="{DynamicResource Text2Brush}"
-                                    Padding="8,1" Height="20"
-                                    ToolTip.Tip="POST the standard introspection query to the URL and render the schema browser" />
+                            <!-- WS endpoint override — appears only when the active operation
+                                 is a subscription. Empty derives ws(s):// from the URL bar. -->
+                            <TextBox Grid.Column="1"
+                                     IsVisible="{Binding IsActiveOperationSubscription}"
+                                     Text="{Binding GraphQLWsUrlOverride, Mode=TwoWay}"
+                                     Watermark="ws(s):// endpoint (blank = derive from URL)"
+                                     FontSize="10"
+                                     MinHeight="18" Height="18"
+                                     Margin="10,0,8,0"
+                                     Padding="6,0"
+                                     VerticalAlignment="Center"
+                                     ToolTip.Tip="Subscriptions stream over WebSocket. Leave blank to derive ws:// or wss:// from the request URL; set this when the server uses a different WebSocket endpoint." />
+                            <!-- Operation picker: only relevant when the document defines
+                                 several named operations; Send runs the selected one. -->
+                            <ComboBox Grid.Column="2"
+                                      IsVisible="{Binding HasMultipleGraphQLOperations}"
+                                      ItemsSource="{Binding GraphQLOperationNames}"
+                                      SelectedItem="{Binding SelectedGraphQLOperationName, Mode=TwoWay}"
+                                      FontSize="10"
+                                      MinHeight="20" Height="20"
+                                      Padding="6,0"
+                                      VerticalAlignment="Center"
+                                      ToolTip.Tip="Operation to execute (documents with multiple operations must name one)" />
                         </Grid>
                     </Border>
-                    <ws:VariableAwareTextEditor
-                        Text="{Binding GraphQLQuery, Mode=TwoWay}"
-                        Variables="{Binding ResolvedVariablesSnapshot}"
-                        SingleLine="False"
-                        ShowLineNumbers="True"
-                        Bordered="False"
-                        FontSize="{DynamicResource EditorFontSize}"
-                        Watermark="query GetUser($id: ID!) { user(id: $id) { id email } }" />
+                    <Grid>
+                        <ws:VariableAwareTextEditor
+                            Text="{Binding GraphQLQuery, Mode=TwoWay}"
+                            Variables="{Binding ResolvedVariablesSnapshot}"
+                            GraphQLSchema="{Binding GraphQLSchemaModel}"
+                            SingleLine="False"
+                            ShowLineNumbers="True"
+                            Bordered="False"
+                            SyntaxHighlightingName="GraphQL"
+                            CompletionMode="GraphQL"
+                            FontSize="{DynamicResource EditorFontSize}" />
+                        <!-- Designed empty state (same pattern as the response pane's
+                             "No response yet"). Hit-test transparent so clicking anywhere
+                             focuses the editor underneath and typing dismisses it. -->
+                        <StackPanel IsVisible="{Binding GraphQLQuery, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                    IsHitTestVisible="False"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Spacing="12" MaxWidth="380">
+                            <Border Width="52" Height="52" CornerRadius="26"
+                                    Background="{DynamicResource Bg3Brush}"
+                                    HorizontalAlignment="Center">
+                                <icons:Icon Kind="Code" Size="22"
+                                            Foreground="{DynamicResource Text3Brush}"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Text="No query yet"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text1Brush}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="Check fields in the Builder to compose one, or start typing here. Introspect the schema for docs and autocomplete."
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                            <Border Background="{DynamicResource Bg3Brush}"
+                                    BorderBrush="{DynamicResource Border1Brush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Padding="10,4" HorizontalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="Ctrl + Space"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text1Brush}"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="Autocomplete"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
                 </DockPanel>
 
-                <GridSplitter Grid.Row="1" Classes="row" />
+                <GridSplitter x:Name="QueryVariablesSplitter" Grid.Row="1" Classes="row"
+                              Background="{DynamicResource Border0Brush}"
+                              DoubleTapped="OnQueryVariablesSplitterDoubleTapped"
+                              ToolTip.Tip="Drag to resize the variables pane — double-click to reset" />
 
                 <DockPanel Grid.Row="2" Background="{DynamicResource CodeBgBrush}">
                     <Border DockPanel.Dock="Top" Padding="12,4" Height="22"
                             BorderBrush="{DynamicResource Border0Brush}"
                             BorderThickness="0,0,0,1">
-                        <TextBlock Text="VARIABLES (JSON)"
-                                   Classes="sectionHeaderMinor"
-                                   VerticalAlignment="Center" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="VARIABLES (JSON)"
+                                       Classes="sectionHeaderMinor"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="1"
+                                    Command="{Binding GenerateGraphQLVariablesCommand}"
+                                    Content="Generate"
+                                    FontSize="10"
+                                    Background="Transparent"
+                                    Foreground="{DynamicResource Text2Brush}"
+                                    Padding="8,0" Height="18"
+                                    ToolTip.Tip="Fill a JSON skeleton for the $variables the current operation declares (keeps values you already set)" />
+                        </Grid>
                     </Border>
-                    <ws:VariableAwareTextEditor
-                        Text="{Binding GraphQLVariables, Mode=TwoWay}"
-                        Variables="{Binding ResolvedVariablesSnapshot}"
-                        SingleLine="False"
-                        ShowLineNumbers="True"
-                        SyntaxHighlightingName="Json"
-                        Bordered="False"
-                        FontSize="{DynamicResource EditorFontSize}"
-                        Watermark='{}{ "id": "u_42" }' />
+                    <Grid>
+                        <ws:VariableAwareTextEditor
+                            Text="{Binding GraphQLVariables, Mode=TwoWay}"
+                            Variables="{Binding ResolvedVariablesSnapshot}"
+                            SingleLine="False"
+                            ShowLineNumbers="True"
+                            SyntaxHighlightingName="Json"
+                            Bordered="False"
+                            FontSize="{DynamicResource EditorFontSize}" />
+                        <!-- Compact empty state (the pane is short — icon circle omitted,
+                             typography matches the response pane's empty state). -->
+                        <StackPanel IsVisible="{Binding GraphQLVariables, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                    IsHitTestVisible="False"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Spacing="6" MaxWidth="380">
+                            <TextBlock Text="No variables"
+                                       FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text1Brush}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="Declare $variables in the query, then Generate scaffolds their JSON here."
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
                 </DockPanel>
             </Grid>
-
-            <GridSplitter Grid.Column="1" Classes="col" />
-
-            <!-- Schema browser pane: hidden until a successful Introspect. -->
-            <DockPanel Grid.Column="2" Background="{DynamicResource Bg3Brush}">
-                <Border DockPanel.Dock="Top" Padding="10,4" Height="22"
-                        BorderBrush="{DynamicResource Border0Brush}"
-                        BorderThickness="0,0,0,1">
-                    <TextBlock Text="SCHEMA"
-                               Classes="sectionHeaderMinor"
-                               VerticalAlignment="Center" />
-                </Border>
-                <Grid>
-                    <TextBlock IsVisible="{Binding !GraphQLSchemaLoaded}"
-                               Text="No schema loaded — click ‘Introspect schema’."
-                               FontSize="11"
-                               Foreground="{DynamicResource Text3Brush}"
-                               TextWrapping="Wrap"
-                               Padding="10,8" />
-                    <ScrollViewer IsVisible="{Binding GraphQLSchemaLoaded}">
-                        <SelectableTextBlock Text="{Binding GraphQLSchemaSummary}"
-                                             FontFamily="{StaticResource MonoFont}"
-                                             FontSize="10"
-                                             TextWrapping="NoWrap"
-                                             Foreground="{DynamicResource Text0Brush}"
-                                             Padding="10,6" />
-                    </ScrollViewer>
-                </Grid>
-            </DockPanel>
         </Grid>
 
         <!-- Raw editor (json / xml / text / sparql) — variable-aware + line numbers + syntax.

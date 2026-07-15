@@ -664,7 +664,7 @@
                 </StackPanel>
                 <Button.Flyout>
                     <MenuFlyout>
-                        <MenuItem Header="FORM" IsEnabled="False" />
+                        <MenuItem Header="FORM" IsEnabled="False" Classes="menuHeader" />
                         <MenuItem Header="Multipart Form"
                                   Command="{Binding SetBodyTypeCommand}"
                                   CommandParameter="multipart-form" />
@@ -672,7 +672,7 @@
                                   Command="{Binding SetBodyTypeCommand}"
                                   CommandParameter="form-urlencoded" />
                         <Separator />
-                        <MenuItem Header="RAW" IsEnabled="False" />
+                        <MenuItem Header="RAW" IsEnabled="False" Classes="menuHeader" />
                         <MenuItem Header="JSON"
                                   Command="{Binding SetBodyTypeCommand}"
                                   CommandParameter="json" />
@@ -686,7 +686,7 @@
                                   Command="{Binding SetBodyTypeCommand}"
                                   CommandParameter="sparql" />
                         <Separator />
-                        <MenuItem Header="OTHER" IsEnabled="False" />
+                        <MenuItem Header="OTHER" IsEnabled="False" Classes="menuHeader" />
                         <MenuItem Header="File / Binary"
                                   Command="{Binding SetBodyTypeCommand}"
                                   CommandParameter="file" />

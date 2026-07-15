@@ -27,6 +27,13 @@
     <!-- Script autocomplete catalog + syntax diagnostics live in Core.Scripting; the editor
          control (VariableAwareTextEditor) consumes them directly. -->
     <ProjectReference Include="..\Vegha.Core.Scripting\Vegha.Core.Scripting.csproj" />
+    <!-- GraphQL analyzer (syntax squiggles) + completion engine for the query body editor. -->
+    <ProjectReference Include="..\Vegha.Core.GraphQL\Vegha.Core.GraphQL.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Loaded lazily by GraphQLHighlighting.EnsureRegistered on first use. -->
+    <EmbeddedResource Include="Workspace\Highlighting\GraphQL.xshd" />
   </ItemGroup>
 
   <ItemGroup>

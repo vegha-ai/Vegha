@@ -9,7 +9,7 @@ namespace Vegha.Core.Codegen;
 public sealed class JavaScriptFetchEmitter : ICodegenEmitter
 {
     public string Language => "javascript";
-    public string DisplayName => "JavaScript (fetch)";
+    public string DisplayName => "JavaScript - Fetch";
 
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {

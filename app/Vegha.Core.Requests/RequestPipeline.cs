@@ -118,6 +118,18 @@ public static class RequestPipeline
         if (string.IsNullOrEmpty(resolvedUrl))
             return Failure(inputs, composed, sw.ElapsedMilliseconds, "URL is empty.", consoleAll);
 
+        // GraphQL subscriptions stream over WebSocket — there's no meaningful single
+        // request/response for the runner to record. Fail with a pointer to the editor.
+        if (inputs.Request.Body.Mode == BodyMode.GraphQL
+            && Vegha.Core.GraphQL.GraphQLDocumentAnalyzer
+                .Analyze(inputs.Request.Body.GraphQLQuery) is { Operations.Count: > 0 } gqlInfo
+            && gqlInfo.Operations[0].Kind == Vegha.Core.GraphQL.GraphQLOperationKind.Subscription)
+        {
+            return Failure(inputs, composed, sw.ElapsedMilliseconds,
+                "GraphQL subscriptions are not supported in the collection runner. Run via the request editor.",
+                consoleAll);
+        }
+
         // 4. Resolve auth. Pipeline v1 supports None/Inherit/Bearer/Basic/ApiKey; anything else
         //    is surfaced as an error so the user knows to run via the editor tab.
         var authToApply = composed.Auth ?? inputs.Request.Auth;
@@ -353,8 +365,15 @@ public static class RequestPipeline
                     : Interpolator.Resolve(rawVars, vars);
                 var trimmed = resolvedVars.TrimStart();
                 var varsJson = (trimmed.StartsWith('{') || trimmed.StartsWith('[')) ? resolvedVars : "{}";
+                // Multi-operation documents need an operationName or the server rejects the
+                // request — the runner has no picker, so send the first named operation
+                // (same rule the editor and codegen apply).
+                var opName = Vegha.Core.GraphQL.GraphQLDocumentAnalyzer.ResolveOperationNameForSend(resolvedQuery);
                 var json =
                     "{\"query\":" + System.Text.Json.JsonSerializer.Serialize(resolvedQuery) +
+                    (opName is null
+                        ? string.Empty
+                        : ",\"operationName\":" + System.Text.Json.JsonSerializer.Serialize(opName)) +
                     ",\"variables\":" + varsJson + "}";
                 return (json, "application/json");
             }

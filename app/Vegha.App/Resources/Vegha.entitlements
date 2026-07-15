@@ -33,8 +33,29 @@
     <key>com.apple.security.network.server</key>
     <true/>
 
-    <!-- Hardened Runtime requirements for productbuild + notarytool path; the
-         Store flavor uses sandbox above instead of these. Direct-distribution
-         builds use a separate entitlements file. -->
+    <!-- .NET CoreCLR requires MAP_JIT to allocate the JIT/tiered-compilation
+         code buffer on Apple Silicon. Without this entitlement CoreCLR aborts
+         during initialization with HRESULT 0x80070008 ("Failed to create
+         CoreCLR") and the process exits before Program.Main runs. Required
+         for both the JIT and for R2R fixup thunks that map executable pages
+         at runtime. See dotnet/runtime issues re: macOS App Sandbox. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+
+    <!-- Explicitly allow the launchservicesd Mach service. On macOS 26 (Tahoe)
+         our sandbox profile denies this by default, which causes AppKit's
+         internal Carbon-compat menu bar code (_NSGetAggregateUIMode →
+         GetCurrentProcess → _RegisterApplication) to fail with:
+             "unable to get application ASN from launchservicesd, aborting"
+         Confirmed by sandboxd log: deny(1) mach-lookup
+         com.apple.coreservices.launchservicesd. Without this the app aborts
+         inside [NSApplication sharedApplication] before any managed code
+         runs. See rdar://problem/28724618. -->
+    <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+    <array>
+        <string>com.apple.coreservices.launchservicesd</string>
+    </array>
 </dict>
 </plist>

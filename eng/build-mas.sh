@@ -18,8 +18,13 @@
 set -euo pipefail
 
 VERSION="${1:-}"
+BUILD="${2:-$VERSION}"
 if [ -z "$VERSION" ]; then
-  echo "Usage: $0 <version>  (e.g. 0.1.0)" >&2
+  echo "Usage: $0 <marketing-version> [build-number]" >&2
+  echo "  e.g. $0 1.2.4         → marketing=1.2.4, CFBundleVersion=1.2.4" >&2
+  echo "       $0 1.2.4 1.2.4.1 → marketing=1.2.4, CFBundleVersion=1.2.4.1" >&2
+  echo "  Use a distinct build-number when re-uploading the same marketing" >&2
+  echo "  version to ASC; ASC rejects duplicate CFBundleVersion values." >&2
   exit 1
 fi
 
@@ -36,10 +41,10 @@ if [ ! -f "$PROFILE" ]; then
   exit 1
 fi
 
-echo "==> Patching Info.plist with version $VERSION"
+echo "==> Patching Info.plist: CFBundleShortVersionString=$VERSION CFBundleVersion=$BUILD"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" \
   app/Vegha.App/Resources/Info.plist
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" \
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" \
   app/Vegha.App/Resources/Info.plist
 
 echo "==> Restoring + publishing Vegha.App (osx-arm64, self-contained, MAS flavor)"

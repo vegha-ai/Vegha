@@ -1,0 +1,44 @@
+meta {
+  name: list-and-filter
+  type: graphql
+  seq: 2
+}
+
+post {
+  url: {{gqlUrl}}
+  body: graphql
+  auth: none
+}
+
+body:graphql {
+  query ListContinents {
+    continents {
+      code
+      name
+    }
+  }
+
+  query CountriesInEurope {
+    countries(filter: { continent: { eq: "EU" } }) {
+      code
+      name
+      capital
+    }
+  }
+}
+
+body:graphql:vars {
+  {}
+}
+
+tests {
+  test('200', () => {
+    expect(res.status).toBe(200);
+  });
+}
+
+docs {
+  A multi-operation document: the operation picker appears next to QUERY —
+  the selected operation is sent as operationName on the wire (required by
+  servers when a document defines more than one).
+}

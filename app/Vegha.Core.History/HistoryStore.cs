@@ -85,9 +85,13 @@ public sealed class HistoryStore : IDisposable
         // supported, so each add tolerates the duplicate-column error when already present.
         //   • request_blob  — full request snapshot for History → Replay (see RequestEditorViewModel).
         //   • workspace_id  — folder path of the owning workspace so history is per-workspace.
+        //   • request_kind  — "graphql" etc. so the sidebar can badge non-plain-HTTP rows;
+        //                     null for plain HTTP and rows written by older builds.
         try { conn.Execute("ALTER TABLE history ADD COLUMN request_blob TEXT;"); }
         catch (Microsoft.Data.Sqlite.SqliteException) { /* column already present */ }
         try { conn.Execute("ALTER TABLE history ADD COLUMN workspace_id TEXT;"); }
+        catch (Microsoft.Data.Sqlite.SqliteException) { /* column already present */ }
+        try { conn.Execute("ALTER TABLE history ADD COLUMN request_kind TEXT;"); }
         catch (Microsoft.Data.Sqlite.SqliteException) { /* column already present */ }
 
         // Per-workspace paging index. Created after the ALTER so the column exists.
@@ -104,7 +108,8 @@ public sealed class HistoryStore : IDisposable
         string? errorMessage,
         CancellationToken ct = default,
         string? requestBlob = null,
-        string? workspaceId = null)
+        string? workspaceId = null,
+        string? requestKind = null)
     {
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -115,8 +120,8 @@ public sealed class HistoryStore : IDisposable
             using var conn = OpenConnection();
             var id = await conn.ExecuteScalarAsync<long>(
                 """
-                INSERT INTO history (timestamp_utc, method, url, status_code, duration_ms, response_body_preview, error_message, request_blob, workspace_id)
-                VALUES (@Ts, @Method, @Url, @Status, @Duration, @Preview, @Error, @Blob, @Workspace);
+                INSERT INTO history (timestamp_utc, method, url, status_code, duration_ms, response_body_preview, error_message, request_blob, workspace_id, request_kind)
+                VALUES (@Ts, @Method, @Url, @Status, @Duration, @Preview, @Error, @Blob, @Workspace, @Kind);
                 SELECT last_insert_rowid();
                 """,
                 new
@@ -130,6 +135,7 @@ public sealed class HistoryStore : IDisposable
                     Error = errorMessage,
                     Blob = requestBlob,
                     Workspace = string.IsNullOrEmpty(workspaceId) ? null : workspaceId,
+                    Kind = string.IsNullOrEmpty(requestKind) ? null : requestKind,
                 }).ConfigureAwait(false);
 
             await PruneInternalAsync(conn).ConfigureAwait(false);
@@ -172,7 +178,8 @@ public sealed class HistoryStore : IDisposable
         var rows = await conn.QueryAsync(
             $"""
             SELECT id, timestamp_utc AS ts, method, url, status_code AS status,
-                   duration_ms AS duration, response_body_preview AS preview, error_message AS error
+                   duration_ms AS duration, response_body_preview AS preview, error_message AS error,
+                   request_kind AS kind
               FROM history
              {whereSql}
              ORDER BY timestamp_utc DESC, id DESC
@@ -188,7 +195,8 @@ public sealed class HistoryStore : IDisposable
             StatusCode: (int)(long)r.status,
             DurationMs: (long)r.duration,
             ResponseBodyPreview: r.preview as string,
-            ErrorMessage: r.error as string)).ToList();
+            ErrorMessage: r.error as string,
+            RequestKind: r.kind as string)).ToList();
     }
 
     /// <summary>Builds the <c>WHERE</c> clause + Dapper parameters shared by the read/count/clear
@@ -333,7 +341,8 @@ public sealed class HistoryStore : IDisposable
         var r = await conn.QueryFirstOrDefaultAsync(
             """
             SELECT id, timestamp_utc AS ts, method, url, status_code AS status,
-                   duration_ms AS duration, response_body_preview AS preview, error_message AS error
+                   duration_ms AS duration, response_body_preview AS preview, error_message AS error,
+                   request_kind AS kind
               FROM history WHERE id = @Id
             """,
             new { Id = id }).ConfigureAwait(false);
@@ -346,7 +355,8 @@ public sealed class HistoryStore : IDisposable
             StatusCode: (int)(long)r.status,
             DurationMs: (long)r.duration,
             ResponseBodyPreview: r.preview as string,
-            ErrorMessage: r.error as string);
+            ErrorMessage: r.error as string,
+            RequestKind: r.kind as string);
     }
 
     /// <summary>Returns the persisted request_blob for the given entry, or null when the

@@ -2,333 +2,721 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:tabs="using:Vegha.App.ViewModels.Tabs"
-             xmlns:flow="using:Vegha.Core.Flow"
-             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="700"
+             xmlns:conv="using:Vegha.App.Controls.Converters"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
              x:Class="Vegha.App.Controls.Workspace.CollectionRunTab"
              x:DataType="tabs:CollectionRunTabViewModel"
              Background="{DynamicResource Bg1Brush}">
-    <DockPanel Margin="0">
 
-        <!-- Header strip: run / cancel + summary chips -->
-        <Border DockPanel.Dock="Top" Padding="14,10"
+    <UserControl.Styles>
+        <!-- Segmented toggle (Functional/Performance, List/Grid) -->
+        <Style Selector="Button.seg">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        </Style>
+        <Style Selector="Button.seg.on">
+            <Setter Property="Background" Value="{DynamicResource Bg1Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <!-- Filter tab -->
+        <Style Selector="Button.filter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,0,2" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        </Style>
+        <Style Selector="Button.filter.on">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <!-- Detail-pane tab -->
+        <Style Selector="Button.dtab">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,0,2" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        </Style>
+        <Style Selector="Button.dtab.on">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style Selector="Button.reorder">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+
+        <!-- Drag handle on run-sequence request rows — hidden until the row is hovered. -->
+        <Style Selector="Border.grip">
+            <Setter Property="Cursor" Value="SizeAll" />
+            <Setter Property="Padding" Value="2,0,6,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Grid.seqrow:pointerover Border.grip">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Border.grip TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
+        </Style>
+        <Style Selector="Grid.seqrow:pointerover Border.grip:pointerover TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+        </Style>
+        <Style Selector="Button.reorder:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+        </Style>
+
+        <Style Selector="Button.link">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+            <Setter Property="Padding" Value="4,1" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+        <Style Selector="Button.link:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+        </Style>
+
+        <!-- Draggable resize bar between panels -->
+        <Style Selector="Border.splitbar">
+            <Setter Property="Background" Value="{DynamicResource Border0Brush}" />
+            <Setter Property="Cursor" Value="SizeWestEast" />
+        </Style>
+        <Style Selector="Border.splitbar:pointerover">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+        </Style>
+
+        <!-- Thin vertical separator between header links -->
+        <Style Selector="Border.vsep">
+            <Setter Property="Width" Value="1" />
+            <Setter Property="Height" Value="12" />
+            <Setter Property="Margin" Value="6,0" />
+            <Setter Property="Background" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid>
+    <DockPanel>
+
+        <!-- ============ Top toolbar ============ -->
+        <Border DockPanel.Dock="Top" Padding="14,9"
                 Background="{DynamicResource Bg2Brush}"
-                BorderBrush="{DynamicResource Border0Brush}"
-                BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto">
-                <Button Grid.Column="0"
-                        Content="Run"
-                        Command="{Binding RunCommand}"
-                        IsVisible="{Binding !IsRunning}"
-                        Background="{DynamicResource AccentBrush}"
-                        Foreground="White"
-                        BorderThickness="0"
-                        CornerRadius="3"
-                        Padding="14,5"
-                        Margin="0,0,8,0"
-                        FontWeight="SemiBold" />
-                <Button Grid.Column="1"
-                        Content="Cancel"
-                        Command="{Binding CancelCommand}"
-                        IsVisible="{Binding IsRunning}"
-                        Background="Transparent"
-                        BorderBrush="{DynamicResource Border1Brush}"
-                        BorderThickness="1"
-                        Foreground="{DynamicResource Text0Brush}"
-                        CornerRadius="3"
-                        Padding="14,5"
-                        Margin="0,0,8,0" />
-                <Button Grid.Column="2"
-                        Content="Reset"
-                        Command="{Binding ResetResultsCommand}"
-                        IsVisible="{Binding HasResults}"
-                        Background="Transparent"
-                        BorderBrush="{DynamicResource Border1Brush}"
-                        BorderThickness="1"
-                        Foreground="{DynamicResource Text2Brush}"
-                        CornerRadius="3"
-                        Padding="10,4"
-                        Margin="0,0,8,0"
-                        FontSize="11" />
-
-                <!-- Spacer: column 3 = * -->
-
-                <Border Grid.Column="4" Padding="8,3" Margin="0,0,6,0"
-                        Background="{DynamicResource Bg3Brush}"
-                        CornerRadius="3"
-                        IsVisible="{Binding HasResults}">
-                    <TextBlock FontSize="11" Foreground="{DynamicResource Text1Brush}">
-                        <Run Text="✓" Foreground="LimeGreen" />
-                        <Run Text=" " />
-                        <Run Text="{Binding PassedCount}" />
-                    </TextBlock>
-                </Border>
-                <Border Grid.Column="5" Padding="8,3" Margin="0,0,6,0"
-                        Background="{DynamicResource Bg3Brush}"
-                        CornerRadius="3"
-                        IsVisible="{Binding HasResults}">
-                    <TextBlock FontSize="11" Foreground="{DynamicResource Text1Brush}">
-                        <Run Text="✗" Foreground="Tomato" />
-                        <Run Text=" " />
-                        <Run Text="{Binding FailedCount}" />
-                    </TextBlock>
-                </Border>
-                <Border Grid.Column="6" Padding="8,3" Margin="0,0,6,0"
-                        Background="{DynamicResource Bg3Brush}"
-                        CornerRadius="3"
-                        IsVisible="{Binding HasResults}">
-                    <TextBlock FontSize="11" Foreground="{DynamicResource Text1Brush}">
-                        <Run Text="⚠" Foreground="Orange" />
-                        <Run Text=" " />
-                        <Run Text="{Binding ErroredCount}" />
-                    </TextBlock>
-                </Border>
-                <Border Grid.Column="7" Padding="8,3" Margin="0,0,6,0"
-                        Background="{DynamicResource Bg3Brush}"
-                        CornerRadius="3"
-                        IsVisible="{Binding HasResults}">
-                    <TextBlock FontSize="11" Foreground="{DynamicResource Text1Brush}">
-                        <Run Text="⊘ " />
-                        <Run Text="{Binding SkippedCount}" />
-                    </TextBlock>
-                </Border>
-                <Border Grid.Column="8" Padding="8,3"
-                        Background="{DynamicResource Bg3Brush}"
-                        CornerRadius="3"
-                        IsVisible="{Binding HasResults}">
-                    <TextBlock FontSize="11" Foreground="{DynamicResource Text2Brush}">
-                        <Run Text="{Binding TotalDurationMs}" />
-                        <Run Text=" ms" />
-                    </TextBlock>
-                </Border>
+                BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text0Brush}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding StatusMessage}" FontSize="11"
+                               Foreground="{DynamicResource Text2Brush}" VerticalAlignment="Center"
+                               IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Content="+ New Run" Classes="link"
+                            Command="{Binding ResetResultsCommand}"
+                            IsVisible="{Binding HasResults}" />
+                    <Button Content="Run" Command="{Binding RunCommand}"
+                            IsVisible="{Binding !IsRunning}"
+                            Background="{DynamicResource AccentBrush}" Foreground="White"
+                            BorderThickness="0" CornerRadius="4" Padding="16,5" FontWeight="SemiBold" />
+                    <Button Content="Cancel" Command="{Binding CancelCommand}"
+                            IsVisible="{Binding IsRunning}"
+                            Background="Transparent" BorderBrush="{DynamicResource Border1Brush}"
+                            BorderThickness="1" Foreground="{DynamicResource Text0Brush}"
+                            CornerRadius="4" Padding="16,5" />
+                </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Progress bar -->
-        <ProgressBar DockPanel.Dock="Top"
-                     IsVisible="{Binding IsRunning}"
-                     Value="{Binding ProgressFraction}"
-                     Maximum="1.0"
-                     Height="3"
+        <ProgressBar DockPanel.Dock="Top" IsVisible="{Binding IsRunning}"
+                     Value="{Binding ProgressFraction}" Maximum="1.0" Height="3"
                      Foreground="{DynamicResource AccentBrush}" />
 
-        <!-- Status line -->
-        <Border DockPanel.Dock="Top" Padding="14,4"
-                Background="{DynamicResource Bg2Brush}"
-                IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-            <TextBlock Text="{Binding StatusMessage}"
-                       FontSize="11" Foreground="{DynamicResource Text2Brush}" />
-        </Border>
+        <!-- Both views share one fill cell: in a DockPanel only the LAST child fills, and the
+             config grid used to sit before the results view — so it silently docked Left at its
+             minimum width (786), which capped the splitter's rightward range. -->
+        <Grid>
 
-        <!-- Two-column body: config (left) + results (right). When results are present
-             the layout favors the results pane; before a run, config takes most of the space. -->
-        <Grid ColumnDefinitions="320,*" Margin="0">
-            <!-- ===== Configuration column ===== -->
-            <ScrollViewer Grid.Column="0"
-                          Background="{DynamicResource Bg2Brush}"
-                          BorderBrush="{DynamicResource Border0Brush}"
-                          BorderThickness="0,0,1,0">
-                <StackPanel Margin="14" Spacing="10">
-                    <TextBlock Text="CONFIGURATION"
-                               FontSize="10" FontWeight="SemiBold"
-                               Foreground="{DynamicResource Text2Brush}" />
+        <!-- ============ CONFIG VIEW (before results) ============ -->
+        <Grid x:Name="ConfigSplitGrid" IsVisible="{Binding !HasResults}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" MinWidth="220" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="3*" MinWidth="320" />
+            </Grid.ColumnDefinitions>
 
-                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Iterations"
-                                   VerticalAlignment="Center"
-                                   FontSize="11" Foreground="{DynamicResource Text1Brush}" />
-                        <NumericUpDown Grid.Row="0" Grid.Column="1"
-                                       Value="{Binding Iterations}"
-                                       Minimum="1" Maximum="10000"
-                                       Width="100" FontSize="11" />
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Workers"
-                                   VerticalAlignment="Center" Margin="0,6,0,0"
-                                   FontSize="11" Foreground="{DynamicResource Text1Brush}" />
-                        <NumericUpDown Grid.Row="1" Grid.Column="1"
-                                       Value="{Binding Workers}"
-                                       Minimum="1" Maximum="32"
-                                       Width="100" Margin="0,6,0,0" FontSize="11" />
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Delay (ms)"
-                                   VerticalAlignment="Center" Margin="0,6,0,0"
-                                   FontSize="11" Foreground="{DynamicResource Text1Brush}" />
-                        <NumericUpDown Grid.Row="2" Grid.Column="1"
-                                       Value="{Binding DelayBetweenRequestsMs}"
-                                       Minimum="0" Maximum="60000"
-                                       Width="100" Margin="0,6,0,0" FontSize="11" />
-                    </Grid>
+            <!-- Run order (resizable) -->
+            <Border Grid.Column="0" Margin="14" Padding="0"
+                    BorderBrush="{DynamicResource Border0Brush}" BorderThickness="1" CornerRadius="6">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Padding="12,10"
+                            BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,0,0,1">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Run Sequence" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text1Brush}" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                <Button Content="Deselect All" Classes="link"
+                                        Command="{Binding DeselectAllCommand}" />
+                                <Border Classes="vsep" />
+                                <Button Content="Select All" Classes="link"
+                                        Command="{Binding SelectAllCommand}" />
+                                <Border Classes="vsep" />
+                                <Button Content="Reset" Classes="link"
+                                        Command="{Binding ResetOrderCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    <ScrollViewer>
+                        <ItemsControl x:Name="RunSequenceList" ItemsSource="{Binding RequestRows}" Margin="4,6">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="tabs:RunRequestRow">
+                                    <Grid Classes="seqrow" ColumnDefinitions="Auto,Auto,Auto,*" Margin="6,1"
+                                          Background="Transparent">
+                                        <!-- Drag handle (burger) — revealed on row hover. -->
+                                        <Border Grid.Column="0" Classes="grip"
+                                                PointerPressed="OnRowDragStart"
+                                                PointerMoved="OnRowDragMove"
+                                                PointerReleased="OnRowDragEnd">
+                                            <TextBlock Text="&#x2630;" FontSize="13" />
+                                        </Border>
+                                        <CheckBox Grid.Column="1" Classes="compact"
+                                                  IsChecked="{Binding IsSelected}"
+                                                  MinWidth="0" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Method}"
+                                                   IsVisible="{Binding !IsGraphQL}"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="9" FontWeight="SemiBold"
+                                                   Foreground="{Binding Method, Converter={StaticResource MethodToBrushConverter}}"
+                                                   Margin="0,0,6,0" VerticalAlignment="Center" MinWidth="34" />
+                                        <icons:Icon Grid.Column="2" Kind="GraphQL" Size="12"
+                                                    IsVisible="{Binding IsGraphQL}"
+                                                    Foreground="{StaticResource GraphQLBrush}"
+                                                    Margin="0,0,6,0" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="3" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontSize="12"
+                                                       Foreground="{DynamicResource Text0Brush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding FolderPath}" IsVisible="{Binding HasFolderPath}"
+                                                       FontSize="10" Foreground="{DynamicResource Text3Brush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
 
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="Data file (CSV / JSON)"
-                                   FontSize="10" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Text2Brush}"
-                                   Margin="0,4,0,0" />
-                        <Grid ColumnDefinitions="*,Auto,Auto">
-                            <TextBox Grid.Column="0"
-                                     Text="{Binding DataFilePath}"
-                                     IsReadOnly="True"
-                                     FontSize="11"
-                                     Watermark="(none)" />
-                            <Button Grid.Column="1" Content="…"
-                                    Click="OnPickDataFile_Click"
-                                    Margin="4,0,0,0" Padding="8,2"
-                                    Background="Transparent"
-                                    BorderBrush="{DynamicResource Border1Brush}"
-                                    BorderThickness="1"
-                                    Foreground="{DynamicResource Text0Brush}" />
-                            <Button Grid.Column="2" Content="✕"
-                                    Command="{Binding ClearDataFileCommand}"
-                                    IsVisible="{Binding DataFilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                    Margin="4,0,0,0" Padding="6,2"
-                                    Background="Transparent"
-                                    BorderBrush="{DynamicResource Border1Brush}"
-                                    BorderThickness="1"
-                                    Foreground="{DynamicResource Text2Brush}" />
+            <!-- Drag handle between the run-order panel and the config panel (manual resize) -->
+            <Border x:Name="ConfigSplitter" Grid.Column="1" Classes="splitbar"
+                    PointerPressed="OnConfigSplitPressed"
+                    PointerMoved="OnConfigSplitMove"
+                    PointerReleased="OnConfigSplitReleased" />
+
+            <!-- Right: Functional / Performance -->
+            <ScrollViewer Grid.Column="2">
+                <StackPanel Margin="14,14,20,14" Spacing="14">
+
+                    <!-- Mode toggle -->
+                    <Border Background="{DynamicResource Bg3Brush}" CornerRadius="6" Padding="3"
+                            HorizontalAlignment="Left">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Button Classes="seg" Content="Functional"
+                                    Classes.on="{Binding IsFunctional}"
+                                    Command="{Binding SetRunModeCommand}"
+                                    CommandParameter="{x:Static tabs:RunModeKind.Functional}" />
+                            <Button Classes="seg" Content="Performance"
+                                    Classes.on="{Binding IsPerformance}"
+                                    Command="{Binding SetRunModeCommand}"
+                                    CommandParameter="{x:Static tabs:RunModeKind.Performance}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Functional config -->
+                    <StackPanel Spacing="14" IsVisible="{Binding IsFunctional}">
+                        <TextBlock Text="Choose how to run your collection" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text0Brush}" />
+                        <StackPanel Spacing="7">
+                            <RadioButton Content="Run manually" GroupName="runhow" IsChecked="{Binding IsManual}"
+                                         Command="{Binding SetRunHowCommand}" CommandParameter="{x:Static tabs:RunHowKind.Manual}"
+                                         FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                            <RadioButton Content="Schedule runs" GroupName="runhow" IsChecked="{Binding IsSchedule}"
+                                         Command="{Binding SetRunHowCommand}" CommandParameter="{x:Static tabs:RunHowKind.Schedule}"
+                                         FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                            <RadioButton Content="Automate runs via CLI" GroupName="runhow" IsChecked="{Binding IsCli}"
+                                         Command="{Binding SetRunHowCommand}" CommandParameter="{x:Static tabs:RunHowKind.Cli}"
+                                         FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                        </StackPanel>
+
+                        <TextBlock Text="Run configuration" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text0Brush}" />
+                        <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="16">
+                            <StackPanel Grid.Column="0" Spacing="4" Width="220">
+                                <TextBlock Text="Iterations" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                                <NumericUpDown Value="{Binding Iterations}" Minimum="1" Maximum="100000"
+                                               FormatString="0" Increment="1" FontSize="12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4" Width="220">
+                                <TextBlock Text="Delay (ms)" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                                <!-- Plain input with an "ms" unit suffix (Postman style), not a spinner. -->
+                                <TextBox x:Name="DelayInput" Text="{Binding DelayBetweenRequestsMs}" FontSize="12" MaxLength="6">
+                                    <TextBox.InnerRightContent>
+                                        <TextBlock Text="ms" FontSize="11" Margin="0,0,8,0"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource Text3Brush}" />
+                                    </TextBox.InnerRightContent>
+                                </TextBox>
+                            </StackPanel>
                         </Grid>
-                        <TextBlock Text="{Binding DataFileStatus}"
-                                   FontSize="10"
-                                   Foreground="{DynamicResource Text2Brush}"
-                                   IsVisible="{Binding DataFileStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Test data file" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <Button Grid.Column="0" Content="Select File" Click="OnPickDataFile_Click"
+                                        Background="Transparent" BorderBrush="{DynamicResource Border1Brush}"
+                                        BorderThickness="1" CornerRadius="4" Padding="12,4"
+                                        Foreground="{DynamicResource Text0Brush}" FontSize="12" />
+                                <TextBlock Grid.Column="1" Text="{Binding DataFileStatus}" Margin="10,0,0,0"
+                                           FontSize="11" Foreground="{DynamicResource Text2Brush}"
+                                           VerticalAlignment="Center"
+                                           IsVisible="{Binding DataFileStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                <Button Grid.Column="2" Content="✕" Command="{Binding ClearDataFileCommand}"
+                                        IsVisible="{Binding DataFilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                        Classes="reorder" />
+                            </Grid>
+                        </StackPanel>
+
+                        <TextBlock Text="Advanced Settings" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text1Brush}" Margin="0,4,0,0" />
+                        <StackPanel Spacing="9">
+                            <CheckBox Content="Persist responses for a session" IsChecked="{Binding PersistResponses}"
+                                      FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                            <CheckBox Content="Turn off logs during run" IsChecked="{Binding TurnOffLogs}"
+                                      FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                            <CheckBox Content="Stop run if an error occurs" IsChecked="{Binding StopOnError}"
+                                      FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                            <CheckBox Content="Keep variable values" IsChecked="{Binding KeepVariableValues}"
+                                      FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                            <CheckBox Content="Run collection without using stored cookies" IsChecked="{Binding RunWithoutStoredCookies}"
+                                      FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                            <CheckBox Content="Save cookies after collection run" IsChecked="{Binding SaveCookiesAfterRun}"
+                                      FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                            <CheckBox Content="Record iterations to history" IsChecked="{Binding RecordToHistory}"
+                                      FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                        </StackPanel>
+
+                        <!-- Manual: start run -->
+                        <Button Content="Start run" Command="{Binding RunCommand}"
+                                IsVisible="{Binding IsManual}"
+                                Background="{DynamicResource AccentBrush}" Foreground="White"
+                                BorderThickness="0" CornerRadius="4" Padding="18,7" FontWeight="SemiBold"
+                                HorizontalAlignment="Left" Margin="0,4,0,0" />
+
+                        <!-- Schedule: repeating in-app run -->
+                        <StackPanel Spacing="8" IsVisible="{Binding IsSchedule}">
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="Run every" FontSize="12" Foreground="{DynamicResource Text1Brush}"
+                                           VerticalAlignment="Center" />
+                                <NumericUpDown Value="{Binding ScheduleIntervalMinutes}" Minimum="1" Maximum="1440"
+                                               FormatString="0" Increment="1" Width="110" FontSize="12" />
+                                <TextBlock Text="minute(s)" FontSize="12" Foreground="{DynamicResource Text1Brush}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="Runs repeat while this tab stays open."
+                                       FontSize="11" Foreground="{DynamicResource Text3Brush}" />
+                            <Button Content="{Binding ScheduleButtonText}" Command="{Binding ToggleScheduleCommand}"
+                                    Background="{DynamicResource AccentBrush}" Foreground="White"
+                                    BorderThickness="0" CornerRadius="4" Padding="18,7" FontWeight="SemiBold"
+                                    HorizontalAlignment="Left" />
+                        </StackPanel>
+
+                        <!-- CLI: copyable command for CI -->
+                        <StackPanel Spacing="8" IsVisible="{Binding IsCli}">
+                            <TextBlock Text="Run this collection from your terminal or CI pipeline:"
+                                       FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                            <Border Background="{DynamicResource Bg2Brush}" BorderBrush="{DynamicResource Border0Brush}"
+                                    BorderThickness="1" CornerRadius="4" Padding="10,8">
+                                <SelectableTextBlock Text="{Binding CliCommand}" FontFamily="{StaticResource MonoFont}"
+                                                     FontSize="12" Foreground="{DynamicResource Text0Brush}" TextWrapping="Wrap" />
+                            </Border>
+                            <TextBlock Text="Runs the whole collection once with the selected environment."
+                                       FontSize="11" Foreground="{DynamicResource Text3Brush}" />
+                            <Button Content="Copy command" Click="OnCopyCli_Click"
+                                    Background="Transparent" BorderBrush="{DynamicResource Border1Brush}"
+                                    BorderThickness="1" CornerRadius="4" Padding="14,5"
+                                    Foreground="{DynamicResource Text0Brush}" FontSize="12"
+                                    HorizontalAlignment="Left" />
+                        </StackPanel>
                     </StackPanel>
 
-                    <CheckBox Content="Record iterations to history"
-                              IsChecked="{Binding RecordToHistory}"
-                              FontSize="11"
-                              Foreground="{DynamicResource Text1Brush}" />
-                    <CheckBox Content="Isolated cookie jar per run"
-                              IsChecked="{Binding IsolatedCookieJarPerRun}"
-                              FontSize="11"
-                              Foreground="{DynamicResource Text1Brush}" />
+                    <!-- Performance config -->
+                    <StackPanel Spacing="14" IsVisible="{Binding IsPerformance}">
+                        <TextBlock Text="Set up your performance test" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text0Brush}" />
+                        <Grid ColumnDefinitions="Auto,Auto,Auto" ColumnSpacing="16">
+                            <StackPanel Grid.Column="0" Spacing="4" Width="200">
+                                <TextBlock Text="Load profile" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                                <ComboBox SelectedIndex="{Binding LoadProfileIndex}" FontSize="12" HorizontalAlignment="Stretch">
+                                    <ComboBoxItem>Fixed</ComboBoxItem>
+                                    <ComboBoxItem>Ramp up</ComboBoxItem>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4" Width="200">
+                                <TextBlock Text="Virtual users" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                                <NumericUpDown Value="{Binding VirtualUsers}" Minimum="1" Maximum="1000"
+                                               FormatString="0" Increment="1" FontSize="12" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Spacing="4" Width="200">
+                                <TextBlock Text="Test duration (mins)" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                                <NumericUpDown Value="{Binding TestDurationMinutes}" Minimum="1" Maximum="240"
+                                               FormatString="0" Increment="1" FontSize="12" />
+                            </StackPanel>
+                        </Grid>
 
-                    <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
-                        <TextBlock Grid.Column="0" Text="REQUESTS"
-                                   FontSize="10" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource Text2Brush}"
-                                   VerticalAlignment="Center" />
-                        <Button Grid.Column="1" Content="Toggle All"
-                                Command="{Binding ToggleSelectAllCommand}"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                Foreground="{DynamicResource Text2Brush}"
-                                FontSize="10"
-                                Padding="4,1" />
-                    </Grid>
-                    <ItemsControl ItemsSource="{Binding RequestRows}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="tabs:RunRequestRow">
-                                <Grid ColumnDefinitions="Auto,Auto,*" Margin="0,1,0,1">
-                                    <CheckBox Grid.Column="0"
-                                              IsChecked="{Binding IsSelected}"
-                                              IsVisible="{Binding !IsFolderHeader}"
-                                              MinWidth="0" Margin="0,0,4,0" />
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding Method}"
-                                               FontFamily="{StaticResource MonoFont}"
-                                               FontSize="9"
-                                               FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Text2Brush}"
-                                               Margin="0,0,6,0"
-                                               VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2"
-                                               Text="{Binding Name}"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource Text0Brush}"
-                                               VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis" />
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </ScrollViewer>
-
-            <!-- ===== Results column ===== -->
-            <ScrollViewer Grid.Column="1">
-                <StackPanel Margin="14">
-                    <TextBlock Text="No results yet. Click Run."
-                               IsVisible="{Binding !HasResults}"
-                               Foreground="{DynamicResource Text3Brush}"
-                               FontSize="11" FontStyle="Italic"
-                               Padding="0,40,0,0"
-                               HorizontalAlignment="Center" />
-                    <ItemsControl ItemsSource="{Binding Iterations_Results}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="tabs:IterationResultGroup">
-                                <StackPanel Spacing="2" Margin="0,0,0,10">
-                                    <TextBlock Text="{Binding Label}"
-                                               FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource Text2Brush}"
-                                               Margin="0,4,0,4" />
-                                    <ItemsControl ItemsSource="{Binding Results}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="flow:RequestRunResult">
-                                                <Border Padding="8,4" Margin="0,1,0,1"
-                                                        Background="{DynamicResource Bg2Brush}"
-                                                        BorderBrush="{DynamicResource Border0Brush}"
-                                                        BorderThickness="0,0,0,1"
-                                                        CornerRadius="2">
-                                                    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
-                                                        <TextBlock Grid.Column="0"
-                                                                   Text="{Binding Status}"
-                                                                   FontFamily="{StaticResource MonoFont}"
-                                                                   FontSize="10"
-                                                                   FontWeight="SemiBold"
-                                                                   Foreground="{DynamicResource Text2Brush}"
-                                                                   Margin="0,0,8,0"
-                                                                   VerticalAlignment="Center"
-                                                                   MinWidth="56" />
-                                                        <TextBlock Grid.Column="1"
-                                                                   Text="{Binding Method}"
-                                                                   FontFamily="{StaticResource MonoFont}"
-                                                                   FontSize="10"
-                                                                   FontWeight="SemiBold"
-                                                                   Foreground="{DynamicResource Text1Brush}"
-                                                                   Margin="0,0,6,0"
-                                                                   VerticalAlignment="Center"
-                                                                   MinWidth="48" />
-                                                        <TextBlock Grid.Column="2"
-                                                                   Text="{Binding Name}"
-                                                                   FontSize="12"
-                                                                   Foreground="{DynamicResource Text0Brush}"
-                                                                   VerticalAlignment="Center"
-                                                                   TextTrimming="CharacterEllipsis" />
-                                                        <TextBlock Grid.Column="3"
-                                                                   Text="{Binding StatusCode}"
-                                                                   FontFamily="{StaticResource MonoFont}"
-                                                                   FontSize="10"
-                                                                   Foreground="{DynamicResource Text2Brush}"
-                                                                   Margin="6,0"
-                                                                   VerticalAlignment="Center" />
-                                                        <TextBlock Grid.Column="4"
-                                                                   FontFamily="{StaticResource MonoFont}"
-                                                                   FontSize="10"
-                                                                   Foreground="{DynamicResource Text2Brush}"
-                                                                   VerticalAlignment="Center"
-                                                                   Margin="6,0">
-                                                            <Run Text="{Binding ElapsedMs}" />
-                                                            <Run Text=" ms" />
-                                                        </TextBlock>
-                                                        <TextBlock Grid.Column="5"
-                                                                   FontSize="10"
-                                                                   Foreground="{DynamicResource Text2Brush}"
-                                                                   VerticalAlignment="Center"
-                                                                   Margin="6,0">
-                                                            <Run Text="✓" Foreground="LimeGreen" />
-                                                            <Run Text="{Binding PassedTests}" />
-                                                            <Run Text=" / ✗" Foreground="Tomato" />
-                                                            <Run Text="{Binding FailedTests}" />
-                                                        </TextBlock>
-                                                    </Grid>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                        <!-- Load-profile chart (ramp) — drag the two markers to set the phase boundaries -->
+                        <Border Background="{DynamicResource Bg2Brush}" CornerRadius="6" Padding="12"
+                                IsVisible="{Binding IsRampProfile}">
+                            <StackPanel Spacing="10">
+                                <ws:LoadProfileChart Height="170"
+                                                     TargetVus="{Binding VirtualUsers}"
+                                                     InitialLoad="{Binding InitialLoad}"
+                                                     TotalMinutes="{Binding TestDurationMinutes}"
+                                                     RampStartFraction="{Binding RampStartFraction, Mode=TwoWay}"
+                                                     RampEndFraction="{Binding RampEndFraction, Mode=TwoWay}" />
+                                <TextBlock Text="{Binding PhaseDescription}" FontSize="12"
+                                           Foreground="{DynamicResource Text2Brush}" TextWrapping="Wrap" />
+                                <StackPanel Spacing="4" Width="150" HorizontalAlignment="Left">
+                                    <TextBlock Text="Initial load" FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                                    <NumericUpDown Value="{Binding InitialLoad}" Minimum="1"
+                                                   Maximum="{Binding VirtualUsers}"
+                                                   FormatString="0" Increment="1" FontSize="12" />
                                 </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Fixed load description -->
+                        <Border Background="{DynamicResource Bg2Brush}" CornerRadius="6" Padding="12" Height="130"
+                                IsVisible="{Binding !IsRampProfile}">
+                            <TextBlock VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="12"
+                                       Foreground="{DynamicResource Text2Brush}" TextWrapping="Wrap" TextAlignment="Center">
+                                <Run Text="{Binding VirtualUsers}" /><Run Text=" virtual users run for " /><Run Text="{Binding TestDurationMinutes}" /><Run Text=" minute(s), each executing all selected requests sequentially." />
+                            </TextBlock>
+                        </Border>
+                        <Button Content="Run" Command="{Binding RunCommand}"
+                                IsVisible="{Binding !IsRunning}"
+                                Background="{DynamicResource AccentBrush}" Foreground="White"
+                                BorderThickness="0" CornerRadius="4" Padding="18,7" FontWeight="SemiBold"
+                                HorizontalAlignment="Left" />
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
         </Grid>
+
+        <!-- ============ RESULTS VIEW ============ -->
+        <DockPanel IsVisible="{Binding HasResults}">
+
+            <!-- Summary bar -->
+            <Border DockPanel.Dock="Top" Padding="14,10"
+                    Background="{DynamicResource Bg2Brush}"
+                    BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal" Spacing="26">
+                    <StackPanel>
+                        <TextBlock Text="Source" FontSize="10" Foreground="{DynamicResource Text3Brush}" />
+                        <TextBlock Text="{Binding SourceLabel}" FontSize="13" Foreground="{DynamicResource Text0Brush}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="Environment" FontSize="10" Foreground="{DynamicResource Text3Brush}" />
+                        <TextBlock Text="{Binding EnvironmentDisplay}" FontSize="13" Foreground="{DynamicResource Text0Brush}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="Iterations" FontSize="10" Foreground="{DynamicResource Text3Brush}" />
+                        <TextBlock Text="{Binding IterationsRun}" FontSize="13" Foreground="{DynamicResource Text0Brush}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="Duration" FontSize="10" Foreground="{DynamicResource Text3Brush}" />
+                        <TextBlock Text="{Binding DurationDisplay}"
+                                   FontSize="13" Foreground="{DynamicResource Text0Brush}" />
+                    </StackPanel>
+                    <StackPanel IsVisible="{Binding IsFunctional}">
+                        <TextBlock Text="All tests" FontSize="10" Foreground="{DynamicResource Text3Brush}" />
+                        <TextBlock Text="{Binding AllTestsCount}" FontSize="13" Foreground="{DynamicResource Text0Brush}" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="Errors" FontSize="10" Foreground="{DynamicResource Text3Brush}" />
+                        <TextBlock Text="{Binding ErroredCount}" FontSize="13" Foreground="{DynamicResource Text0Brush}" />
+                    </StackPanel>
+                    <StackPanel IsVisible="{Binding IsFunctional}">
+                        <TextBlock Text="Avg. Resp. Time" FontSize="10" Foreground="{DynamicResource Text3Brush}" />
+                        <TextBlock FontSize="13" Foreground="{DynamicResource Text0Brush}">
+                            <Run Text="{Binding AvgResponseTimeMs}" /><Run Text=" ms" />
+                        </TextBlock>
+                    </StackPanel>
+
+                    <!-- Performance stats -->
+                    <StackPanel IsVisible="{Binding IsPerformance}">
+                        <TextBlock Text="Active VUs" FontSize="10" Foreground="{DynamicResource Text3Brush}" />
+                        <TextBlock FontSize="13" Foreground="{DynamicResource Text0Brush}">
+                            <Run Text="{Binding ActiveVirtualUsers}" /><Run Text=" / " /><Run Text="{Binding VirtualUsers}" />
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel IsVisible="{Binding IsPerformance}">
+                        <TextBlock Text="Requests" FontSize="10" Foreground="{DynamicResource Text3Brush}" />
+                        <TextBlock Text="{Binding PerfTotalRequests}" FontSize="13" Foreground="{DynamicResource Text0Brush}" />
+                    </StackPanel>
+                    <StackPanel IsVisible="{Binding IsPerformance}">
+                        <TextBlock Text="Avg (ms)" FontSize="10" Foreground="{DynamicResource Text3Brush}" />
+                        <TextBlock Text="{Binding PerfAvgMs}" FontSize="13" Foreground="{DynamicResource Text0Brush}" />
+                    </StackPanel>
+                    <StackPanel IsVisible="{Binding IsPerformance}">
+                        <TextBlock Text="Errors %" FontSize="10" Foreground="{DynamicResource Text3Brush}" />
+                        <TextBlock Text="{Binding PerfErrorRate, StringFormat=P1}" FontSize="13" Foreground="{DynamicResource Text0Brush}" />
+                    </StackPanel>
+                    <!-- Throughput sparkline -->
+                    <Border IsVisible="{Binding IsPerformance}" Width="220" Height="40"
+                            Background="{DynamicResource Bg3Brush}" CornerRadius="4" Padding="3"
+                            VerticalAlignment="Center">
+                        <ItemsControl ItemsSource="{Binding PerfSamples}" VerticalAlignment="Bottom">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="1" VerticalAlignment="Bottom" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="tabs:PerfSample">
+                                    <Rectangle Width="2" Fill="{DynamicResource AccentBrush}"
+                                               Height="{Binding HeightPercent}" VerticalAlignment="Bottom" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- Filter tabs + layout toggle -->
+            <Border DockPanel.Dock="Top" Padding="8,0"
+                    Background="{DynamicResource Bg1Brush}"
+                    BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,0,0,1"
+                    IsVisible="{Binding IsFunctional}">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <Button Classes="filter" Classes.on="{Binding IsFilterAll}"
+                                Command="{Binding SetFilterCommand}" CommandParameter="{x:Static tabs:ResultFilterKind.All}">
+                            <TextBlock><Run Text="All" /><Run Text=" " /><Run Text="{Binding AllRowCount}" /></TextBlock>
+                        </Button>
+                        <Button Classes="filter" Classes.on="{Binding IsFilterPassed}"
+                                Command="{Binding SetFilterCommand}" CommandParameter="{x:Static tabs:ResultFilterKind.Passed}">
+                            <TextBlock><Run Text="Passed" /><Run Text=" " /><Run Text="{Binding PassedCount}" /></TextBlock>
+                        </Button>
+                        <Button Classes="filter" Classes.on="{Binding IsFilterFailed}"
+                                Command="{Binding SetFilterCommand}" CommandParameter="{x:Static tabs:ResultFilterKind.Failed}">
+                            <TextBlock><Run Text="Failed" /><Run Text=" " /><Run Text="{Binding FailedCount}" /></TextBlock>
+                        </Button>
+                        <Button Classes="filter" Classes.on="{Binding IsFilterSkipped}"
+                                Command="{Binding SetFilterCommand}" CommandParameter="{x:Static tabs:ResultFilterKind.Skipped}">
+                            <TextBlock><Run Text="Skipped" /><Run Text=" " /><Run Text="{Binding SkippedCount}" /></TextBlock>
+                        </Button>
+                        <Button Classes="filter" Classes.on="{Binding IsFilterErrors}"
+                                Command="{Binding SetFilterCommand}" CommandParameter="{x:Static tabs:ResultFilterKind.Errors}">
+                            <TextBlock><Run Text="Errors" /><Run Text=" " /><Run Text="{Binding ErroredCount}" /></TextBlock>
+                        </Button>
+                        <Button Classes="filter" Classes.on="{Binding IsFilterConsole}"
+                                Command="{Binding SetFilterCommand}" CommandParameter="{x:Static tabs:ResultFilterKind.ConsoleLog}">
+                            <TextBlock><Run Text="Console log" /><Run Text=" " /><Run Text="{Binding ConsoleCount}" /></TextBlock>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Results list + detail (draggable split) -->
+            <Grid x:Name="ResultsSplitGrid">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="240" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="0" MinWidth="0" />
+                </Grid.ColumnDefinitions>
+
+                <ScrollViewer Grid.Column="0">
+                    <ItemsControl ItemsSource="{Binding VisibleResults}" Margin="0,4">
+                        <ItemsControl.DataTemplates>
+
+                            <!-- Iteration header -->
+                            <DataTemplate DataType="tabs:RunIterationHeader">
+                                <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text2Brush}" Margin="14,10,0,4" />
+                            </DataTemplate>
+
+                            <!-- Request result row -->
+                            <DataTemplate DataType="tabs:RunResultRowVm">
+                                <Button Command="{Binding $parent[ItemsControl].((tabs:CollectionRunTabViewModel)DataContext).OpenRowCommand}"
+                                        CommandParameter="{Binding}"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                        Background="Transparent" BorderThickness="0,0,0,1"
+                                        BorderBrush="{DynamicResource Border0Brush}" CornerRadius="0" Padding="14,8">
+                                    <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+                                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Method}"
+                                                   IsVisible="{Binding !IsGraphQL}"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="{Binding Method, Converter={StaticResource MethodToBrushConverter}}"
+                                                   Margin="0,0,8,0" VerticalAlignment="Center" MinWidth="34" />
+                                        <icons:Icon Grid.Row="0" Grid.Column="0" Kind="GraphQL" Size="13"
+                                                    IsVisible="{Binding IsGraphQL}" Foreground="{StaticResource GraphQLBrush}"
+                                                    Margin="0,0,8,0" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontSize="13"
+                                                       Foreground="{DynamicResource Text0Brush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding FolderPath}" IsVisible="{Binding HasFolderPath}"
+                                                       FontSize="10" Foreground="{DynamicResource Text3Brush}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding StatusText}"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                   Foreground="{Binding StatusCode, Converter={x:Static conv:StatusCategoryToBrushConverter.Instance}}"
+                                                   Margin="8,0" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Row="0" Grid.Column="3" FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                   Foreground="{DynamicResource Text2Brush}" Margin="8,0" VerticalAlignment="Center">
+                                            <Run Text="{Binding ElapsedMs}" /><Run Text=" ms" />
+                                        </TextBlock>
+                                        <TextBlock Grid.Row="0" Grid.Column="4" Text="{Binding SizeText}"
+                                                   FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                                   Foreground="{DynamicResource Text2Brush}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" Text="{Binding Url}"
+                                                   FontSize="11" Foreground="{DynamicResource Text3Brush}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="4" Text="{Binding TestsSummary}"
+                                                   FontSize="11" Foreground="{DynamicResource Text3Brush}" Margin="0,4,0,0" />
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+
+                            <!-- Console line -->
+                            <DataTemplate DataType="tabs:RunConsoleLineVm">
+                                <Grid ColumnDefinitions="Auto,*" Margin="14,2">
+                                    <TextBlock Grid.Column="0" Text="{Binding Source}" FontSize="10"
+                                               Foreground="{DynamicResource Text3Brush}" Margin="0,0,10,0"
+                                               VerticalAlignment="Top" MinWidth="90" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Text}" FontFamily="{StaticResource MonoFont}"
+                                               FontSize="11" Foreground="{DynamicResource Text1Brush}" TextWrapping="Wrap" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.DataTemplates>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- Drag handle between the results list and the detail pane (manual resize) -->
+                <Border x:Name="DetailSplitter" Grid.Column="1" Classes="splitbar" Width="6"
+                        IsVisible="{Binding ShowDetail}"
+                        PointerPressed="OnDetailSplitPressed"
+                        PointerMoved="OnDetailSplitMove"
+                        PointerReleased="OnDetailSplitReleased" />
+
+                <!-- Detail split pane -->
+                <Border Grid.Column="2" IsVisible="{Binding ShowDetail}"
+                        Background="{DynamicResource Bg1Brush}"
+                        BorderBrush="{DynamicResource Border0Brush}" BorderThickness="1,0,0,0">
+                    <DockPanel DataContext="{Binding SelectedRow}">
+                        <!-- breadcrumb + close -->
+                        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="12,10,10,6">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{Binding Method}"
+                                           IsVisible="{Binding !IsGraphQL}"
+                                           FontFamily="{StaticResource MonoFont}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{Binding Method, Converter={StaticResource MethodToBrushConverter}}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Breadcrumb}" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource Text0Brush}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="✕" Classes="reorder"
+                                    Command="{Binding $parent[UserControl].((tabs:CollectionRunTabViewModel)DataContext).CloseDetailCommand}" />
+                        </Grid>
+
+                        <Border DockPanel.Dock="Top" Padding="10,2" Margin="2,0">
+                            <TextBlock Text="{Binding StatusTimeSize}" FontFamily="{StaticResource MonoFont}"
+                                       FontSize="11" Foreground="{DynamicResource Text2Brush}" />
+                        </Border>
+
+                        <!-- detail tabs -->
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,4,0,0"
+                                    DataContext="{Binding $parent[UserControl].DataContext}">
+                            <Button Classes="dtab" Content="Response" Classes.on="{Binding IsDetailResponse}"
+                                    Command="{Binding SetDetailTabCommand}"
+                                    CommandParameter="{x:Static tabs:DetailTabKind.Response}" />
+                            <Button Classes="dtab" Content="Headers" Classes.on="{Binding IsDetailHeaders}"
+                                    Command="{Binding SetDetailTabCommand}"
+                                    CommandParameter="{x:Static tabs:DetailTabKind.Headers}" />
+                            <Button Classes="dtab" Content="Request" Classes.on="{Binding IsDetailRequest}"
+                                    Command="{Binding SetDetailTabCommand}"
+                                    CommandParameter="{x:Static tabs:DetailTabKind.Request}" />
+                        </StackPanel>
+
+                        <ScrollViewer>
+                            <StackPanel Margin="12,8">
+                                <!-- Response body -->
+                                <SelectableTextBlock Text="{Binding ResponseBodyText}"
+                                                     IsVisible="{Binding $parent[UserControl].((tabs:CollectionRunTabViewModel)DataContext).IsDetailResponse}"
+                                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                                     Foreground="{DynamicResource Text0Brush}" TextWrapping="Wrap" />
+                                <!-- Response headers -->
+                                <SelectableTextBlock Text="{Binding ResponseHeadersText}"
+                                                     IsVisible="{Binding $parent[UserControl].((tabs:CollectionRunTabViewModel)DataContext).IsDetailHeaders}"
+                                                     FontFamily="{StaticResource MonoFont}" FontSize="12"
+                                                     Foreground="{DynamicResource Text0Brush}" TextWrapping="Wrap" />
+                                <!-- Request -->
+                                <StackPanel IsVisible="{Binding $parent[UserControl].((tabs:CollectionRunTabViewModel)DataContext).IsDetailRequest}"
+                                            Spacing="8">
+                                    <SelectableTextBlock Text="{Binding RequestLine}" FontFamily="{StaticResource MonoFont}"
+                                                         FontSize="12" Foreground="{DynamicResource Text1Brush}" TextWrapping="Wrap" />
+                                    <SelectableTextBlock Text="{Binding RequestHeadersText}" FontFamily="{StaticResource MonoFont}"
+                                                         FontSize="12" Foreground="{DynamicResource Text2Brush}" TextWrapping="Wrap" />
+                                    <SelectableTextBlock Text="{Binding RequestBodyText}" FontFamily="{StaticResource MonoFont}"
+                                                         FontSize="12" Foreground="{DynamicResource Text0Brush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </DockPanel>
+        </Grid>
     </DockPanel>
+
+    <!-- Drag overlay: translucent ghost of the row being dragged + a drop-position line.
+         Non-hit-testable so it never intercepts pointer input. -->
+    <Canvas x:Name="DragOverlay" IsHitTestVisible="False">
+        <Rectangle x:Name="DropIndicator" IsVisible="False" Height="2"
+                   Fill="{DynamicResource AccentBrush}" />
+        <Border x:Name="DragGhost" IsVisible="False" Opacity="0.85"
+                Background="{DynamicResource Bg3Brush}"
+                BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1"
+                CornerRadius="4" Padding="10,5">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock x:Name="GhostMethod" FontFamily="{StaticResource MonoFont}"
+                           FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock x:Name="GhostName" FontSize="12"
+                           Foreground="{DynamicResource Text0Brush}" VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+    </Canvas>
+    </Grid>
 </UserControl>

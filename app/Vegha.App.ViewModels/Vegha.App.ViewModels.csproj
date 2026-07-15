@@ -15,6 +15,7 @@
     <ProjectReference Include="..\Vegha.Core.Codegen\Vegha.Core.Codegen.csproj" />
     <ProjectReference Include="..\Vegha.Core.Domain\Vegha.Core.Domain.csproj" />
     <ProjectReference Include="..\Vegha.Core.FileFormat\Vegha.Core.FileFormat.csproj" />
+    <ProjectReference Include="..\Vegha.Core.GraphQL\Vegha.Core.GraphQL.csproj" />
     <ProjectReference Include="..\Vegha.Core.History\Vegha.Core.History.csproj" />
     <ProjectReference Include="..\Vegha.Core.Importers\Vegha.Core.Importers.csproj" />
     <ProjectReference Include="..\Vegha.Core.Interpolation\Vegha.Core.Interpolation.csproj" />

@@ -15,23 +15,12 @@ public partial class CodegenViewModel : ObservableObject
     private readonly OpenTabsViewModel? _openTabs;
     private RequestEditorViewModel? _boundEditor;
 
+    /// <summary>Every registered emitter, in registry (Postman-alphabetical) order — the
+    /// ItemsSource of the language dropdown.</summary>
     public IReadOnlyList<ICodegenEmitter> Emitters => CodegenRegistry.All;
-
-    /// <summary>One pill per emitter, with a live <see cref="LangPillViewModel.IsActive"/>
-    /// that the AXAML binds to so the active language renders accent-filled.</summary>
-    public System.Collections.ObjectModel.ObservableCollection<LangPillViewModel> LanguagePills { get; }
-        = new();
 
     [ObservableProperty]
     private ICodegenEmitter _selectedEmitter;
-
-    partial void OnSelectedEmitterChanging(ICodegenEmitter value)
-    {
-        // Flip the IsActive flag on the pill collection so the new active pill picks up the
-        // accent style and the previous one drops it.
-        foreach (var pill in LanguagePills)
-            pill.IsActive = ReferenceEquals(pill.Emitter, value);
-    }
 
     [ObservableProperty]
     private string _snippet = string.Empty;
@@ -47,10 +36,7 @@ public partial class CodegenViewModel : ObservableObject
     {
         _legacyEditor = legacyEditor;
         _openTabs = openTabs;
-        _selectedEmitter = CodegenRegistry.All[0]; // curl
-
-        foreach (var e in CodegenRegistry.All)
-            LanguagePills.Add(new LangPillViewModel(e, ReferenceEquals(e, _selectedEmitter)));
+        _selectedEmitter = CodegenRegistry.Find("curl") ?? CodegenRegistry.All[0];
 
         if (_openTabs is not null)
         {
@@ -128,15 +114,26 @@ public partial class CodegenViewModel : ObservableObject
     /// short Language id onto the names AvaloniaEdit ships out of the box.</summary>
     public string? SyntaxHighlightingName => SelectedEmitter?.Language switch
     {
+        // Families without a matching AvaloniaEdit highlighter map to the closest
+        // brace/keyword-compatible one so snippets don't render as walls of plain text.
         "csharp"     => "C#",
-        "go"         => "C#",         // AvaloniaEdit has no Go; C# is the closest brace-style approximation
+        "go"         => "C#",         // no Go highlighter; C# is the closest brace-style approximation
+        "swift"      => "C#",
         "java"       => "Java",
+        "kotlin"     => "Java",
+        "dart"       => "Java",
         "javascript" => "JavaScript",
         "python"     => "Python",
-        // PowerShell colorizes --flags and quoted strings — close enough for curl's shell shape
-        // that the snippet doesn't render as a wall of identical text.
+        "ruby"       => "Python",     // no Ruby highlighter; Python's string/comment shapes are closest
+        "php"        => "PHP",
+        "objc"       => "C++",
+        "c"          => "C++",
+        // PowerShell colorizes --flags and quoted strings — close enough for shell shapes
+        // (curl / HTTPie / wget) that the snippet doesn't render as identical text.
         "curl"       => "PowerShell",
-        _            => null,
+        "shell"      => "PowerShell",
+        "powershell" => "PowerShell",
+        _            => null,         // http, ocaml, r — plain text
     };
 
     private void ScheduleRefresh()
@@ -172,23 +169,5 @@ public partial class CodegenViewModel : ObservableObject
     private async Task CopySnippetAsync()
     {
         await Task.CompletedTask;
-    }
-}
-
-/// <summary>Single pill in the codegen language picker. Wraps an <see cref="ICodegenEmitter"/>
-/// with a bindable <c>IsActive</c> so the AXAML can flip a Classes selector when the
-/// selected emitter changes.</summary>
-public sealed partial class LangPillViewModel : ObservableObject
-{
-    public ICodegenEmitter Emitter { get; }
-    public string DisplayName => Emitter.DisplayName;
-
-    [ObservableProperty]
-    private bool _isActive;
-
-    public LangPillViewModel(ICodegenEmitter emitter, bool isActive)
-    {
-        Emitter = emitter;
-        _isActive = isActive;
     }
 }

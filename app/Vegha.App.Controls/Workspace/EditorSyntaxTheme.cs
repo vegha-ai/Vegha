@@ -91,6 +91,10 @@ internal static class EditorSyntaxTheme
         if (n.Contains("field") || n.Contains("key") || n.Contains("property"))
                                                          return "CodeAttrBrush";
         if (n.Contains("keyword"))                       return "CodeKeywordBrush";
+        // GraphQL.xshd categories (see that file's header comment).
+        if (n.Contains("directive"))                     return "CodeFunctionBrush";
+        if (n.Contains("gqlvar"))                        return "CodeNumberBrush";
+        if (n.Contains("typename"))                      return "CodeTagBrush";
         if (n.Contains("method") || n.Contains("function") || n.Contains("call"))
                                                          return "CodeFunctionBrush";
         if (n.Contains("punctuation") || n.Contains("symbol") || n.Contains("operator"))
