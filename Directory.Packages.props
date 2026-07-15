@@ -4,15 +4,17 @@
   </PropertyGroup>
 
   <ItemGroup Label="UI — Avalonia">
-    <PackageVersion Include="Avalonia" Version="11.3.0" />
-    <PackageVersion Include="Avalonia.Desktop" Version="11.3.0" />
-    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.0" />
-    <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.0" />
-    <PackageVersion Include="Avalonia.ReactiveUI" Version="11.3.0" />
-    <PackageVersion Include="Avalonia.Diagnostics" Version="11.3.0" />
-    <PackageVersion Include="Avalonia.Controls.ColorPicker" Version="11.3.0" />
-    <PackageVersion Include="Avalonia.Headless" Version="11.3.0" />
-    <PackageVersion Include="Avalonia.Headless.XUnit" Version="11.3.0" />
+    <PackageVersion Include="Avalonia" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Desktop" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.ReactiveUI" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Diagnostics" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Controls.ColorPicker" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Headless" Version="11.3.18" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="11.3.18" />
+    <!-- AvaloniaEdit has no 11.3.x point releases past 11.3.0; the next
+         version is 11.4.0, which resolves fine against Avalonia 11.3.x. -->
     <PackageVersion Include="Avalonia.AvaloniaEdit" Version="11.3.0" />
   </ItemGroup>
 

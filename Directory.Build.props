@@ -5,7 +5,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <WarningsNotAsErrors>CS1591;NU1903</WarningsNotAsErrors>
+    <!-- CS0618 (obsolete): temporarily suppressed while migrating off Avalonia
+         11.3.0 APIs deprecated by 11.3.18 (DragEventArgs.Data → DataTransfer,
+         DataFormats.Files → DataFormat.File). Remove after those callsites in
+         CollectionsPanel + ImportWizardDialog are updated. -->
+    <WarningsNotAsErrors>CS1591;NU1903;CS0618</WarningsNotAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest</AnalysisLevel>
     <NoWarn>$(NoWarn);CA1014</NoWarn>
@@ -17,7 +21,7 @@
          Drives: AssemblyInformationalVersion (shown in Help -> About), Velopack vpk
          pack version, and the MSIX Identity/@Version (Pack-Msix.ps1 reads this
          and appends ".0" for the MSIX 4-part revision requirement). -->
-    <Version>1.2.3</Version>
+    <Version>1.2.4</Version>
     <Authors>VAMC Consulting LLC</Authors>
     <Company>Vegha</Company>
     <Copyright>Copyright (c) 2026 VAMC Consulting LLC</Copyright>
