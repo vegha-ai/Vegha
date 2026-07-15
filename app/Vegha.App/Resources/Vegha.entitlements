@@ -43,19 +43,5 @@
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
-
-    <!-- Explicitly allow the launchservicesd Mach service. On macOS 26 (Tahoe)
-         our sandbox profile denies this by default, which causes AppKit's
-         internal Carbon-compat menu bar code (_NSGetAggregateUIMode →
-         GetCurrentProcess → _RegisterApplication) to fail with:
-             "unable to get application ASN from launchservicesd, aborting"
-         Confirmed by sandboxd log: deny(1) mach-lookup
-         com.apple.coreservices.launchservicesd. Without this the app aborts
-         inside [NSApplication sharedApplication] before any managed code
-         runs. See rdar://problem/28724618. -->
-    <key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
-    <array>
-        <string>com.apple.coreservices.launchservicesd</string>
-    </array>
 </dict>
 </plist>
