@@ -20,9 +20,14 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Mac App Store version (e.g., 1.2.3)'
+        description: 'Marketing version, shown on the App Store (e.g., 1.2.4)'
         required: true
         type: string
+      build_number:
+        description: 'CFBundleVersion — must be strictly greater than any previously uploaded build for this marketing version. Defaults to `version` if empty.'
+        required: false
+        type: string
+        default: ''
       dry_run:
         description: 'Build & sign only — skip the App Store Connect upload (smoke test)'
         type: boolean
@@ -90,7 +95,7 @@ jobs:
         if: env.MAS_APP_CERT_P12_BASE64 != ''
         run: |
           chmod +x eng/build-mas.sh
-          ./eng/build-mas.sh ${{ inputs.version }}
+          ./eng/build-mas.sh "${{ inputs.version }}" "${{ inputs.build_number }}"
 
       - name: Upload to App Store Connect
         if: env.MAS_APP_CERT_P12_BASE64 != '' && !inputs.dry_run
@@ -107,11 +112,13 @@ jobs:
       # ============================================================
       - name: Build unsigned .pkg (no secrets)
         if: env.MAS_APP_CERT_P12_BASE64 == ''
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number != '' && inputs.build_number || inputs.version }}
         run: |
           set -euo pipefail
           echo "::warning::MAS signing secrets absent — building UNSIGNED .pkg (cannot upload to the Store)."
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ inputs.version }}" app/Vegha.App/Resources/Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ inputs.version }}" app/Vegha.App/Resources/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" app/Vegha.App/Resources/Info.plist
           dotnet restore
           dotnet publish app/Vegha.App/Vegha.App.csproj -c Release -r osx-arm64 --self-contained true \
             -p:VeghaFlavor=MAS -p:PublishReadyToRun=true -o publish/osx-arm64
