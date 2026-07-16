@@ -153,7 +153,28 @@ public static class RequestPipeline
             headerList.Add(new KeyValuePair<string, string>("Content-Type", contentType!));
         }
 
-        // 6. HTTP send.
+        // 6. HTTP send. When settings carry an mTLS client cert, load it here (path and
+        //    password support {{var}} interpolation) — a missing/bad cert fails the request
+        //    loudly instead of silently sending without it and confusing the user with a
+        //    server-side 401/handshake error.
+        System.Security.Cryptography.X509Certificates.X509Certificate2? clientCert = null;
+        if (!string.IsNullOrWhiteSpace(inputs.Request.Settings.MtlsCertPath))
+        {
+            var certPath = Interpolator.Resolve(inputs.Request.Settings.MtlsCertPath, vars);
+            var certPassword = string.IsNullOrEmpty(inputs.Request.Settings.MtlsCertPassword)
+                ? null
+                : Interpolator.Resolve(inputs.Request.Settings.MtlsCertPassword, vars);
+            try
+            {
+                clientCert = CertificateLoader.LoadClientCertificate(certPath, certPassword);
+            }
+            catch (Exception ex)
+            {
+                return Failure(inputs, composed, sw.ElapsedMilliseconds,
+                    $"Failed to load mTLS client certificate '{certPath}': {ex.Message}", consoleAll);
+            }
+        }
+
         var execRequest = new HttpExecutionRequest(
             Method: new HttpMethod(string.IsNullOrEmpty(inputs.Request.Method) ? "GET" : inputs.Request.Method.ToUpperInvariant()),
             Url: uri,
@@ -163,7 +184,8 @@ public static class RequestPipeline
             Options: new HttpRequestOptions(
                 FollowRedirects: inputs.Request.Settings.FollowRedirects,
                 VerifySsl: inputs.Request.Settings.VerifySsl,
-                UseCookies: inputs.Request.Settings.SendCookies));
+                UseCookies: inputs.Request.Settings.SendCookies,
+                ClientCertificate: clientCert));
 
         HttpExecutionResult httpResult;
         try

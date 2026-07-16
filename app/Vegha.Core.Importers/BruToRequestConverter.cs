@@ -154,6 +154,13 @@ public static class BruToRequestConverter
             return dflt;
         }
 
+        string? ReadString(string key)
+        {
+            var pair = block.Pairs.FirstOrDefault(p => p.Name == key);
+            var text = (pair?.Value as StringValue)?.Text.Trim();
+            return string.IsNullOrEmpty(text) ? null : text;
+        }
+
         return new RequestSettingsConfig
         {
             FollowRedirects = ReadBool("followRedirects", true),
@@ -162,6 +169,8 @@ public static class BruToRequestConverter
             SendCookies     = ReadBool("sendCookies", true),
             SaveCookies     = ReadBool("saveCookies", true),
             EnableHttp2     = ReadBool("http2", false),
+            MtlsCertPath     = ReadString("mtlsCertPath"),
+            MtlsCertPassword = ReadString("mtlsCertPassword"),
         };
     }
 

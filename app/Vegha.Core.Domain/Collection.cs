@@ -186,6 +186,12 @@ public sealed record RequestSettingsConfig
     public bool SendCookies { get; init; } = true;
     public bool SaveCookies { get; init; } = true;
     public bool EnableHttp2 { get; init; } = false;
+    /// <summary>Path to an mTLS client certificate: .pfx/.p12 (PKCS#12) or .pem
+    /// (cert+key). Supports {{var}} interpolation at execution time.</summary>
+    public string? MtlsCertPath { get; init; }
+    /// <summary>Password for a PKCS#12 client certificate. Supports {{var}}
+    /// interpolation so secrets can live in environments instead of the file.</summary>
+    public string? MtlsCertPassword { get; init; }
 }
 
 public enum RequestKind

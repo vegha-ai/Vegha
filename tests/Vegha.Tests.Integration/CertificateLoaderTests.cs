@@ -89,4 +89,57 @@ public class CertificateLoaderTests
         var collection = CertificateLoader.Parse(new[] { bundle });
         collection.Count.Should().Be(2);
     }
+
+    // ==================== LoadClientCertificate (mTLS) ====================
+
+    [Fact]
+    public void LoadClientCertificate_Pkcs12WithPassword_LoadsWithPrivateKey()
+    {
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        var req = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+            "CN=client-p12", rsa,
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+        using var cert = req.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(1));
+        var path = Path.Combine(Path.GetTempPath(), $"vegha-cl-{Guid.NewGuid():N}.p12");
+        File.WriteAllBytes(path, cert.Export(
+            System.Security.Cryptography.X509Certificates.X509ContentType.Pfx, "pw"));
+        try
+        {
+            using var loaded = CertificateLoader.LoadClientCertificate(path, "pw");
+            loaded.Subject.Should().Be("CN=client-p12");
+            loaded.HasPrivateKey.Should().BeTrue();
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void LoadClientCertificate_PemCertAndKey_LoadsWithPrivateKey()
+    {
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        var req = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+            "CN=client-pem", rsa,
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+        using var cert = req.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(1));
+        var pem = cert.ExportCertificatePem() + "\n" + rsa.ExportPkcs8PrivateKeyPem();
+        var path = Path.Combine(Path.GetTempPath(), $"vegha-cl-{Guid.NewGuid():N}.pem");
+        File.WriteAllText(path, pem);
+        try
+        {
+            using var loaded = CertificateLoader.LoadClientCertificate(path);
+            loaded.Subject.Should().Be("CN=client-pem");
+            loaded.HasPrivateKey.Should().BeTrue();
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void LoadClientCertificate_MissingFile_Throws()
+    {
+        Action act = () => CertificateLoader.LoadClientCertificate("/nope/absent.p12", "pw");
+        act.Should().Throw<FileNotFoundException>();
+    }
 }
