@@ -2037,22 +2037,15 @@ public partial class RequestEditorViewModel : ObservableObject
                     : new System.Net.NetworkCredential(NtlmUsername, NtlmPassword, NtlmDomain);
             }
 
-            // mTLS client certificate — load from PFX or PEM. Best-effort; failures
-            // surface in the status message rather than aborting the request.
+            // mTLS client certificate — load from PFX/P12 or PEM via the shared loader.
+            // Best-effort; failures surface in the status message rather than aborting the request.
             System.Security.Cryptography.X509Certificates.X509Certificate2? clientCert = null;
             if (!string.IsNullOrWhiteSpace(MtlsCertPath) && File.Exists(MtlsCertPath))
             {
                 try
                 {
-                    clientCert = System.IO.Path.GetExtension(MtlsCertPath).ToLowerInvariant() switch
-                    {
-                        // X509CertificateLoader replaced the X509Certificate2(path, password)
-                        // constructor in .NET 9 — the old one is obsolete (SYSLIB0057).
-                        ".pfx" or ".p12" => System.Security.Cryptography.X509Certificates.X509CertificateLoader
-                            .LoadPkcs12FromFile(MtlsCertPath, MtlsCertPassword),
-                        _ => System.Security.Cryptography.X509Certificates.X509Certificate2
-                            .CreateFromPemFile(MtlsCertPath),
-                    };
+                    clientCert = Vegha.Core.Requests.CertificateLoader
+                        .LoadClientCertificate(MtlsCertPath, MtlsCertPassword);
                 }
                 catch (Exception ex)
                 {
@@ -3205,6 +3198,8 @@ public partial class RequestEditorViewModel : ObservableObject
             SettingSendCookies     = item.Settings.SendCookies;
             SettingSaveCookies     = item.Settings.SaveCookies;
             SettingHttp2           = item.Settings.EnableHttp2;
+            MtlsCertPath           = item.Settings.MtlsCertPath ?? string.Empty;
+            MtlsCertPassword       = item.Settings.MtlsCertPassword ?? string.Empty;
 
             var soap = item.Soap;
             SoapTimestampEnabled     = soap?.Timestamp is not null;
@@ -3294,6 +3289,8 @@ public partial class RequestEditorViewModel : ObservableObject
                 SendCookies     = SettingSendCookies,
                 SaveCookies     = SettingSaveCookies,
                 EnableHttp2     = SettingHttp2,
+                MtlsCertPath     = string.IsNullOrWhiteSpace(MtlsCertPath) ? null : MtlsCertPath,
+                MtlsCertPassword = string.IsNullOrWhiteSpace(MtlsCertPassword) ? null : MtlsCertPassword,
             },
             Soap = BuildSoapConfig(),
         };

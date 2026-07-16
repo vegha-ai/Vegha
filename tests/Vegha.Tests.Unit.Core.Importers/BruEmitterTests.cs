@@ -261,6 +261,29 @@ public class BruEmitterTests
     }
 
     [Fact]
+    public void RoundTrip_Settings_MtlsClientCertPersists()
+    {
+        var original = new RequestItem
+        {
+            Name = "x", Method = "GET", Url = "https://x.test/y",
+            Settings = new RequestSettingsConfig
+            {
+                MtlsCertPath = "/certs/client.p12",
+                MtlsCertPassword = "{{certPassword}}",
+            }
+        };
+
+        var bru = BruEmitter.Emit(original);
+        bru.Should().Contain("mtlsCertPath: /certs/client.p12");
+        bru.Should().Contain("mtlsCertPassword: {{certPassword}}");
+
+        var rt = RoundTrip(original);
+        rt.Settings.MtlsCertPath.Should().Be("/certs/client.p12");
+        rt.Settings.MtlsCertPassword.Should().Be("{{certPassword}}");
+        rt.Settings.VerifySsl.Should().BeTrue("other settings keep their defaults");
+    }
+
+    [Fact]
     public void Emit_AllDefaultSettings_OmitsSettingsBlock()
     {
         var bru = BruEmitter.Emit(new RequestItem

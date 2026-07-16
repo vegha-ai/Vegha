@@ -89,6 +89,10 @@ public static class BruEmitter
             sb.Append("  saveCookies: ").AppendLine(settings.SaveCookies.ToString().ToLowerInvariant());
         if (settings.EnableHttp2 != defaults.EnableHttp2)
             sb.Append("  http2: ").AppendLine(settings.EnableHttp2.ToString().ToLowerInvariant());
+        if (!string.IsNullOrEmpty(settings.MtlsCertPath))
+            sb.Append("  mtlsCertPath: ").AppendLine(settings.MtlsCertPath);
+        if (!string.IsNullOrEmpty(settings.MtlsCertPassword))
+            sb.Append("  mtlsCertPassword: ").AppendLine(settings.MtlsCertPassword);
         sb.AppendLine("}");
         sb.AppendLine();
     }

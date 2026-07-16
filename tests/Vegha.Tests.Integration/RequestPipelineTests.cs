@@ -307,4 +307,96 @@ public class RequestPipelineTests : IAsyncLifetime
 
         result.ErrorMessage.Should().NotBeNull();
     }
+
+    // ==================== mTLS client certificate (settings block) ====================
+
+    private static (string Path, string Password) CreateSelfSignedPfx()
+    {
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        var req = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+            "CN=vegha-pipeline-mtls", rsa,
+            System.Security.Cryptography.HashAlgorithmName.SHA256,
+            System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+        using var cert = req.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddDays(1));
+        const string password = "pipe-pass";
+        var path = Path.Combine(Path.GetTempPath(), $"vegha-pipe-mtls-{Guid.NewGuid():N}.p12");
+        File.WriteAllBytes(path, cert.Export(
+            System.Security.Cryptography.X509Certificates.X509ContentType.Pfx, password));
+        return (path, password);
+    }
+
+    [Fact]
+    public async Task MtlsCertInSettings_LoadsAndExecutes_WithInterpolatedPassword()
+    {
+        _server.Given(Request.Create().WithPath("/mtls").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("ok"));
+
+        var (certPath, password) = CreateSelfSignedPfx();
+        try
+        {
+            var inputs = BuildInputs("GET", _server.Urls[0] + "/mtls",
+                envVars: new Dictionary<string, string> { ["certPw"] = password });
+            inputs = inputs with
+            {
+                Request = inputs.Request with
+                {
+                    Settings = new RequestSettingsConfig
+                    {
+                        MtlsCertPath = certPath,
+                        MtlsCertPassword = "{{certPw}}",
+                    }
+                }
+            };
+            var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+            // Plain-HTTP WireMock never asks for the cert, but the pipeline must have
+            // loaded it (a bad password/path would have failed before the send).
+            result.ErrorMessage.Should().BeNull();
+            result.StatusCode.Should().Be(200);
+        }
+        finally { File.Delete(certPath); }
+    }
+
+    [Fact]
+    public async Task MtlsCertInSettings_MissingFile_FailsLoudly()
+    {
+        var inputs = BuildInputs("GET", _server.Urls[0] + "/mtls");
+        inputs = inputs with
+        {
+            Request = inputs.Request with
+            {
+                Settings = new RequestSettingsConfig { MtlsCertPath = "/nope/missing.p12" }
+            }
+        };
+        var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+        result.ErrorMessage.Should().Contain("mTLS client certificate");
+        result.ErrorMessage.Should().Contain("/nope/missing.p12");
+    }
+
+    [Fact]
+    public async Task MtlsCertInSettings_WrongPassword_FailsLoudly()
+    {
+        var (certPath, _) = CreateSelfSignedPfx();
+        try
+        {
+            var inputs = BuildInputs("GET", _server.Urls[0] + "/mtls");
+            inputs = inputs with
+            {
+                Request = inputs.Request with
+                {
+                    Settings = new RequestSettingsConfig
+                    {
+                        MtlsCertPath = certPath,
+                        MtlsCertPassword = "wrong-password",
+                    }
+                }
+            };
+            var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+            result.ErrorMessage.Should().Contain("mTLS client certificate");
+        }
+        finally { File.Delete(certPath); }
+    }
 }

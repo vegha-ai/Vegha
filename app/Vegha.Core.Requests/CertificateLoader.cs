@@ -67,4 +67,23 @@ public static class CertificateLoader
         // X509Certificate2Collection.ImportFromPem handles multi-block PEM bundles.
         sink.ImportFromPem(pem);
     }
+
+    /// <summary>Loads an mTLS client certificate (with private key) from disk.
+    /// .pfx / .p12 → PKCS#12 (password optional); anything else → PEM cert+key file.
+    /// Shared by the request editor and the collection-runner pipeline so both paths
+    /// accept the same formats. Throws on failure — callers decide how to surface it.</summary>
+    public static X509Certificate2 LoadClientCertificate(string path, string? password = null)
+    {
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"Client certificate file not found: {path}", path);
+
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            // X509CertificateLoader replaced the X509Certificate2(path, password)
+            // constructor in .NET 9 — the old one is obsolete (SYSLIB0057).
+            ".pfx" or ".p12" => X509CertificateLoader.LoadPkcs12FromFile(
+                path, string.IsNullOrEmpty(password) ? null : password),
+            _ => X509Certificate2.CreateFromPemFile(path),
+        };
+    }
 }
