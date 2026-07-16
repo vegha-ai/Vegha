@@ -41,7 +41,8 @@ public class RequestPipelineTests : IAsyncLifetime
         string? preScript = null, string? testsScript = null,
         string? postScript = null,
         IReadOnlyDictionary<string, string>? envVars = null,
-        IReadOnlyDictionary<string, string>? iterVars = null)
+        IReadOnlyDictionary<string, string>? iterVars = null,
+        SoapConfig? soap = null)
     {
         var request = new RequestItem
         {
@@ -53,6 +54,7 @@ public class RequestPipelineTests : IAsyncLifetime
             PreRequestScript = preScript,
             PostResponseScript = postScript,
             Tests = testsScript,
+            Soap = soap,
         };
         var collection = new Collection { Name = "c", Requests = new List<RequestItem> { request } };
         return new RequestPipeline.Inputs(
@@ -306,5 +308,61 @@ public class RequestPipelineTests : IAsyncLifetime
         var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script, cts.Token);
 
         result.ErrorMessage.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Soap_config_injects_wsse_security_header_into_sent_envelope()
+    {
+        _server.Given(Request.Create().WithPath("/soap").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("<ok/>"));
+
+        const string envelope =
+            "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
+            "<soapenv:Body><Ping/></soapenv:Body></soapenv:Envelope>";
+
+        var inputs = BuildInputs("POST", _server.Urls[0] + "/soap",
+            body: new BodyConfig { Mode = BodyMode.Xml, Content = envelope },
+            envVars: new Dictionary<string, string> { ["wsUser"] = "PIAPPL_USER" },
+            soap: new SoapConfig
+            {
+                Timestamp = new WssTimestampConfig { TimeToLiveSeconds = 300 },
+                UsernameToken = new WssUsernameTokenConfig
+                {
+                    Username = "{{wsUser}}",
+                    Password = "secret",
+                    PasswordType = WssPasswordType.Digest,
+                },
+            });
+        var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+        result.ErrorMessage.Should().BeNull();
+        result.StatusCode.Should().Be(200);
+
+        var sent = _server.LogEntries.Single().RequestMessage.Body;
+        sent.Should().Contain("Security");
+        sent.Should().Contain("UsernameToken");
+        sent.Should().Contain("PasswordDigest");
+        sent.Should().Contain("PIAPPL_USER");      // {{var}} interpolated
+        sent.Should().NotContain("{{wsUser}}");
+        sent.Should().NotContain(">secret<");      // digest, not plaintext
+        sent.Should().Contain("Timestamp");
+    }
+
+    [Fact]
+    public async Task Soap_config_absent_leaves_xml_body_untouched()
+    {
+        _server.Given(Request.Create().WithPath("/soap").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("<ok/>"));
+
+        const string envelope =
+            "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">" +
+            "<soapenv:Body><Ping/></soapenv:Body></soapenv:Envelope>";
+
+        var inputs = BuildInputs("POST", _server.Urls[0] + "/soap",
+            body: new BodyConfig { Mode = BodyMode.Xml, Content = envelope });
+        var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+        result.StatusCode.Should().Be(200);
+        _server.LogEntries.Single().RequestMessage.Body.Should().Be(envelope);
     }
 }

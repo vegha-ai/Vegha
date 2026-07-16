@@ -145,6 +145,13 @@ public static class RequestPipeline
 
         // 5. Compose body + headers (composed-inheritance headers + auth-emitted headers + request-level).
         var (body, contentType) = ComposeBody(inputs.Request.Body, vars);
+
+        // 5b. SOAP WS-Security / WS-Addressing: inject the configured headers into the
+        //     envelope so runner/CLI sends match the request editor's behavior.
+        if (!string.IsNullOrEmpty(body) && SoapSecurityProcessor.HasOutgoing(inputs.Request.Soap))
+            body = SoapSecurityProcessor.Apply(body!, inputs.Request.Soap,
+                s => Interpolator.Resolve(s, vars));
+
         var headerList = ComposeHeaders(composed.Headers, vars);
         foreach (var h in authResult.Headers) headerList.Add(h);
         if (!string.IsNullOrEmpty(contentType)
