@@ -19,8 +19,10 @@ public static class CollectionLoader
     public static readonly HashSet<string> ReservedFolders =
         new(StringComparer.OrdinalIgnoreCase) { "environments" };
 
-    /// <summary>Loads a collection from <paramref name="rootDirectory"/>. Throws if the directory does not exist.</summary>
-    public static Collection Load(string rootDirectory)
+    /// <summary>Loads a collection from <paramref name="rootDirectory"/>. Throws if the directory does not exist.
+    /// When <paramref name="onLoadIssue"/> is supplied it is invoked once per .bru file that
+    /// failed to parse (file path + error message) instead of the file being dropped silently.</summary>
+    public static Collection Load(string rootDirectory, Action<string, string>? onLoadIssue = null)
     {
         if (!Directory.Exists(rootDirectory))
             throw new DirectoryNotFoundException($"Collection directory not found: {rootDirectory}");
@@ -28,7 +30,7 @@ public static class CollectionLoader
         var collectionMeta = TryParseNodeBru(Path.Combine(rootDirectory, "collection.bru"));
         var name = collectionMeta?.Name ?? Path.GetFileName(rootDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
 
-        var (requests, folders) = LoadFolderContents(rootDirectory);
+        var (requests, folders) = LoadFolderContents(rootDirectory, onLoadIssue);
         var environments = EnvironmentLoader.LoadDirectory(Path.Combine(rootDirectory, "environments"));
 
         return new Collection
@@ -48,7 +50,7 @@ public static class CollectionLoader
         };
     }
 
-    private static (List<RequestItem> Requests, List<Folder> Folders) LoadFolderContents(string dir)
+    private static (List<RequestItem> Requests, List<Folder> Folders) LoadFolderContents(string dir, Action<string, string>? onLoadIssue)
     {
         // BruParser.Parse and TryLoadRequest are pure (fresh Scanner per call, no shared
         // mutable state), so File.ReadAllText + parse can fan out across cores. Sort order
@@ -67,7 +69,7 @@ public static class CollectionLoader
         var requestBag = new ConcurrentBag<RequestItem>();
         Parallel.ForEach(requestFiles, file =>
         {
-            var req = TryLoadRequest(file);
+            var req = TryLoadRequest(file, onLoadIssue);
             if (req is not null) requestBag.Add(req);
         });
 
@@ -93,7 +95,7 @@ public static class CollectionLoader
         Parallel.ForEach(subDirs, subDir =>
         {
             var subName = Path.GetFileName(subDir);
-            var (subRequests, subFolders) = LoadFolderContents(subDir);
+            var (subRequests, subFolders) = LoadFolderContents(subDir, onLoadIssue);
             // Skip implicit empty folders (no requests, no nested content, no explicit marker)
             // to avoid surfacing junk directories. An explicit folder.bru keeps a freshly-
             // created (but still empty) folder visible — without that exception, "New Folder"
@@ -126,7 +128,7 @@ public static class CollectionLoader
         return (requests, folders);
     }
 
-    private static RequestItem? TryLoadRequest(string filePath)
+    private static RequestItem? TryLoadRequest(string filePath, Action<string, string>? onLoadIssue)
     {
         try
         {
@@ -142,9 +144,11 @@ public static class CollectionLoader
             };
             return req;
         }
-        catch
+        catch (Exception ex)
         {
-            // Malformed .bru shouldn't crash the load — surface via a future "load issues" panel.
+            // Malformed .bru shouldn't crash the load — report it to the caller (CLI warning /
+            // future "load issues" panel) so the request doesn't just vanish silently.
+            onLoadIssue?.Invoke(filePath, ex.Message);
             return null;
         }
     }

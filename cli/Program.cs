@@ -142,9 +142,10 @@ internal static class Program
         // --- Resolve the collection --------------------------------------
         WriteSeg("Resolving collection ", ConsoleColor.DarkGray);
         Vegha.Core.Domain.Collection collection;
+        var loadIssues = new System.Collections.Concurrent.ConcurrentBag<(string File, string Error)>();
         try
         {
-            collection = CollectionLoader.Load(root);
+            collection = CollectionLoader.Load(root, (file, err) => loadIssues.Add((file, err)));
         }
         catch (Exception ex)
         {
@@ -154,6 +155,8 @@ internal static class Program
         }
         WriteSeg("………………………… ", ConsoleColor.DarkGray);
         WriteSeg("✓\n", ConsoleColor.Green);
+        foreach (var (file, err) in loadIssues.OrderBy(i => i.File, StringComparer.Ordinal))
+            WriteSeg($"  warning: skipped '{Path.GetFileName(file)}': {err}\n", ConsoleColor.Yellow);
 
         // --- Resolve the environment -------------------------------------
         var envVars = new Dictionary<string, string>(StringComparer.Ordinal);
