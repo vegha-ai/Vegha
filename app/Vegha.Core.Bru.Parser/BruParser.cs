@@ -115,7 +115,7 @@ public static class BruParser
         var start = s.Position;
         while (!s.AtEnd)
         {
-            if (s.Current == '\n' && s.Peek(1) == '}')
+            if (s.Current == '\n' && s.Peek(1) == '}' && IsBlockCloseLine(s))
             {
                 var text = s.Substring(start, s.Position - start);
                 s.Advance();   // consume '\n'
@@ -135,6 +135,23 @@ public static class BruParser
             s.Advance();
         }
         throw s.Error($"Unterminated text block '{blockName}'", start);
+    }
+
+    /// <summary>True when the "\n}" at the scanner's position closes the block: the '}' must
+    /// be alone on its line (only horizontal whitespace may follow before newline/EOF).
+    /// This keeps unindented JS like "});" inside tests/script blocks from terminating the
+    /// block early — previously such a line truncated the text and made the whole file
+    /// unparseable, silently dropping the request from the collection.</summary>
+    private static bool IsBlockCloseLine(Scanner s)
+    {
+        var k = 2; // past '\n' and '}'
+        while (true)
+        {
+            var c = s.Peek(k);
+            if (c == '\0' || c == '\n' || c == '\r') return true;
+            if (c != ' ' && c != '\t') return false;
+            k++;
+        }
     }
 
     private static bool IsTextBlock(string name) =>

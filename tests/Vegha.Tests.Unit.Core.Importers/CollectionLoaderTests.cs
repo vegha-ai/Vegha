@@ -159,4 +159,43 @@ public class CollectionLoaderTests : IDisposable
         Action act = () => CollectionLoader.Load(nope);
         act.Should().Throw<DirectoryNotFoundException>();
     }
+
+    [Fact]
+    public void Load_ReportsUnparseableFile_ViaOnLoadIssue()
+    {
+        Write("good.bru", MinimalRequest("good", "https://example.com"));
+        Write("broken.bru", "meta {\n  name: broken\n}\n\nget {\n  url: https://example.com\n"); // unterminated block
+
+        var issues = new List<(string File, string Error)>();
+        var collection = CollectionLoader.Load(_tempDir, (file, err) => issues.Add((file, err)));
+
+        collection.Requests.Should().ContainSingle(r => r.Name == "good");
+        issues.Should().ContainSingle();
+        issues[0].File.Should().EndWith("broken.bru");
+        issues[0].Error.Should().Contain("Unterminated");
+    }
+
+    [Fact]
+    public void Load_ReportsUnparseableFile_InNestedFolder()
+    {
+        Write("sub/good.bru", MinimalRequest("good", "https://example.com"));
+        Write("sub/broken.bru", "not a bru file at all {{{");
+
+        var issues = new List<(string File, string Error)>();
+        var collection = CollectionLoader.Load(_tempDir, (file, err) => issues.Add((file, err)));
+
+        collection.Folders.Should().ContainSingle();
+        issues.Should().ContainSingle(i => i.File.EndsWith("broken.bru"));
+    }
+
+    [Fact]
+    public void Load_WithoutCallback_StillSkipsUnparseableFileQuietly()
+    {
+        Write("good.bru", MinimalRequest("good", "https://example.com"));
+        Write("broken.bru", "get {\n  url: x\n"); // unterminated
+
+        var collection = CollectionLoader.Load(_tempDir);
+
+        collection.Requests.Should().ContainSingle(r => r.Name == "good");
+    }
 }
