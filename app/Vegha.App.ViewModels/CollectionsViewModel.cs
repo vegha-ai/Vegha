@@ -560,8 +560,10 @@ public partial class CollectionsViewModel : ObservableObject
                 return;
             }
 
-            var node = BuildRootNode(rootDirectory, System.Threading.CancellationToken.None);
+            var issues = new System.Collections.Concurrent.ConcurrentBag<(string File, string Error)>();
+            var node = BuildRootNode(rootDirectory, System.Threading.CancellationToken.None, issues);
             AttachRootNode(node, rootDirectory);
+            ReportLoadIssues(issues);
 
             // Newly-loaded collections become active immediately so the tree switches to
             // them. Without this the user has to manually pick the new collection in the
@@ -598,13 +600,15 @@ public partial class CollectionsViewModel : ObservableObject
             // Heavy work (file enumeration, .bru read + parse, VM-tree construction) off the
             // UI thread. ConfigureAwait(true) marshals the continuation back so the attach
             // below runs on the UI thread where Roots is bound.
-            var node = await Task.Run(() => BuildRootNode(rootDirectory, ct), ct).ConfigureAwait(true);
+            var issues = new System.Collections.Concurrent.ConcurrentBag<(string File, string Error)>();
+            var node = await Task.Run(() => BuildRootNode(rootDirectory, ct, issues), ct).ConfigureAwait(true);
 
             // Superseded while we were parsing — drop the result. Attach is the only step that
             // mutates Roots, so gating it here guarantees a stale load adds nothing.
             if (ct.IsCancellationRequested) return null;
 
             AttachRootNode(node, rootDirectory);
+            ReportLoadIssues(issues);
             return node as CollectionRootViewModel;
         }
         catch (OperationCanceledException)
@@ -653,12 +657,29 @@ public partial class CollectionsViewModel : ObservableObject
     /// <see cref="Roots"/>, no <see cref="ActiveCollection"/>, no event hookup). The returned
     /// node has no subscribers until <see cref="AttachRootNode"/> wires it in on the UI thread,
     /// so constructing the ObservableObject VMs + ObservableCollections off-thread is safe.</summary>
-    private static CollectionNodeViewModel BuildRootNode(string rootDirectory, System.Threading.CancellationToken ct)
+    private static CollectionNodeViewModel BuildRootNode(string rootDirectory, System.Threading.CancellationToken ct,
+        System.Collections.Concurrent.ConcurrentBag<(string File, string Error)>? issues = null)
     {
         ct.ThrowIfCancellationRequested();
-        var collection = CollectionLoader.Load(rootDirectory);
+        var collection = CollectionLoader.Load(rootDirectory,
+            issues is null ? null : (file, err) => issues.Add((file, err)));
         ct.ThrowIfCancellationRequested();
         return CollectionNodeViewModel.FromCollection(collection, rootDirectory);
+    }
+
+    /// <summary>Surfaces .bru files that failed to parse (and were therefore skipped) instead
+    /// of letting requests vanish silently. Logs every issue and shows the first one in the
+    /// status-bar toast with the parser's line/col so the user can fix it immediately.
+    /// Must run on the UI thread (sets <see cref="StatusMessage"/>).</summary>
+    private void ReportLoadIssues(System.Collections.Concurrent.ConcurrentBag<(string File, string Error)> issues)
+    {
+        if (issues.IsEmpty) return;
+        var ordered = issues.OrderBy(i => i.File, StringComparer.Ordinal).ToList();
+        foreach (var (file, error) in ordered)
+            _logger.LogWarning("Skipped unparseable .bru file {File}: {Error}", file, error);
+        var (firstFile, firstError) = ordered[0];
+        var head = $"Skipped “{Path.GetFileName(firstFile)}”: {firstError}";
+        StatusMessage = ordered.Count == 1 ? head : $"{head} (+{ordered.Count - 1} more unparseable file(s))";
     }
 
     /// <summary>UI-thread wiring for a freshly-built root: adds it to <see cref="Roots"/>,
@@ -1958,10 +1979,12 @@ public partial class CollectionsViewModel : ObservableObject
         if (!TryBeginReload(node, out var root, out var rootPath, out var expanded)) return;
         try
         {
-            var collection = CollectionLoader.Load(rootPath);
+            var issues = new System.Collections.Concurrent.ConcurrentBag<(string File, string Error)>();
+            var collection = CollectionLoader.Load(rootPath, (file, err) => issues.Add((file, err)));
             var index = Roots.IndexOf(root);
             if (index < 0) return;
             SwapRoot(index, collection, rootPath, expanded);
+            ReportLoadIssues(issues);
         }
         catch (Exception ex)
         {
@@ -1980,11 +2003,13 @@ public partial class CollectionsViewModel : ObservableObject
         if (!TryBeginReload(node, out var root, out var rootPath, out var expanded)) return;
         try
         {
-            var collection = await Task.Run(() => CollectionLoader.Load(rootPath)).ConfigureAwait(true);
+            var issues = new System.Collections.Concurrent.ConcurrentBag<(string File, string Error)>();
+            var collection = await Task.Run(() => CollectionLoader.Load(rootPath, (file, err) => issues.Add((file, err)))).ConfigureAwait(true);
             if (AutoSelectSuspended) return; // a workspace apply began while we were parsing
             var index = Roots.IndexOf(root);
             if (index < 0) return;          // root removed/replaced meanwhile
             SwapRoot(index, collection, rootPath, expanded);
+            ReportLoadIssues(issues);
         }
         catch (Exception ex)
         {
