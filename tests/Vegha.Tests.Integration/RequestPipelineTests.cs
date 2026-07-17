@@ -250,7 +250,7 @@ public class RequestPipelineTests : IAsyncLifetime
 
         var auth = new AuthConfig
         {
-            Type = AuthType.OAuth2,
+            Type = AuthType.OAuth1,
             Parameters = new Dictionary<string, string>(),
         };
         var inputs = BuildInputs("GET", _server.Urls[0] + "/anything", auth: auth);
@@ -258,7 +258,7 @@ public class RequestPipelineTests : IAsyncLifetime
 
         result.StatusCode.Should().Be(0);
         result.ErrorMessage.Should().NotBeNull();
-        result.ErrorMessage!.Should().Contain("OAuth2").And.Contain("not supported");
+        result.ErrorMessage!.Should().Contain("OAuth1").And.Contain("not supported");
     }
 
     [Fact]
@@ -306,5 +306,141 @@ public class RequestPipelineTests : IAsyncLifetime
         var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script, cts.Token);
 
         result.ErrorMessage.Should().NotBeNull();
+    }
+
+    // ==================== OAuth2 headless grants ====================
+
+    private AuthConfig OAuth2Auth(string grantType, string? extra = null) => new()
+    {
+        Type = AuthType.OAuth2,
+        Parameters = new Dictionary<string, string>
+        {
+            ["grant_type"] = grantType,
+            ["access_token_url"] = _server.Urls[0] + "/oauth/token",
+            ["client_id"] = "cid-{{env}}",
+            ["client_secret"] = "csecret",
+            ["scope"] = "api.read",
+            ["username"] = grantType == "password" ? "alice" : string.Empty,
+            ["password"] = grantType == "password" ? "pw" : string.Empty,
+            ["header_prefix"] = extra ?? string.Empty,
+            // unique token_id per test run so the process-wide token cache can't leak
+            // a token from a previous test into this one
+            ["token_id"] = Guid.NewGuid().ToString("N"),
+        },
+    };
+
+    [Fact]
+    public async Task OAuth2ClientCredentials_AcquiresToken_AndSendsBearer()
+    {
+        _server.Given(Request.Create().WithPath("/oauth/token").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("{\"access_token\":\"tok-abc\",\"token_type\":\"Bearer\",\"expires_in\":3600}"));
+        _server.Given(Request.Create().WithPath("/api").UsingGet()
+                .WithHeader("Authorization", "Bearer tok-abc"))
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("secured"));
+
+        var inputs = BuildInputs("GET", _server.Urls[0] + "/api",
+            auth: OAuth2Auth("client_credentials"),
+            envVars: new Dictionary<string, string> { ["env"] = "dev" });
+        var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+        result.ErrorMessage.Should().BeNull();
+        result.StatusCode.Should().Be(200);
+        result.ResponseBody.Should().Be("secured");
+
+        // {{env}} in client_id must have been interpolated in the token request.
+        var tokenCalls = _server.LogEntries
+            .Where(e => e.RequestMessage.Path == "/oauth/token").ToList();
+        tokenCalls.Should().HaveCount(1);
+        tokenCalls[0].RequestMessage.Body.Should().Contain("cid-dev");
+    }
+
+    [Fact]
+    public async Task OAuth2ClientCredentials_TokenCachedAcrossRequests()
+    {
+        _server.Given(Request.Create().WithPath("/oauth/token").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("{\"access_token\":\"tok-cache\",\"expires_in\":3600}"));
+        _server.Given(Request.Create().WithPath("/api").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("ok"));
+
+        var auth = OAuth2Auth("client_credentials");
+        var r1 = await RequestPipeline.ExecuteAsync(BuildInputs("GET", _server.Urls[0] + "/api", auth: auth), _http, _script);
+        var r2 = await RequestPipeline.ExecuteAsync(BuildInputs("GET", _server.Urls[0] + "/api", auth: auth), _http, _script);
+
+        r1.StatusCode.Should().Be(200);
+        r2.StatusCode.Should().Be(200);
+        _server.LogEntries.Count(e => e.RequestMessage.Path == "/oauth/token")
+            .Should().Be(1, "the second request must reuse the cached token");
+    }
+
+    [Fact]
+    public async Task OAuth2Password_AcquiresToken_AndSendsBearer()
+    {
+        _server.Given(Request.Create().WithPath("/oauth/token").UsingPost()
+                .WithBody(b => b != null && b.Contains("grant_type=password") && b.Contains("username=alice")))
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("{\"access_token\":\"tok-pw\",\"expires_in\":3600}"));
+        _server.Given(Request.Create().WithPath("/api").UsingGet()
+                .WithHeader("Authorization", "Bearer tok-pw"))
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("ok"));
+
+        var inputs = BuildInputs("GET", _server.Urls[0] + "/api",
+            auth: OAuth2Auth("password"),
+            envVars: new Dictionary<string, string> { ["env"] = "dev" });
+        var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+        result.ErrorMessage.Should().BeNull();
+        result.StatusCode.Should().Be(200);
+    }
+
+    [Fact]
+    public async Task OAuth2CustomHeaderPrefix_SendsRawPrefixedHeader()
+    {
+        _server.Given(Request.Create().WithPath("/oauth/token").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("{\"access_token\":\"tok-jwt\",\"expires_in\":3600}"));
+        _server.Given(Request.Create().WithPath("/api").UsingGet()
+                .WithHeader("Authorization", "JWT tok-jwt"))
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody("ok"));
+
+        var inputs = BuildInputs("GET", _server.Urls[0] + "/api",
+            auth: OAuth2Auth("client_credentials", extra: "JWT"),
+            envVars: new Dictionary<string, string> { ["env"] = "dev" });
+        var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+        result.ErrorMessage.Should().BeNull();
+        result.StatusCode.Should().Be(200);
+    }
+
+    [Fact]
+    public async Task OAuth2AuthorizationCode_FailsWithClearMessage()
+    {
+        var auth = OAuth2Auth("authorization_code");
+        var result = await RequestPipeline.ExecuteAsync(
+            BuildInputs("GET", _server.Urls[0] + "/api", auth: auth), _http, _script);
+
+        result.ErrorMessage.Should().Contain("authorization_code");
+        result.ErrorMessage.Should().Contain("not supported by the collection runner");
+    }
+
+    [Fact]
+    public async Task OAuth2TokenEndpointFailure_SurfacesError()
+    {
+        _server.Given(Request.Create().WithPath("/oauth/token").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(401)
+                .WithBody("{\"error\":\"invalid_client\"}"));
+
+        var result = await RequestPipeline.ExecuteAsync(
+            BuildInputs("GET", _server.Urls[0] + "/api", auth: OAuth2Auth("client_credentials"),
+                envVars: new Dictionary<string, string> { ["env"] = "dev" }),
+            _http, _script);
+
+        result.ErrorMessage.Should().NotBeNull();
+        result.StatusCode.Should().Be(0, "the request must not have been sent without a token");
     }
 }
