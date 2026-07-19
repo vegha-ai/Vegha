@@ -130,9 +130,19 @@ public static class RequestPipeline
                 consoleAll);
         }
 
-        // 4. Resolve auth. Pipeline v1 supports None/Inherit/Bearer/Basic/ApiKey; anything else
-        //    is surfaced as an error so the user knows to run via the editor tab.
+        // 4. Resolve auth. Pipeline v1 supports None/Inherit/Bearer/Basic/ApiKey natively,
+        //    plus OAuth2 via headless grants (client_credentials, password) resolved to a
+        //    Bearer/ApiKey auth before the send. Anything else is surfaced as an error so
+        //    the user knows to run via the editor tab.
         var authToApply = composed.Auth ?? inputs.Request.Auth;
+        if (authToApply is { Type: AuthType.OAuth2 })
+        {
+            var (oauthAuth, oauthError) = await PipelineOAuth2
+                .ResolveAsync(authToApply, vars, ct).ConfigureAwait(false);
+            if (oauthError is not null)
+                return Failure(inputs, composed, sw.ElapsedMilliseconds, oauthError, consoleAll);
+            authToApply = oauthAuth;
+        }
         if (!IsSupportedAuth(authToApply))
             return Failure(inputs, composed, sw.ElapsedMilliseconds,
                 $"Auth type {authToApply!.Type} not supported by Collection Runner v1. Run via the request editor.",
