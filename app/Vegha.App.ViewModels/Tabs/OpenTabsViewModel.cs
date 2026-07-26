@@ -583,10 +583,11 @@ public partial class OpenTabsViewModel : ObservableObject
         Vegha.Core.Scripting.JintHost scripting,
         Vegha.Core.Requests.RequestComposition.WorkspaceContext? workspace = null,
         string? collectionPath = null,
-        Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null)
+        Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null,
+        Vegha.Core.Requests.OAuth2TokenAcquirer? oauth2 = null)
     {
         var id = "run:" + Guid.NewGuid().ToString("N");
-        var tab = new CollectionRunTabViewModel(collection, id, http, scripting, workspace, secretRegistry)
+        var tab = new CollectionRunTabViewModel(collection, id, http, scripting, workspace, secretRegistry, oauth2)
         {
             CollectionPath = collectionPath,
         };
@@ -595,24 +596,42 @@ public partial class OpenTabsViewModel : ObservableObject
         return tab;
     }
 
-    /// <summary>Opens (or activates) the Collection Settings tab for a collection. One tab per
-    /// collection (keyed by source path); re-opening activates the existing tab.</summary>
-    public CollectionSettingsTabViewModel OpenCollectionSettingsTab(CollectionSettingsTabViewModel tab)
+    /// <summary>Opens (or activates) the settings tab for a collection or folder. One tab per
+    /// node (keyed by on-disk path); re-opening activates the existing tab.</summary>
+    public NodeSettingsTabViewModel OpenNodeSettingsTab(NodeSettingsTabViewModel tab)
     {
         var existing = Tabs.FirstOrDefault(t => string.Equals(t.Id, tab.Id, StringComparison.OrdinalIgnoreCase));
-        if (existing is CollectionSettingsTabViewModel cs) { ActiveTab = cs; return cs; }
+        if (existing is NodeSettingsTabViewModel ns) { ActiveTab = ns; return ns; }
         Tabs.Add(tab);
         ActiveTab = tab;
         return tab;
     }
 
-    /// <summary>Closes any Collection Settings tab bound to <paramref name="collectionSourcePath"/>
-    /// — used when the collection is removed/closed so its settings tab doesn't linger.</summary>
-    public void CloseCollectionSettingsTab(string collectionSourcePath)
+    /// <summary>Closes the settings tabs belonging to <paramref name="collectionSourcePath"/> —
+    /// the collection's own tab plus any folder tabs beneath it — used when the collection is
+    /// removed/closed so nothing lingers.</summary>
+    public void CloseNodeSettingsTabsUnder(string collectionSourcePath)
     {
-        var id = CollectionSettingsTabViewModel.BuildId(collectionSourcePath);
-        var match = Tabs.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
-        if (match is not null) CloseTab(match);
+        var stale = Tabs.OfType<NodeSettingsTabViewModel>()
+            .Where(t => IsUnder(t.NodePath, collectionSourcePath))
+            .ToList();
+        foreach (var tab in stale) CloseTab(tab);
+    }
+
+    /// <summary>Path containment test used to sweep a closed collection's settings tabs.</summary>
+    private static bool IsUnder(string candidate, string root)
+    {
+        if (string.IsNullOrEmpty(candidate) || string.IsNullOrEmpty(root)) return false;
+        try
+        {
+            var c = System.IO.Path.GetFullPath(candidate);
+            var r = System.IO.Path.GetFullPath(root);
+            if (string.Equals(c, r, StringComparison.OrdinalIgnoreCase)) return true;
+            var prefix = r.EndsWith(System.IO.Path.DirectorySeparatorChar)
+                ? r : r + System.IO.Path.DirectorySeparatorChar;
+            return c.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
     }
 
     /// <summary>Opens (or activates) a tab showing a historical request + response. The

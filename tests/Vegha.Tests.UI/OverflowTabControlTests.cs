@@ -299,7 +299,7 @@ public class OverflowTabControlTests
             new Vegha.Core.Scripting.JintHost(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<Vegha.App.ViewModels.RequestEditorViewModel>.Instance);
         vm.BodyType = "xml";
-        vm.AuthType = "basic";
+        vm.Auth.AuthType = "basic";
         vm.PreRequestScript = "// pre-request";
         vm.RequestTabIndex = 4;
         var workspace = new Vegha.App.Controls.Workspace.RequestWorkspace { DataContext = vm };
@@ -376,7 +376,7 @@ public class OverflowTabControlTests
             new Vegha.Core.Scripting.JintHost(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<Vegha.App.ViewModels.RequestEditorViewModel>.Instance);
         vm.BodyType = "xml";
-        vm.AuthType = "basic";
+        vm.Auth.AuthType = "basic";
         vm.PreRequestScript = "// x";
         vm.RequestTabIndex = 4;
         var workspace = new Vegha.App.Controls.Workspace.RequestWorkspace { DataContext = vm };
@@ -423,7 +423,7 @@ public class OverflowTabControlTests
             var naturalBefore = inner.NaturalWidth;
 
             // Now flip on the dots — this should grow each tab's natural width by ~10px.
-            vm.AuthType = "basic";
+            vm.Auth.AuthType = "basic";
             vm.BodyType = "xml";
             vm.PreRequestScript = "// x";
             win.UpdateLayout();
@@ -574,6 +574,140 @@ public class OverflowTabControlTests
             if (natural + trailingBounds.Width + 50 /*generous chev+leftpad slack*/ < width)
             {
                 tc.HasOverflow.Should().BeFalse(msg);
+            }
+        }
+        finally { win.Close(); }
+    }
+
+    /// <summary>The chevron must park flush against the right edge of the last tab that
+    /// actually rendered. It used to be positioned from the items presenter's *desired*
+    /// width, which assumed a different (larger) set of tabs than arrange ended up showing
+    /// — so it floated a full tab-width to the right of the strip with an obvious dead gap
+    /// in between, exactly as in the bug report screenshot.</summary>
+    [AvaloniaFact]
+    public void Chevron_ParksFlushAgainstLastVisibleTab()
+    {
+        var tc = new OverflowTabControl { Classes = { "overflowtabs" } };
+        string[] labels = { "Params", "Authorization", "Headers", "Vars", "Body",
+                            "Pre-request", "Post-response", "Tests", "Docs", "Settings", "Sent" };
+        foreach (var l in labels) tc.Items.Add(new TabItem { Header = l });
+
+        var host = new Border { Width = 420, Height = 50, Child = tc };
+        var win = new Window { Width = 1200, Height = 200, Content = host };
+        win.Show();
+        try
+        {
+            win.UpdateLayout();
+            win.UpdateLayout();
+            win.UpdateLayout();
+
+            tc.HasOverflow.Should().BeTrue("420px cannot hold 11 tabs");
+            var chev = tc.GetVisualDescendants().OfType<Button>()
+                .First(b => b.Name == "PART_OverflowButton");
+            var hidden = tc.HiddenItems.ToHashSet();
+            var lastVisible = tc.Items.OfType<TabItem>()
+                .Where(t => !hidden.Contains(t))
+                .OrderBy(t => t.TranslatePoint(new Point(0, 0), tc)!.Value.X)
+                .Last();
+
+            var lastRight = lastVisible.TranslatePoint(new Point(0, 0), tc)!.Value.X + lastVisible.Bounds.Width;
+            var chevLeft = chev.TranslatePoint(new Point(0, 0), tc)!.Value.X;
+            chevLeft.Should().BeApproximately(lastRight, 1.0,
+                $"the chevron should sit against the last visible tab, not after a dead gap " +
+                $"(lastRight={lastRight:F1} chevLeft={chevLeft:F1})");
+        }
+        finally { win.Close(); }
+    }
+
+    /// <summary>A tab whose natural width lands within a pixel of the remaining slot must
+    /// still be shown. Measure and arrange each round their own numbers to device pixels, so
+    /// a strict comparison lets the arrange pass evict a tab that measure had budgeted room
+    /// for — which then lights the chevron on a strip that visibly has room.</summary>
+    [AvaloniaTheory]
+    [InlineData(0.0)]
+    [InlineData(0.25)]
+    [InlineData(0.5)]
+    [InlineData(0.75)]
+    public void TabWidthsThatExactlyFillTheSlot_DoNotOverflow(double slack)
+    {
+        var tc = new OverflowTabControl { Classes = { "overflowtabs" } };
+        for (int i = 0; i < 9; i++) tc.Items.Add(new TabItem { Header = $"T{i}", Width = 100 });
+
+        var border = new Border { Width = 1400, Height = 50, Child = tc };
+        var win = new Window { Width = 1800, Height = 200, Content = border };
+        win.Show();
+        try
+        {
+            win.UpdateLayout();
+            win.UpdateLayout();
+            var inner = tc.GetVisualDescendants().OfType<OverflowTabsPanel>().First();
+            var natural = inner.NaturalWidth;
+
+            // Shrink the host to exactly (natural + chrome): 20px for the empty Tag content
+            // presenter's margin plus 10px of ItemsLeftPad. The strip now fills its slot to
+            // the pixel — the boundary where measure/arrange rounding drift used to evict
+            // the last tab and light the chevron.
+            border.Width = natural + 20 + 10 + slack;
+            win.UpdateLayout();
+            win.UpdateLayout();
+            win.UpdateLayout();
+
+            tc.HasOverflow.Should().BeFalse(
+                $"the 9 tabs ({natural:F2}px) exactly fill their slot at host width " +
+                $"{border.Width:F2}; visible={inner.VisibleWidth:F2} hidden={tc.HiddenItems.Count}");
+        }
+        finally { win.Close(); }
+    }
+
+    /// <summary>Collapsed tabs — the SOAP sub-tab is IsVisible=false on every non-SOAP
+    /// request — take no width and must never count as overflow. Reporting one would light
+    /// the chevron on a strip with room to spare and put a blank entry in its menu.</summary>
+    [AvaloniaFact]
+    public void CollapsedTabs_NeverCountAsOverflow()
+    {
+        var tc = new OverflowTabControl { Classes = { "overflowtabs" } };
+        for (int i = 0; i < 4; i++) tc.Items.Add(new TabItem { Header = $"T{i}" });
+        // Two collapsed tabs sitting at the end of the strip, like SOAP does.
+        tc.Items.Add(new TabItem { Header = "SOAP", IsVisible = false });
+        tc.Items.Add(new TabItem { Header = "Hidden", IsVisible = false });
+
+        var (_, win) = Host(tc, 900);
+        try
+        {
+            tc.HasOverflow.Should().BeFalse("collapsed tabs occupy no width");
+            tc.HiddenItems.Should().BeEmpty(
+                "a collapsed tab isn't 'overflowed' — surfacing it in the menu would offer a blank entry");
+        }
+        finally { win.Close(); }
+    }
+
+    /// <summary>Repeated layout passes must land on the same overflow answer. The header
+    /// panel measures the items presenter twice per pass (once to learn the natural width,
+    /// once with the real slot), so a disagreement between those two shows up as the chevron
+    /// blinking on and off across passes.</summary>
+    [AvaloniaFact]
+    public void OverflowState_IsStableAcrossLayoutPasses()
+    {
+        var tc = new OverflowTabControl { Classes = { "overflowtabs" } };
+        string[] labels = { "Params", "Authorization", "Headers", "Vars", "Body",
+                            "Pre-request", "Post-response", "Tests", "Docs", "Settings", "Sent" };
+        foreach (var l in labels) tc.Items.Add(new TabItem { Header = l });
+
+        var host = new Border { Width = 400, Height = 50, Child = tc };
+        var win = new Window { Width = 1600, Height = 200, Content = host };
+        win.Show();
+        try
+        {
+            for (double w = 300; w <= 1500; w += 20)
+            {
+                host.Width = w;
+                win.UpdateLayout();
+                win.UpdateLayout();
+                var settled = (tc.HasOverflow, tc.HiddenItems.Count);
+                win.UpdateLayout();
+                win.UpdateLayout();
+                (tc.HasOverflow, tc.HiddenItems.Count).Should().Be(settled,
+                    $"overflow must settle at width {w}, not alternate between layout passes");
             }
         }
         finally { win.Close(); }

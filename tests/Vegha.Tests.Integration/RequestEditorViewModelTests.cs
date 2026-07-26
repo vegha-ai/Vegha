@@ -310,8 +310,8 @@ public class RequestEditorViewModelTests : IAsyncLifetime
             .RespondWith(Response.Create().WithStatusCode(200));
 
         _vm.Url = $"{_server.Url}/secure";
-        _vm.AuthType = "bearer";
-        _vm.BearerToken = "abc123";
+        _vm.Auth.AuthType = "bearer";
+        _vm.Auth.BearerToken = "abc123";
 
         await _vm.SendCommand.ExecuteAsync(null);
 
@@ -328,9 +328,9 @@ public class RequestEditorViewModelTests : IAsyncLifetime
             .RespondWith(Response.Create().WithStatusCode(200));
 
         _vm.Url = $"{_server.Url}/secure";
-        _vm.AuthType = "basic";
-        _vm.BasicUsername = "alice";
-        _vm.BasicPassword = "s3cret";
+        _vm.Auth.AuthType = "basic";
+        _vm.Auth.BasicUsername = "alice";
+        _vm.Auth.BasicPassword = "s3cret";
 
         await _vm.SendCommand.ExecuteAsync(null);
 
@@ -544,11 +544,11 @@ public class RequestEditorViewModelTests : IAsyncLifetime
             .RespondWith(Response.Create().WithStatusCode(200).WithBody("signed"));
 
         _vm.Url = $"{_server.Url}/api/data";
-        _vm.AuthType = "awsv4";
-        _vm.AwsAccessKeyId = "AKIDEXAMPLE";
-        _vm.AwsSecretAccessKey = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY";
-        _vm.AwsRegion = "us-east-1";
-        _vm.AwsService = "execute-api";
+        _vm.Auth.AuthType = "awsv4";
+        _vm.Auth.AwsAccessKeyId = "AKIDEXAMPLE";
+        _vm.Auth.AwsSecretAccessKey = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY";
+        _vm.Auth.AwsRegion = "us-east-1";
+        _vm.Auth.AwsService = "execute-api";
 
         await _vm.SendCommand.ExecuteAsync(null);
 
@@ -611,12 +611,12 @@ public class RequestEditorViewModelTests : IAsyncLifetime
             .RespondWith(Response.Create().WithStatusCode(200).WithBody("ok"));
 
         _vm.Url = $"{_server.Url}/api/data";
-        _vm.AuthType = "oauth2";
-        _vm.OAuth2GrantType = "client_credentials";
-        _vm.OAuth2TokenUrl = $"{_server.Url}/oauth/token";
-        _vm.OAuth2ClientId = "cid";
-        _vm.OAuth2ClientSecret = "csec";
-        _vm.OAuth2CredentialsPlacement = "body";
+        _vm.Auth.AuthType = "oauth2";
+        _vm.Auth.OAuth2GrantType = "client_credentials";
+        _vm.Auth.OAuth2TokenUrl = $"{_server.Url}/oauth/token";
+        _vm.Auth.OAuth2ClientId = "cid";
+        _vm.Auth.OAuth2ClientSecret = "csec";
+        _vm.Auth.OAuth2CredentialsPlacement = "body";
 
         await _vm.SendCommand.ExecuteAsync(null);
 
@@ -634,10 +634,10 @@ public class RequestEditorViewModelTests : IAsyncLifetime
         // No matcher for /api/data — if it were sent it'd 404. We assert it was NOT sent.
 
         _vm.Url = $"{_server.Url}/api/data";
-        _vm.AuthType = "oauth2";
-        _vm.OAuth2TokenUrl = $"{_server.Url}/oauth/token";
-        _vm.OAuth2ClientId = "cid";
-        _vm.OAuth2ClientSecret = "csec";
+        _vm.Auth.AuthType = "oauth2";
+        _vm.Auth.OAuth2TokenUrl = $"{_server.Url}/oauth/token";
+        _vm.Auth.OAuth2ClientId = "cid";
+        _vm.Auth.OAuth2ClientSecret = "csec";
 
         await _vm.SendCommand.ExecuteAsync(null);
 
@@ -655,10 +655,10 @@ public class RequestEditorViewModelTests : IAsyncLifetime
             .RespondWith(Response.Create().WithStatusCode(200));
 
         _vm.Url = $"{_server.Url}/secure";
-        _vm.AuthType = "apikey";
-        _vm.ApiKeyName = "X-API-Key";
-        _vm.ApiKeyValue = "secret";
-        _vm.ApiKeyPlacement = "header";
+        _vm.Auth.AuthType = "apikey";
+        _vm.Auth.ApiKeyName = "X-API-Key";
+        _vm.Auth.ApiKeyValue = "secret";
+        _vm.Auth.ApiKeyPlacement = "header";
 
         await _vm.SendCommand.ExecuteAsync(null);
 
@@ -675,10 +675,10 @@ public class RequestEditorViewModelTests : IAsyncLifetime
             .RespondWith(Response.Create().WithStatusCode(200));
 
         _vm.Url = $"{_server.Url}/secure";
-        _vm.AuthType = "apikey";
-        _vm.ApiKeyName = "api_key";
-        _vm.ApiKeyValue = "secret";
-        _vm.ApiKeyPlacement = "queryparams";
+        _vm.Auth.AuthType = "apikey";
+        _vm.Auth.ApiKeyName = "api_key";
+        _vm.Auth.ApiKeyValue = "secret";
+        _vm.Auth.ApiKeyPlacement = "queryparams";
 
         await _vm.SendCommand.ExecuteAsync(null);
 
@@ -696,8 +696,8 @@ public class RequestEditorViewModelTests : IAsyncLifetime
 
         _vm.EnvironmentVariables = new Dictionary<string, string> { ["jwt"] = "from-env" };
         _vm.Url = $"{_server.Url}/secure";
-        _vm.AuthType = "bearer";
-        _vm.BearerToken = "{{jwt}}";
+        _vm.Auth.AuthType = "bearer";
+        _vm.Auth.BearerToken = "{{jwt}}";
 
         await _vm.SendCommand.ExecuteAsync(null);
 

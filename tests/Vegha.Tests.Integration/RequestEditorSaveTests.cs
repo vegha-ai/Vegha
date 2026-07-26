@@ -97,8 +97,8 @@ public class RequestEditorSaveTests : IDisposable
 
         _vm.LoadFromRequestItem(new RequestItem { Name = "secured", Url = "https://x", Method = "GET" }, path);
 
-        _vm.AuthType = "bearer";
-        _vm.BearerToken = "tok-from-ui";
+        _vm.Auth.AuthType = "bearer";
+        _vm.Auth.BearerToken = "tok-from-ui";
         await _vm.SaveCommand.ExecuteAsync(null);
 
         var written = await File.ReadAllTextAsync(path);

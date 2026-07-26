@@ -100,7 +100,7 @@
                             <MenuItem Header="Run" Click="OnHeaderRun_Click">
                                 <MenuItem.Icon><icons:Icon Kind="Play" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
                             </MenuItem>
-                            <MenuItem Header="Clone" Click="OnHeaderClone_Click">
+                            <MenuItem Header="Clone…" Click="OnHeaderClone_Click">
                                 <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
                             </MenuItem>
                             <MenuItem Header="Rename" Click="OnHeaderRename_Click">
@@ -204,9 +204,9 @@
                         <MenuItem.Icon><icons:Icon Kind="Play" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem Header="Clone"
-                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CloneNodeCommand}"
-                              CommandParameter="{Binding}">
+                    <MenuItem Header="Clone…"
+                              Tag="{Binding}"
+                              Click="OnTreeClone_Click">
                         <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
                     </MenuItem>
                     <MenuItem Header="Rename" InputGesture="F2"
@@ -225,7 +225,7 @@
                               CommandParameter="{Binding}">
                         <MenuItem.Icon><icons:Icon Kind="Paste" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem Header="Properties..."
+                    <MenuItem Header="Settings"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenCollectionSettingsCommand}"
                               CommandParameter="{Binding}">
                         <MenuItem.Icon><icons:Icon Kind="Settings" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
@@ -271,9 +271,9 @@
                         <MenuItem.Icon><icons:Icon Kind="Play" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem Header="Clone"
-                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CloneNodeCommand}"
-                              CommandParameter="{Binding}">
+                    <MenuItem Header="Clone…"
+                              Tag="{Binding}"
+                              Click="OnTreeClone_Click">
                         <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
                     </MenuItem>
                     <MenuItem Header="Copy"
@@ -292,7 +292,7 @@
                         <MenuItem.Icon><icons:Icon Kind="Pencil" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
                     </MenuItem>
                     <Separator />
-                    <MenuItem Header="Properties..."
+                    <MenuItem Header="Settings"
                               Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).OpenFolderSettingsCommand}"
                               CommandParameter="{Binding}">
                         <MenuItem.Icon><icons:Icon Kind="Settings" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
@@ -327,9 +327,9 @@
                               CommandParameter="{Binding}">
                         <MenuItem.Icon><icons:Icon Kind="FileText" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
                     </MenuItem>
-                    <MenuItem Header="Clone"
-                              Command="{Binding $parent[TreeView].((vm:CollectionsViewModel)DataContext).CloneNodeCommand}"
-                              CommandParameter="{Binding}">
+                    <MenuItem Header="Clone…"
+                              Tag="{Binding}"
+                              Click="OnTreeClone_Click">
                         <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
                     </MenuItem>
                     <MenuItem Header="Copy"

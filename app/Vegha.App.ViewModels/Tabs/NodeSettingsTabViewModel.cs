@@ -50,6 +50,21 @@ public sealed partial class NodeSettingsTabViewModel : RequestTabViewModel
         ? "Runs after every request in this collection. Use test('name', fn) and expect(actual)."
         : "Runs after every request in this folder. Use test('name', fn) and expect(actual).";
 
+    // Empty-state subtitles for the script panes. One sentence saying what appears here and
+    // how to make it appear — the designed empty state, not a watermark in the editor.
+
+    public string PreRequestEmptyHint => IsCollection
+        ? "Start typing to run JavaScript before every request in this collection."
+        : "Start typing to run JavaScript before every request in this folder.";
+
+    public string PostResponseEmptyHint => IsCollection
+        ? "Start typing to run JavaScript after every response in this collection."
+        : "Start typing to run JavaScript after every response in this folder.";
+
+    public string TestsEmptyHint => IsCollection
+        ? "Start typing to assert against every response in this collection — test('status is 200', () => expect(res.getStatus()).to.equal(200))."
+        : "Start typing to assert against every response in this folder — test('status is 200', () => expect(res.getStatus()).to.equal(200)).";
+
     /// <summary>The editing surface. Reassigned on rehydrate after a save, so it raises
     /// PropertyChanged for the bound content to re-bind.</summary>
     [ObservableProperty]
@@ -74,11 +89,6 @@ public sealed partial class NodeSettingsTabViewModel : RequestTabViewModel
 
     public static string BuildId(NodePropertiesViewModel.Kind kind, string path) =>
         (kind == NodePropertiesViewModel.Kind.Collection ? "colsettings:" : "foldersettings:") + path;
-
-    /// <summary>Collection-tab ids are persisted in the session file as
-    /// <c>colsettings:&lt;path&gt;</c> — keep the shape existing callers depend on.</summary>
-    public static string BuildId(string collectionSourcePath) =>
-        BuildId(NodePropertiesViewModel.Kind.Collection, collectionSourcePath);
 
     public NodeSettingsTabViewModel(CollectionsViewModel collections, CollectionRootViewModel root)
     {

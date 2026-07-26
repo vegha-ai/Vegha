@@ -243,8 +243,9 @@ public class RequestPipelineTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task UnsupportedAuth_returns_clear_error_without_calling_HTTP()
+    public async Task OAuth2_without_an_acquirer_errors_instead_of_sending_unauthenticated()
     {
+        // No acquirer passed → the runner must refuse rather than silently drop the auth.
         _server.Given(Request.Create().WithPath("/anything").UsingAnyMethod())
             .RespondWith(Response.Create().WithStatusCode(200));
 
@@ -258,7 +259,64 @@ public class RequestPipelineTests : IAsyncLifetime
 
         result.StatusCode.Should().Be(0);
         result.ErrorMessage.Should().NotBeNull();
-        result.ErrorMessage!.Should().Contain("OAuth2").And.Contain("not supported");
+        result.ErrorMessage!.Should().Contain("OAuth2");
+    }
+
+    [Fact]
+    public async Task OAuth2_acquires_a_token_and_sends_it()
+    {
+        _server.Given(Request.Create().WithPath("/oauth/token").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithBody("{\"access_token\":\"runner-token\",\"expires_in\":3600}"));
+        _server.Given(Request.Create().WithPath("/anything")
+                .WithHeader("Authorization", "Bearer runner-token").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200));
+
+        var auth = new AuthConfig
+        {
+            Type = AuthType.OAuth2,
+            Parameters = new Dictionary<string, string>
+            {
+                ["grant_type"] = "client_credentials",
+                ["access_token_url"] = _server.Urls[0] + "/oauth/token",
+                ["client_id"] = "cid",
+                ["client_secret"] = "csec",
+            },
+        };
+        var inputs = BuildInputs("GET", _server.Urls[0] + "/anything", auth: auth);
+
+        using var oauthClient = new HttpClient();
+        var result = await RequestPipeline.ExecuteAsync(
+            inputs, _http, _script, default, new OAuth2TokenAcquirer(oauthClient));
+
+        result.ErrorMessage.Should().BeNull();
+        result.StatusCode.Should().Be(200);
+    }
+
+    [Fact]
+    public async Task AwsV4_signs_the_request()
+    {
+        _server.Given(Request.Create().WithPath("/anything").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200));
+
+        var auth = new AuthConfig
+        {
+            Type = AuthType.AwsV4,
+            Parameters = new Dictionary<string, string>
+            {
+                ["accessKeyId"] = "AKIDEXAMPLE",
+                ["secretAccessKey"] = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+                ["region"] = "us-east-1",
+                ["service"] = "execute-api",
+            },
+        };
+        var inputs = BuildInputs("GET", _server.Urls[0] + "/anything", auth: auth);
+        var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
+
+        result.StatusCode.Should().Be(200);
+        result.RequestHeaders.Should().Contain(h =>
+            h.Key == "Authorization" && h.Value.StartsWith("AWS4-HMAC-SHA256"));
+        result.RequestHeaders.Should().Contain(h => h.Key == "X-Amz-Date");
     }
 
     [Fact]

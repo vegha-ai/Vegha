@@ -16,12 +16,16 @@ public partial class RenameDialog : Window
         Opened += (_, _) => this.RemoveMinimizeMaximize();
     }
 
-    public RenameDialog(string title, string label, string currentName)
+    /// <param name="confirmLabel">Text for the primary button. Defaults to "Rename"; callers that
+    /// reuse this prompt for another action (cloning, for instance) pass their own verb so the
+    /// button doesn't contradict the dialog.</param>
+    public RenameDialog(string title, string label, string currentName, string confirmLabel = "Rename")
     {
         InitializeComponent();
         Opened += (_, _) => this.RemoveMinimizeMaximize();
         Title = title;
         LabelText.Text = label;
+        ConfirmButton.Content = confirmLabel;
         NameBox.Text = currentName;
         NameBox.SelectAll();
         Opened += (_, _) => NameBox.Focus();

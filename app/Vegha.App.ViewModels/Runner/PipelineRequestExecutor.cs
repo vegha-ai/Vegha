@@ -23,6 +23,10 @@ public sealed class PipelineRequestExecutor
     private readonly bool _turnOffLogs;
     private readonly bool _keepVariableValues;
 
+    /// <summary>Lets the runner acquire OAuth2 tokens, so a collection-level OAuth2 block works
+    /// in a run exactly as it does in the editor. Null → OAuth2 configs surface as an error.</summary>
+    private readonly OAuth2TokenAcquirer? _oauth2;
+
     /// <summary>Per-iteration accumulator of runtime vars set by <c>bru.setVar</c> in earlier
     /// requests of that same iteration. Keyed by iteration index so workers don't trample
     /// each other when <see cref="RunnerOptions.Workers"/> > 1.</summary>
@@ -35,10 +39,12 @@ public sealed class PipelineRequestExecutor
         Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null,
         bool persistResponses = true,
         bool turnOffLogs = false,
-        bool keepVariableValues = true)
+        bool keepVariableValues = true,
+        OAuth2TokenAcquirer? oauth2 = null)
     {
         _http = http;
         _scripting = scripting;
+        _oauth2 = oauth2;
         _workspace = workspace ?? RequestComposition.WorkspaceContext.Empty;
         _secretRegistry = secretRegistry;
         _persistResponses = persistResponses;
@@ -74,7 +80,7 @@ public sealed class PipelineRequestExecutor
                 IterationVariables: overlayVars,
                 Workspace: _workspace);
 
-            var outputs = await RequestPipeline.ExecuteAsync(inputs, _http, _scripting, ct).ConfigureAwait(false);
+            var outputs = await RequestPipeline.ExecuteAsync(inputs, _http, _scripting, ct, _oauth2).ConfigureAwait(false);
 
             // Carry variable mutations forward only when "Keep variable values" is on. When off,
             // each request starts from the iteration's data row with no chained-in overlay.

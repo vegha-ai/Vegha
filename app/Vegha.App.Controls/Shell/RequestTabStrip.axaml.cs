@@ -15,6 +15,11 @@ public partial class RequestTabStrip : UserControl
     /// tab so consecutive clicks visibly jump rather than nudge.</summary>
     private const double ScrollStep = 160;
 
+    /// <summary>Width of either "+" button (they're interchangeable, see
+    /// <see cref="UpdateOverflowChrome"/>). The overflow test reserves this much so the
+    /// inline "+" is never the thing that pushes the strip into scrolling.</summary>
+    private const double NewTabButtonWidth = 30;
+
     private OpenTabsViewModel? _attached;
 
     /// <summary>Raised by the "+" button and the tab menu's "New Request" entry. The host creates
@@ -41,7 +46,13 @@ public partial class RequestTabStrip : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
-        AttachedToVisualTree += (_, _) => UpdateScrollArrows();
+        AttachedToVisualTree += (_, _) => UpdateOverflowChrome();
+        // Overflow depends on two things only: how wide the strip is, and how wide the
+        // tab run is. Watching both directly (rather than LayoutUpdated) keeps the
+        // recompute off the app-wide layout hot path while still catching every cause —
+        // window resize, sidebar toggle, tab opened/closed, tab renamed.
+        StripRoot.SizeChanged += (_, _) => UpdateOverflowChrome();
+        TabsItemsControl.SizeChanged += (_, _) => UpdateOverflowChrome();
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -50,7 +61,7 @@ public partial class RequestTabStrip : UserControl
         _attached = DataContext as OpenTabsViewModel;
         if (_attached is not null) _attached.PropertyChanged += OnTabsPropertyChanged;
         // Initial scroll-arrow + active-tab sync once the bindings have settled.
-        Dispatcher.UIThread.Post(() => { UpdateScrollArrows(); ScrollActiveTabIntoView(); }, DispatcherPriority.Background);
+        Dispatcher.UIThread.Post(() => { UpdateOverflowChrome(); ScrollActiveTabIntoView(); }, DispatcherPriority.Background);
     }
 
     private void OnTabsPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -61,30 +72,51 @@ public partial class RequestTabStrip : UserControl
             Dispatcher.UIThread.Post(ScrollActiveTabIntoView, DispatcherPriority.Background);
     }
 
-    private void OnTabsScrollChanged(object? sender, ScrollChangedEventArgs e) => UpdateScrollArrows();
+    private void OnTabsScrollChanged(object? sender, ScrollChangedEventArgs e) => UpdateOverflowChrome();
 
-    /// <summary>Shows the left + right arrow buttons only while the strip actually overflows
-    /// its viewport — with few (or no) tabs the chevrons used to sit dimmed over an empty
-    /// gray band, which read as broken chrome. While overflowing, each arrow additionally
-    /// enables/disables based on whether there's content beyond the viewport on its side.</summary>
-    private void UpdateScrollArrows()
+    /// <summary>Decides which overflow chrome the strip shows: the scroll arrows, and which
+    /// of the two "+" buttons (inline-after-the-last-tab vs. pinned-far-right).
+    ///
+    /// The overflow test deliberately uses the tab run's own width against the strip width
+    /// — <em>not</em> the ScrollViewer's extent-vs-viewport — because extent and viewport
+    /// both move when we toggle the chrome, which would make the decision feed back into
+    /// itself and flip-flop across layout passes. Tab-run width and strip width are
+    /// independent of everything this method touches, so the result is stable.
+    ///
+    /// A "+" width is always reserved, so the inline "+" itself is never what tips the strip
+    /// into scrolling. The arrows' width is only subtracted once we've already decided the
+    /// strip overflows, for the same no-feedback reason.</summary>
+    private void UpdateOverflowChrome()
     {
-        if (TabsScrollViewer is null) return;
+        if (TabsScrollViewer is null || TabsItemsControl is null || StripRoot is null) return;
+
+        var stripWidth = StripRoot.Bounds.Width;
+        var tabsWidth = TabsItemsControl.Bounds.Width;
+        // Before the first real layout pass everything is zero — leave the chrome alone
+        // rather than briefly flashing the pinned "+".
+        if (stripWidth <= 0) return;
+
+        var overflows = tabsWidth > stripWidth - NewTabButtonWidth + 0.5;
+
+        if (NewTabButton is not null) NewTabButton.IsVisible = !overflows;
+        if (PinnedNewTabButton is not null) PinnedNewTabButton.IsVisible = overflows;
+
+        // While overflowing, each arrow additionally enables/disables based on whether
+        // there's content beyond the viewport on its side. With few (or no) tabs the
+        // arrows hide entirely — dimmed chevrons over an empty gray band read as broken
+        // chrome.
         var offset = TabsScrollViewer.Offset.X;
         var extent = TabsScrollViewer.Extent.Width;
         var viewport = TabsScrollViewer.Viewport.Width;
-        var overflows = extent > viewport + 0.5;
-        var canScrollLeft = offset > 0.5;
-        var canScrollRight = offset + viewport < extent - 0.5;
         if (ScrollLeftButton is not null)
         {
             ScrollLeftButton.IsVisible = overflows;
-            ScrollLeftButton.IsEnabled = canScrollLeft;
+            ScrollLeftButton.IsEnabled = offset > 0.5;
         }
         if (ScrollRightButton is not null)
         {
             ScrollRightButton.IsVisible = overflows;
-            ScrollRightButton.IsEnabled = canScrollRight;
+            ScrollRightButton.IsEnabled = offset + viewport < extent - 0.5;
         }
     }
 

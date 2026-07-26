@@ -21,7 +21,7 @@
                     Foreground="{DynamicResource Text0Brush}"
                     Padding="14,6" Margin="0,0,8,0"
                     CornerRadius="4" />
-            <Button Grid.Column="2" Content="Rename" Click="OnOk_Click"
+            <Button Grid.Column="2" x:Name="ConfirmButton" Content="Rename" Click="OnOk_Click"
                     IsDefault="True"
                     Background="{DynamicResource AccentBrush}"
                     Foreground="White"

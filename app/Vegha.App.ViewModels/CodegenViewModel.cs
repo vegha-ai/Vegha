@@ -68,11 +68,15 @@ public partial class CodegenViewModel : ObservableObject
             _boundEditor.PropertyChanged -= OnRequestChanged;
             _boundEditor.Headers.CollectionChanged -= OnCollectionChanged;
             _boundEditor.Params.CollectionChanged -= OnCollectionChanged;
+            _boundEditor.Auth.Changed -= OnAuthChanged;
         }
         _boundEditor = editor;
         _boundEditor.PropertyChanged += OnRequestChanged;
         _boundEditor.Headers.CollectionChanged += OnCollectionChanged;
         _boundEditor.Params.CollectionChanged += OnCollectionChanged;
+        // Auth lives on its own section VM now; any edit there changes the snippet, so take
+        // the whole change signal rather than tracking individual property names.
+        _boundEditor.Auth.Changed += OnAuthChanged;
         Refresh();  // immediate refresh on tab switch (no debounce)
     }
 
@@ -85,14 +89,9 @@ public partial class CodegenViewModel : ObservableObject
             nameof(RequestEditorViewModel.BodyContent),
             nameof(RequestEditorViewModel.GraphQLQuery),
             nameof(RequestEditorViewModel.GraphQLVariables),
-            nameof(RequestEditorViewModel.AuthType),
-            nameof(RequestEditorViewModel.BearerToken),
-            nameof(RequestEditorViewModel.BasicUsername),
-            nameof(RequestEditorViewModel.BasicPassword),
-            nameof(RequestEditorViewModel.ApiKeyName),
-            nameof(RequestEditorViewModel.ApiKeyValue),
-            nameof(RequestEditorViewModel.ApiKeyPlacement),
         };
+
+    private void OnAuthChanged(object? sender, EventArgs e) => ScheduleRefresh();
 
     private void OnRequestChanged(object? sender, PropertyChangedEventArgs e)
     {

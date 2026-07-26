@@ -11,12 +11,11 @@ namespace Vegha.Core.Requests;
 /// the HTTP call, and runs the post-response + tests scripts. Returns everything the caller
 /// needs to render a result without touching any UI types.
 ///
-/// This is the engine that powers the Collection Runner. The editor's <c>SendAsync</c> path
-/// is intentionally NOT refactored to use this yet — keeping them as siblings lets the runner
-/// land without destabilizing the editor's many auth flows. Auth coverage for v1: None /
-/// Inherit / Bearer / Basic / API Key. Auth types that require multi-step token acquisition or
-/// signing (OAuth1, OAuth2, AWS SigV4, Digest, NTLM, WSSE, mTLS) return an error result with
-/// a clear "unsupported in runner" message; the user can still run those via the editor tab.
+/// This is the engine that powers the Collection Runner. Auth is delegated wholesale to
+/// <see cref="AuthPreparer"/> — the same component the editor's <c>SendAsync</c> uses — so the
+/// runner supports every scheme the editor does, at every scope, with identical behavior.
+/// OAuth2 needs an <see cref="OAuth2TokenAcquirer"/> passed in; without one, an OAuth2 config
+/// surfaces as an error result rather than silently sending unauthenticated.
 /// </summary>
 public static class RequestPipeline
 {
@@ -71,7 +70,8 @@ public static class RequestPipeline
         Inputs inputs,
         HttpExecutor http,
         JintHost scripting,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        OAuth2TokenAcquirer? oauth2 = null)
     {
         var sw = Stopwatch.StartNew();
         var composed = RequestComposition.Compose(
@@ -130,45 +130,73 @@ public static class RequestPipeline
                 consoleAll);
         }
 
-        // 4. Resolve auth. Pipeline v1 supports None/Inherit/Bearer/Basic/ApiKey; anything else
-        //    is surfaced as an error so the user knows to run via the editor tab.
+        // 4. Resolve auth off the COMPOSED config, so a collection- or folder-level block
+        //    applies to every request under it exactly as the editor would apply it.
         var authToApply = composed.Auth ?? inputs.Request.Auth;
-        if (!IsSupportedAuth(authToApply))
-            return Failure(inputs, composed, sw.ElapsedMilliseconds,
-                $"Auth type {authToApply!.Type} not supported by Collection Runner v1. Run via the request editor.",
-                consoleAll);
+        PreparedAuth prepared;
+        try
+        {
+            prepared = await AuthPreparer
+                .PrepareAsync(authToApply, resolvedUrl, vars, oauth2, ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return Failure(inputs, composed, sw.ElapsedMilliseconds, "Canceled.", consoleAll);
+        }
+        if (prepared.IsError)
+            return Failure(inputs, composed, sw.ElapsedMilliseconds, prepared.ErrorMessage!, consoleAll);
 
-        var authResult = AuthApplier.Apply(authToApply, resolvedUrl, vars);
-        if (!Uri.TryCreate(authResult.Url, UriKind.Absolute, out var uri))
+        if (!Uri.TryCreate(prepared.Url, UriKind.Absolute, out var uri))
             return Failure(inputs, composed, sw.ElapsedMilliseconds,
-                $"URL is not a valid absolute URI: {authResult.Url}", consoleAll);
+                $"URL is not a valid absolute URI: {prepared.Url}", consoleAll);
 
         // 5. Compose body + headers (composed-inheritance headers + auth-emitted headers + request-level).
         var (body, contentType) = ComposeBody(inputs.Request.Body, vars);
         var headerList = ComposeHeaders(composed.Headers, vars);
-        foreach (var h in authResult.Headers) headerList.Add(h);
+        foreach (var h in prepared.Headers) headerList.Add(h);
         if (!string.IsNullOrEmpty(contentType)
             && !headerList.Any(h => string.Equals(h.Key, "Content-Type", StringComparison.OrdinalIgnoreCase)))
         {
             headerList.Add(new KeyValuePair<string, string>("Content-Type", contentType!));
         }
 
+        // Signatures computed over the final request (AWS SigV4 / OAuth1 / WSSE).
+        var method = string.IsNullOrEmpty(inputs.Request.Method) ? "GET" : inputs.Request.Method.ToUpperInvariant();
+        AuthPreparer.ApplySignatures(authToApply, method, uri, headerList, body ?? string.Empty, vars);
+
         // 6. HTTP send.
+        var options = new HttpRequestOptions(
+            FollowRedirects: inputs.Request.Settings.FollowRedirects,
+            VerifySsl: inputs.Request.Settings.VerifySsl,
+            UseCookies: inputs.Request.Settings.SendCookies,
+            NtlmCredential: prepared.NtlmCredential);
+
         var execRequest = new HttpExecutionRequest(
-            Method: new HttpMethod(string.IsNullOrEmpty(inputs.Request.Method) ? "GET" : inputs.Request.Method.ToUpperInvariant()),
+            Method: new HttpMethod(method),
             Url: uri,
             Headers: headerList,
             Body: body,
             ContentType: contentType,
-            Options: new HttpRequestOptions(
-                FollowRedirects: inputs.Request.Settings.FollowRedirects,
-                VerifySsl: inputs.Request.Settings.VerifySsl,
-                UseCookies: inputs.Request.Settings.SendCookies));
+            Options: options);
 
         HttpExecutionResult httpResult;
         try
         {
             httpResult = await http.ExecuteAsync(execRequest, ct).ConfigureAwait(false);
+
+            // Digest is challenge/response: the first leg surfaces realm + nonce, the retry
+            // carries the computed Authorization. Same two-leg dance the editor performs.
+            if (httpResult.StatusCode == 401 && AuthPreparer.UsesDigest(authToApply))
+            {
+                var retry = AuthPreparer.BuildDigestRetry(authToApply, httpResult.Headers, method, uri, vars);
+                if (retry is not null)
+                {
+                    headerList.Add(new KeyValuePair<string, string>("Authorization", retry));
+                    httpResult = await http.ExecuteAsync(
+                        execRequest with { Headers = headerList }, ct).ConfigureAwait(false);
+                }
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -247,14 +275,6 @@ public static class RequestPipeline
     }
 
     // ----- helpers ----------------------------------------------------------
-
-    private static bool IsSupportedAuth(AuthConfig? auth) =>
-        auth is null
-        || auth.Type is AuthType.None
-                     or AuthType.Inherit
-                     or AuthType.Bearer
-                     or AuthType.Basic
-                     or AuthType.ApiKey;
 
     private static Outputs Failure(
         Inputs in_, RequestComposition.Composed composed, long elapsedMs,

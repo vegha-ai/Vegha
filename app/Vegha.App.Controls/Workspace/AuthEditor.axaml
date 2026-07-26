@@ -7,7 +7,7 @@
              xmlns:cmn="using:Vegha.App.Controls.Common"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="320"
              x:Class="Vegha.App.Controls.Workspace.AuthEditor"
-             x:DataType="vm:RequestEditorViewModel">
+             x:DataType="vm:AuthSectionViewModel">
     <ScrollViewer Background="{DynamicResource Bg2Brush}">
         <DockPanel>
             <!-- Type selector -->
@@ -30,10 +30,10 @@
                     </StackPanel>
 
                     <!-- Inherited-from hint + Override action -->
-                    <ws:InheritedBanner IsVisible="{Binding IsAuthInherited}"
-                                        InheritedFrom="{Binding AuthInheritedFrom}"
-                                        OverrideCommand="{Binding OverrideInheritedAuthCommand}"
-                                        ToolTip.Tip="Materialize the inherited auth onto this request" />
+                    <ws:InheritedBanner IsVisible="{Binding IsInherited}"
+                                        InheritedFrom="{Binding InheritedFrom}"
+                                        OverrideCommand="{Binding OverrideInheritedCommand}"
+                                        ToolTip.Tip="Copy the inherited auth here and stop inheriting" />
                 </StackPanel>
             </Border>
 
@@ -41,13 +41,15 @@
             <StackPanel Margin="14,12" Spacing="10">
 
                 <!-- None -->
-                <TextBlock Text="No authentication will be applied to this request."
+                <TextBlock Text="{Binding NoneDescription}"
                            FontSize="11" FontStyle="Italic"
                            Foreground="{DynamicResource Text3Brush}"
+                           TextWrapping="Wrap"
                            IsVisible="{Binding AuthType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=none}" />
 
-                <!-- Inherit -->
-                <TextBlock Text="Auth is inherited from the parent folder or collection. (Inherited resolution lands in a later MVP iteration — for now this acts like 'none'.)"
+                <!-- Inherit — resolution is real: RequestComposition walks request → folders →
+                     collection and the nearest concrete block wins, whatever its type. -->
+                <TextBlock Text="{Binding InheritDescription}"
                            FontSize="11" FontStyle="Italic"
                            Foreground="{DynamicResource Text3Brush}"
                            TextWrapping="Wrap"
@@ -407,12 +409,12 @@
                                                              Foreground="{DynamicResource Text0Brush}"
                                                              Padding="6,3" CornerRadius="3" Margin="0,0,4,0" />
                                                     <ComboBox Grid.Column="2" SelectedItem="{Binding SendIn, Mode=TwoWay}"
-                                                              ItemsSource="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).AvailableOAuth2ParamSendIn}"
+                                                              ItemsSource="{Binding $parent[UserControl].((vm:AuthSectionViewModel)DataContext).AvailableOAuth2ParamSendIn}"
                                                               Height="26" FontSize="11"
                                                               Background="{DynamicResource Bg3Brush}"
                                                               BorderBrush="{DynamicResource Border1Brush}" />
                                                     <Button Grid.Column="3"
-                                                            Command="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).RemoveOAuth2TokenParameterCommand}"
+                                                            Command="{Binding $parent[UserControl].((vm:AuthSectionViewModel)DataContext).RemoveOAuth2TokenParameterCommand}"
                                                             CommandParameter="{Binding}"
                                                             IsVisible="{Binding !IsBlank}"
                                                             Background="Transparent" BorderThickness="0"
@@ -454,12 +456,12 @@
                                                              Foreground="{DynamicResource Text0Brush}"
                                                              Padding="6,3" CornerRadius="3" Margin="0,0,4,0" />
                                                     <ComboBox Grid.Column="2" SelectedItem="{Binding SendIn, Mode=TwoWay}"
-                                                              ItemsSource="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).AvailableOAuth2ParamSendIn}"
+                                                              ItemsSource="{Binding $parent[UserControl].((vm:AuthSectionViewModel)DataContext).AvailableOAuth2ParamSendIn}"
                                                               Height="26" FontSize="11"
                                                               Background="{DynamicResource Bg3Brush}"
                                                               BorderBrush="{DynamicResource Border1Brush}" />
                                                     <Button Grid.Column="3"
-                                                            Command="{Binding $parent[UserControl].((vm:RequestEditorViewModel)DataContext).RemoveOAuth2RefreshParameterCommand}"
+                                                            Command="{Binding $parent[UserControl].((vm:AuthSectionViewModel)DataContext).RemoveOAuth2RefreshParameterCommand}"
                                                             CommandParameter="{Binding}"
                                                             IsVisible="{Binding !IsBlank}"
                                                             Background="Transparent" BorderThickness="0"

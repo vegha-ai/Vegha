@@ -103,7 +103,8 @@ internal static class ServiceRegistration
                 sp.GetRequiredService<ILogger<CollectionsViewModel>>(),
                 sp.GetRequiredService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>(),
                 sp.GetRequiredService<HttpExecutor>(),
-                sp.GetRequiredService<Vegha.Core.Persistence.RecentItemsStore>());
+                sp.GetRequiredService<Vegha.Core.Persistence.RecentItemsStore>(),
+                sp.GetRequiredService<OAuth2TokenAcquirer>());
             // Let OpenTabs read the current env snapshot at tab-build time so drafts /
             // dialog-created / restored tabs show resolved {{var}} immediately, not on
             // the next env switch.

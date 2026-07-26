@@ -26,7 +26,18 @@
         <Style Selector="Button.scrollArrow:disabled">
             <Setter Property="Opacity" Value="0.25" />
         </Style>
-        <Style Selector="Button#NewTabButton:pointerover /template/ ContentPresenter">
+        <Style Selector="Button.newTab">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.newTab:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
         </Style>
     </UserControl.Styles>
@@ -34,7 +45,20 @@
             BorderBrush="{DynamicResource Border0Brush}"
             BorderThickness="0,0,0,1"
             Height="36">
-        <DockPanel>
+        <DockPanel x:Name="StripRoot">
+            <!-- Pinned "+" — parked at the far right, shown *only* while the strip
+                 overflows. Once tabs start scrolling the inline "+" would be somewhere
+                 off-viewport, so the pinned twin takes over and "new request" stays one
+                 click away no matter how many tabs are open. Exactly one of the two "+"
+                 buttons is ever visible (see UpdateOverflowChrome). -->
+            <Button DockPanel.Dock="Right"
+                    x:Name="PinnedNewTabButton"
+                    Classes="newTab"
+                    IsVisible="False"
+                    Click="OnNewTab_Click"
+                    ToolTip.Tip="New request (Ctrl+T)">
+                <TextBlock Text="+" FontSize="16" FontWeight="SemiBold" />
+            </Button>
             <!-- Right scroll arrow — only enabled when there's content to the right of the
                  viewport. Click scrolls by one tab-width-ish chunk. -->
             <Button DockPanel.Dock="Right"
@@ -166,18 +190,13 @@
                 </ItemsControl>
                 <!-- Inline "+" — sits right after the last tab (browser-style) rather than
                      docked at the far edge, so opening a new tab is one short mouse travel
-                     from the tab the user just interacted with. Scrolls with the strip;
-                     ScrollNewTabButtonIntoView keeps it reachable when tabs overflow. -->
+                     from the tab the user just interacted with. It scrolls with the strip,
+                     so it's hidden as soon as the strip overflows and PinnedNewTabButton
+                     takes over at the far right. -->
                 <Button x:Name="NewTabButton"
+                        Classes="newTab"
                         Click="OnNewTab_Click"
-                        ToolTip.Tip="New request (Ctrl+T)"
-                        Background="Transparent" BorderThickness="0"
-                        Width="30" Height="36"
-                        Padding="0"
-                        Foreground="{DynamicResource Text2Brush}"
-                        HorizontalContentAlignment="Center"
-                        VerticalContentAlignment="Center"
-                        Cursor="Hand">
+                        ToolTip.Tip="New request (Ctrl+T)">
                     <TextBlock Text="+" FontSize="16" FontWeight="SemiBold" />
                 </Button>
                 </StackPanel>

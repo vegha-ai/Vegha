@@ -16,8 +16,16 @@ public abstract partial class RequestTabViewModel : ObservableObject
     /// file) can re-key the tab in place without a close/reopen.</summary>
     public string Id { get; set; } = string.Empty;
 
-    [ObservableProperty]
     private string _name = "Untitled";
+
+    /// <summary>Display label for the tab strip. Virtual so a tab whose name is genuinely owned
+    /// elsewhere (see <see cref="HttpRequestTabViewModel"/>, where the editor owns it) can delegate
+    /// rather than keep a second copy that has to be hand-synced back into place.</summary>
+    public virtual string Name
+    {
+        get => _name;
+        set => SetProperty(ref _name, value);
+    }
 
     [ObservableProperty]
     private string _method = "GET";

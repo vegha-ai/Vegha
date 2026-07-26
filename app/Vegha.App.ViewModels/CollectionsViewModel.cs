@@ -15,8 +15,13 @@ public partial class CollectionsViewModel : ObservableObject
     private readonly RequestEditorViewModel _requestEditor;
     private readonly Vegha.App.ViewModels.Tabs.OpenTabsViewModel? _openTabs;
     private readonly Vegha.Core.Requests.HttpExecutor? _httpExecutor;
+    private readonly Vegha.Core.Requests.OAuth2TokenAcquirer? _oauth2;
     private readonly Vegha.Core.Persistence.RecentItemsStore? _recentItems;
     private readonly ILogger<CollectionsViewModel> _logger;
+
+    /// <summary>Shared OAuth2 acquirer, handed to the collection/folder property tabs so their
+    /// auth panels can fetch tokens exactly like the request editor's does.</summary>
+    public Vegha.Core.Requests.OAuth2TokenAcquirer? OAuth2Acquirer => _oauth2;
 
     /// <summary>Live results of the most recent Run-collection / Run-folder invocation.
     /// The Collections panel surfaces these in a small dialog/list as the run progresses.</summary>
@@ -194,9 +199,11 @@ public partial class CollectionsViewModel : ObservableObject
         ILogger<CollectionsViewModel> logger,
         Vegha.App.ViewModels.Tabs.OpenTabsViewModel? openTabs = null,
         Vegha.Core.Requests.HttpExecutor? httpExecutor = null,
-        Vegha.Core.Persistence.RecentItemsStore? recentItems = null)
+        Vegha.Core.Persistence.RecentItemsStore? recentItems = null,
+        Vegha.Core.Requests.OAuth2TokenAcquirer? oauth2 = null)
     {
         _requestEditor = requestEditor;
+        _oauth2 = oauth2;
         _openTabs = openTabs;
         _httpExecutor = httpExecutor;
         _recentItems = recentItems;
@@ -1104,21 +1111,54 @@ public partial class CollectionsViewModel : ObservableObject
         await Task.CompletedTask;
     }
 
-    [RelayCommand]
-    private void CloneNode(CollectionNodeViewModel? node)
+    /// <summary>Raised after a request file is cloned, carrying the new file's path. The host
+    /// opens it in a tab so the user lands in the copy they just made.</summary>
+    public event EventHandler<string>? RequestFileCloned;
+
+    /// <summary>The name a clone of <paramref name="node"/> should be offered. Suffixes "(copy)"
+    /// and, when that's taken, "(copy) 2" and so on, so the prompt opens on a name that won't
+    /// collide.</summary>
+    public string SuggestCloneName(CollectionNodeViewModel? node)
     {
         var path = ResolveNodeFilePath(node);
-        if (string.IsNullOrEmpty(path) || node is null) return;
+        if (string.IsNullOrEmpty(path)) return string.Empty;
+        var dir = System.IO.Path.GetDirectoryName(path);
+        if (string.IsNullOrEmpty(dir)) return string.Empty;
+
+        if (File.Exists(path))
+        {
+            var ext = System.IO.Path.GetExtension(path);
+            return NextUniqueName(dir, System.IO.Path.GetFileNameWithoutExtension(path) + " (copy)", ext);
+        }
+        if (Directory.Exists(path))
+        {
+            var parent = System.IO.Path.GetDirectoryName(path) ?? dir;
+            return NextUniqueName(parent, System.IO.Path.GetFileName(path) + " (copy)", string.Empty);
+        }
+        return string.Empty;
+    }
+
+    [RelayCommand]
+    private void CloneNode(CollectionNodeViewModel? node) => CloneNodeAs(node, SuggestCloneName(node));
+
+    /// <summary>Clones <paramref name="node"/> under <paramref name="newName"/> and returns the new
+    /// path (null for folders / on failure). The name is supplied by the caller because the prompt
+    /// lives in the view layer; <see cref="SuggestCloneName"/> produces the default it seeds with.</summary>
+    public string? CloneNodeAs(CollectionNodeViewModel? node, string newName)
+    {
+        var path = ResolveNodeFilePath(node);
+        if (string.IsNullOrEmpty(path) || node is null || string.IsNullOrWhiteSpace(newName)) return null;
         try
         {
             var dir = System.IO.Path.GetDirectoryName(path);
-            if (string.IsNullOrEmpty(dir)) return;
+            if (string.IsNullOrEmpty(dir)) return null;
 
             if (File.Exists(path))
             {
                 var ext = System.IO.Path.GetExtension(path);
-                var stem = System.IO.Path.GetFileNameWithoutExtension(path);
-                var copyName = NextUniqueName(dir, stem + " (copy)", ext);
+                // Sanitize, then uniquify: the user can type anything at the prompt, including the
+                // name of a request that already exists here.
+                var copyName = NextUniqueName(dir, Sanitize(newName.Trim()), ext);
                 var dest = System.IO.Path.Combine(dir, copyName + ext);
                 File.Copy(path, dest);
                 // For .bru requests, rewrite the inner meta.name so the cloned tree node
@@ -1128,22 +1168,27 @@ public partial class CollectionsViewModel : ObservableObject
                     TryRewriteBruMetaName(dest, copyName);
                 StatusMessage = $"Cloned to “{copyName + ext}”.";
                 ReloadRootContaining(node);
+                RequestFileCloned?.Invoke(this, dest);
+                return dest;
             }
-            else if (Directory.Exists(path))
+            if (Directory.Exists(path))
             {
                 var parent = System.IO.Path.GetDirectoryName(path) ?? dir;
-                var leafName = System.IO.Path.GetFileName(path);
-                var copyName = NextUniqueName(parent, leafName + " (copy)", string.Empty);
+                var copyName = NextUniqueName(parent, Sanitize(newName.Trim()), string.Empty);
                 var dest = System.IO.Path.Combine(parent, copyName);
                 CopyDirectoryRecursive(path, dest);
+                UpdateFolderBruMetaName(dest, copyName);
                 StatusMessage = $"Cloned folder to “{copyName}”.";
                 ReloadRootContaining(node);
+                return dest;
             }
+            return null;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Clone failed for {Path}", path);
             StatusMessage = $"Clone failed: {ex.Message}";
+            return null;
         }
     }
 
@@ -1599,6 +1644,11 @@ public partial class CollectionsViewModel : ObservableObject
         }
     }
 
+    /// <summary>The owning collection plus the folder's ANCESTOR chain (outermost first,
+    /// excluding the folder itself) — the inheritance context a folder resolves against.</summary>
+    public (Collection? Collection, IReadOnlyList<Folder> OuterChain) ResolveOuterFolderChain(
+        CollectionFolderViewModel folderVm) => ResolveFolderChain(folderVm);
+
     private (Collection? Collection, IReadOnlyList<Folder> OuterChain) ResolveFolderChain(CollectionFolderViewModel folderVm)
     {
         foreach (var root in Roots.OfType<CollectionRootViewModel>())
@@ -1755,13 +1805,6 @@ public partial class CollectionsViewModel : ObservableObject
     public (Folder?, string?) GetFolderForSettings(CollectionFolderViewModel? folder) =>
         (folder?.Folder, folder is null ? null : FindRootOf(folder)?.SourcePath);
 
-    /// <summary>Raised when the user picks Properties on a FOLDER. The host (CollectionsPanel)
-    /// listens, opens the dialog, and on save calls <see cref="ApplyNodeSnapshot"/> to write
-    /// back to disk + reload. Collection-level settings no longer use this — they open a tab
-    /// via <see cref="CollectionSettingsTabRequested"/> so the main window shows the selected
-    /// collection's own info (design ethos), leaving dialogs for parent-scope editing.</summary>
-    public event EventHandler<NodePropertiesRequest>? NodePropertiesRequested;
-
     /// <summary>Raised when the user opens collection-level Settings. The host opens a
     /// Collection Settings workspace tab for the given root (Bruno-style Overview + Headers /
     /// Vars / Auth / Script / Tests / Docs / Presets).</summary>
@@ -1802,49 +1845,68 @@ public partial class CollectionsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Raised when the user picks Properties on a folder. The host opens (or
+    /// activates) a settings tab — the same surface collections get, so both scopes offer the
+    /// identical editors instead of a cut-down dialog.</summary>
+    public event EventHandler<CollectionFolderViewModel>? FolderSettingsTabRequested;
+
     [RelayCommand]
     private void OpenFolderSettings(CollectionFolderViewModel? folder)
     {
         if (folder?.Folder is null) { StatusMessage = "No folder selected."; return; }
-        NodePropertiesRequested?.Invoke(this,
-            new NodePropertiesRequest(null, folder));
+        FolderSettingsTabRequested?.Invoke(this, folder);
     }
 
-    /// <summary>Writes the edited collection or folder back to disk via BruMetaEmitter and
-    /// reloads the affected root so the in-memory tree picks up the change. Called by the
-    /// panel after the Properties dialog is dismissed with Save.</summary>
-    public void ApplyNodeSnapshot(NodePropertiesRequest source, NodeSnapshot snapshot)
+    /// <summary>Writes edited folder settings back to <c>folder.bru</c> and reloads the owning
+    /// root, resolving the folder by <paramref name="folderPath"/> because a prior reload swaps
+    /// the tree VM instances. Returns the freshly-reloaded folder VM.</summary>
+    public CollectionFolderViewModel? ApplyFolderSettings(string folderPath, NodeSnapshot snapshot)
     {
+        if (snapshot.Kind != NodePropertiesViewModel.Kind.Folder || snapshot.Folder is null)
+            return null;
+        var root = FindRootForDirectory(folderPath);
+        if (root is null) { StatusMessage = "Collection is no longer open."; return null; }
         try
         {
-            if (snapshot.Kind == NodePropertiesViewModel.Kind.Collection &&
-                source.Root is { Collection: not null } root && snapshot.Collection is not null)
-            {
-                var path = System.IO.Path.Combine(root.SourcePath, "collection.bru");
-                var text = Vegha.Core.Importers.BruMetaEmitter.EmitCollection(snapshot.Collection);
-                File.WriteAllText(path, text);
-                ReloadRootContaining(root);
-                StatusMessage = $"Saved collection properties → {root.Name}.";
-            }
-            else if (snapshot.Kind == NodePropertiesViewModel.Kind.Folder &&
-                source.Folder is not null && snapshot.Folder is not null)
-            {
-                var folderPath = source.Folder.Path;
-                if (string.IsNullOrEmpty(folderPath))
-                { StatusMessage = "Could not resolve folder path."; return; }
-                Directory.CreateDirectory(folderPath);
-                var path = System.IO.Path.Combine(folderPath, "folder.bru");
-                var text = Vegha.Core.Importers.BruMetaEmitter.EmitFolder(snapshot.Folder);
-                File.WriteAllText(path, text);
-                ReloadRootContaining(source.Folder);
-                StatusMessage = $"Saved folder properties → {source.Folder.Name}.";
-            }
+            Directory.CreateDirectory(folderPath);
+            var path = System.IO.Path.Combine(folderPath, "folder.bru");
+            File.WriteAllText(path, Vegha.Core.Importers.BruMetaEmitter.EmitFolder(snapshot.Folder));
+            ReloadRootContaining(root);
+            StatusMessage = $"Saved folder settings → {snapshot.Folder.Name}.";
+            return FindFolderByPath(folderPath);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Save node properties failed");
+            _logger.LogWarning(ex, "Save folder settings failed");
             StatusMessage = $"Save failed: {ex.Message}";
+            return null;
         }
+    }
+
+    /// <summary>Locates a folder node anywhere in the open tree by its directory path.</summary>
+    public CollectionFolderViewModel? FindFolderByPath(string folderPath)
+    {
+        if (string.IsNullOrEmpty(folderPath)) return null;
+        string full;
+        try { full = System.IO.Path.GetFullPath(folderPath); }
+        catch { return null; }
+
+        static IEnumerable<CollectionNodeViewModel> Walk(CollectionNodeViewModel node)
+        {
+            yield return node;
+            foreach (var child in node.Children)
+                foreach (var d in Walk(child)) yield return d;
+        }
+
+        return Roots
+            .SelectMany(Walk)
+            .OfType<CollectionFolderViewModel>()
+            .FirstOrDefault(f =>
+            {
+                if (string.IsNullOrEmpty(f.Path)) return false;
+                try { return string.Equals(System.IO.Path.GetFullPath(f.Path), full, StringComparison.OrdinalIgnoreCase); }
+                catch { return false; }
+            });
     }
 
     [RelayCommand]
@@ -2463,6 +2525,10 @@ public partial class CollectionsViewModel : ObservableObject
     /// folders). Public so the Collection Settings tab's Overview can show it.</summary>
     public static int CountRequestsPublic(Collection c) => CountRequests(c);
 
+    /// <summary>Recursive request count for a folder subtree — the folder settings tab's
+    /// Overview stat.</summary>
+    public static int CountRequestsInFolderPublic(Folder f) => CountRequestsInFolder(f);
+
     private static int CountRequests(Collection c)
     {
         int total = c.Requests.Count;
@@ -2642,12 +2708,6 @@ public sealed partial class NewRequestPlaceholderViewModel : CollectionNodeViewM
 }
 
 public enum NodePropertiesKind { Collection, Folder }
-
-/// <summary>Carries the source node references the host needs after the Properties dialog
-/// closes — to know which on-disk path to write to + which root to reload.</summary>
-public sealed record NodePropertiesRequest(
-    CollectionRootViewModel? Root,
-    CollectionFolderViewModel? Folder);
 
 /// <summary>Kind of request the user picked in the New Request dialog. Lives in the
 /// ViewModels project so <see cref="CollectionsViewModel.CreateRequestFromDialog"/> can

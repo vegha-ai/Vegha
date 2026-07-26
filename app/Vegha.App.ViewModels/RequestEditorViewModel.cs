@@ -46,30 +46,10 @@ public partial class RequestEditorViewModel : ObservableObject
     public static bool IsRawBodyType(string bodyType) =>
         bodyType is "json" or "xml" or "text" or "sparql";
 
-    public static readonly IReadOnlyList<string> AuthTypes = new[]
-    {
-        "none", "inherit", "apikey", "bearer", "basic", "digest", "ntlm", "oauth1", "oauth2", "awsv4", "wsse"
-    };
-
-    public static readonly IReadOnlyList<string> OAuth1SignatureMethods = new[]
-    {
-        "HMAC-SHA1", "HMAC-SHA256", "HMAC-SHA512", "PLAINTEXT"
-    };
-
-    public static readonly IReadOnlyList<string> OAuth2GrantTypes = new[]
-    {
-        "client_credentials", "password", "authorization_code"
-    };
-
-    public static readonly IReadOnlyList<string> OAuth2CredentialPlacements = new[]
-    {
-        "body", "basic_auth_header"
-    };
-
-    public static readonly IReadOnlyList<string> ApiKeyPlacements = new[]
-    {
-        "header", "queryparams"
-    };
+    /// <summary>The auth editing surface — shared verbatim with the folder and collection
+    /// property tabs (see <see cref="AuthSectionViewModel"/>). Everything auth-related lives
+    /// there; this editor only supplies the variable snapshot and the inheritance context.</summary>
+    public AuthSectionViewModel Auth { get; }
 
     private readonly HttpExecutor _executor;
     private readonly OAuth2TokenAcquirer _oauth2;
@@ -126,17 +106,15 @@ public partial class RequestEditorViewModel : ObservableObject
     }
 
     // ---- Inheritance hints (drives "Inherited from …" labels + Override buttons) ----
-    [ObservableProperty] private string? _authInheritedFrom;
+    // Auth's hint lives on the shared section VM so the same banner works at every scope.
     [ObservableProperty] private string? _preRequestScriptInheritedFrom;
     [ObservableProperty] private string? _postResponseScriptInheritedFrom;
     [ObservableProperty] private string? _testsScriptInheritedFrom;
 
-    public bool IsAuthInherited => !string.IsNullOrEmpty(AuthInheritedFrom);
     public bool IsPreRequestScriptInherited => !string.IsNullOrEmpty(PreRequestScriptInheritedFrom);
     public bool IsPostResponseScriptInherited => !string.IsNullOrEmpty(PostResponseScriptInheritedFrom);
     public bool IsTestsScriptInherited => !string.IsNullOrEmpty(TestsScriptInheritedFrom);
 
-    partial void OnAuthInheritedFromChanged(string? value) => OnPropertyChanged(nameof(IsAuthInherited));
     partial void OnPreRequestScriptInheritedFromChanged(string? value) => OnPropertyChanged(nameof(IsPreRequestScriptInherited));
     partial void OnPostResponseScriptInheritedFromChanged(string? value) => OnPropertyChanged(nameof(IsPostResponseScriptInherited));
     partial void OnTestsScriptInheritedFromChanged(string? value) => OnPropertyChanged(nameof(IsTestsScriptInherited));
@@ -149,25 +127,19 @@ public partial class RequestEditorViewModel : ObservableObject
         var thisRequest = SnapshotAsRequest();
         var (_, sources) = Vegha.Core.Requests.RequestComposition.ComposeWithSources(
             collection, _parentFolderChain, thisRequest, CurrentWorkspaceContext());
-        AuthInheritedFrom = sources.Auth;
+        Auth.InheritedFrom = sources.Auth;
         PreRequestScriptInheritedFrom = sources.PreRequestScript;
         PostResponseScriptInheritedFrom = sources.PostResponseScript;
         TestsScriptInheritedFrom = sources.TestsScript;
     }
 
-    /// <summary>Materializes inherited auth onto this request (Override action). Pulls the
-    /// composed auth and copies it onto the editor's own auth fields, leaving the parent
-    /// chain intact but breaking the inheritance link for this request.</summary>
-    [RelayCommand]
-    public void OverrideInheritedAuth()
+    /// <summary>Resolves what this request would inherit if it declared no auth of its own —
+    /// the Override action's source. Wired into <see cref="AuthSectionViewModel"/> at ctor time.</summary>
+    private AuthConfig? ResolveInheritedAuth()
     {
-        if (!IsAuthInherited) return;
         var collection = _parentCollection ?? new Vegha.Core.Domain.Collection { Name = string.Empty };
-        var composed = Vegha.Core.Requests.RequestComposition.Compose(
-            collection, _parentFolderChain, SnapshotAsRequest(), CurrentWorkspaceContext());
-        if (composed.Auth is null) return;
-        ApplyAuthConfig(composed.Auth);
-        RefreshInheritanceHints();
+        return Vegha.Core.Requests.RequestComposition.Compose(
+            collection, _parentFolderChain, SnapshotAsRequest(), CurrentWorkspaceContext()).Auth;
     }
 
     [RelayCommand]
@@ -212,7 +184,7 @@ public partial class RequestEditorViewModel : ObservableObject
             .Where(h => h.IsActive && !string.IsNullOrEmpty(h.Name))
             .Select(h => new Vegha.Core.Domain.KvPair(h.Name, h.Value, h.IsActive))
             .ToList(),
-        Auth = BuildAuthConfig(),
+        Auth = this.Auth.BuildAuthConfig(),
         PreRequestScript = PreRequestScript,
         PostResponseScript = PostResponseScript,
         Tests = TestsScript,
@@ -238,7 +210,7 @@ public partial class RequestEditorViewModel : ObservableObject
                 .Where(h => h.IsActive && !string.IsNullOrEmpty(h.Name))
                 .Select(h => new Vegha.Core.Domain.KvPair(h.Name, h.Value, h.IsActive))
                 .ToList(),
-            Auth = BuildAuthConfig(),
+            Auth = this.Auth.BuildAuthConfig(),
             PreRequestScript = PreRequestScript,
             PostResponseScript = PostResponseScript,
             Tests = TestsScript,
@@ -385,6 +357,34 @@ public partial class RequestEditorViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private string? _sourcePath;
 
+    /// <summary>The request's name — the single in-memory owner of it. The tab strip label
+    /// delegates to this property rather than keeping its own copy, and every save emits
+    /// <c>meta.name</c> from it, so the label, the editor and the .bru can't drift apart.
+    /// Renames (from the tree or the tab) write here; nothing else may.</summary>
+    [ObservableProperty]
+    private string _requestName = string.Empty;
+
+    /// <summary>True once the name was chosen deliberately — loaded from a named file, or set by a
+    /// rename. While false the request is an unnamed draft whose label tracks the URL. Latching this
+    /// is what stops a URL edit or a pasted curl from silently renaming a request the user named.</summary>
+    [ObservableProperty]
+    private bool _hasExplicitName;
+
+    /// <summary>Applies a rename to the one in-memory name cell. The caller owns moving the file
+    /// and re-emitting it; this keeps the VM side authoritative so the next save can't revert it.</summary>
+    public void ApplyRename(string name)
+    {
+        RequestName = name;
+        HasExplicitName = true;
+    }
+
+    /// <summary>Whether a name reads as one the user chose, rather than placeholder chrome. The
+    /// "Untitled" family is what a fresh draft is seeded with, so treating it as deliberate would
+    /// freeze the URL-mirrored label the draft is supposed to show.</summary>
+    private static bool IsDeliberateName(string name) =>
+        !string.IsNullOrWhiteSpace(name) &&
+        !name.StartsWith("Untitled", StringComparison.OrdinalIgnoreCase);
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private bool _isDirty;
@@ -431,10 +431,7 @@ public partial class RequestEditorViewModel : ObservableObject
     /// header's data dot.</summary>
     public bool BodyHasData => !string.Equals(BodyType, "none", StringComparison.OrdinalIgnoreCase);
     /// <summary>True when an auth type is configured (anything but "none" / "inherit").</summary>
-    public bool AuthHasData =>
-        !string.IsNullOrEmpty(AuthType) &&
-        !string.Equals(AuthType, "none", StringComparison.OrdinalIgnoreCase) &&
-        !string.Equals(AuthType, "inherit", StringComparison.OrdinalIgnoreCase);
+    public bool AuthHasData => Auth.HasData;
     public bool PreRequestScriptHasData => !string.IsNullOrWhiteSpace(PreRequestScript);
     public bool PostResponseScriptHasData => !string.IsNullOrWhiteSpace(PostResponseScript);
     public bool TestsScriptHasData => !string.IsNullOrWhiteSpace(TestsScript);
@@ -535,204 +532,11 @@ public partial class RequestEditorViewModel : ObservableObject
     private CancellationTokenSource? _graphQLAnalysisCts;
     private CancellationTokenSource? _schemaCacheLoadCts;
 
-    // ---- Auth ----
-    [ObservableProperty]
-    private string _authType = "none";
-
-    [ObservableProperty]
-    private string _bearerToken = string.Empty;
-
-    [ObservableProperty]
-    private string _basicUsername = string.Empty;
-
-    [ObservableProperty]
-    private string _basicPassword = string.Empty;
-
-    [ObservableProperty]
-    private string _digestUsername = string.Empty;
-
-    [ObservableProperty]
-    private string _digestPassword = string.Empty;
-
-    [ObservableProperty]
-    private string _ntlmUsername = string.Empty;
-
-    [ObservableProperty]
-    private string _ntlmPassword = string.Empty;
-
-    [ObservableProperty]
-    private string _ntlmDomain = string.Empty;
-
-    // OAuth1 (RFC 5849)
-    [ObservableProperty] private string _oAuth1ConsumerKey = string.Empty;
-    [ObservableProperty] private string _oAuth1ConsumerSecret = string.Empty;
-    [ObservableProperty] private string _oAuth1Token = string.Empty;
-    [ObservableProperty] private string _oAuth1TokenSecret = string.Empty;
-    [ObservableProperty] private string _oAuth1SignatureMethod = "HMAC-SHA1";
-    [ObservableProperty] private string _oAuth1Realm = string.Empty;
-
-    public IReadOnlyList<string> AvailableOAuth1SignatureMethods => OAuth1SignatureMethods;
-
-    // WSSE UsernameToken (SOAP WS-Security)
-    [ObservableProperty] private string _wsseUsername = string.Empty;
-    [ObservableProperty] private string _wssePassword = string.Empty;
-
-    // mTLS client certificate (per-request)
+    // ---- mTLS client certificate ----
+    // Transport config rather than an AuthConfig scheme (it configures the handler, not a
+    // header), so it stays on the request editor and out of the shared auth section.
     [ObservableProperty] private string _mtlsCertPath = string.Empty;
     [ObservableProperty] private string _mtlsCertPassword = string.Empty;
-
-    [ObservableProperty]
-    private string _apiKeyName = "X-API-Key";
-
-    [ObservableProperty]
-    private string _apiKeyValue = string.Empty;
-
-    [ObservableProperty]
-    private string _apiKeyPlacement = "header";
-
-    // OAuth2 (client_credentials)
-    [ObservableProperty]
-    private string _oAuth2GrantType = "client_credentials";
-
-    [ObservableProperty]
-    private string _oAuth2TokenUrl = string.Empty;
-
-    [ObservableProperty]
-    private string _oAuth2ClientId = string.Empty;
-
-    [ObservableProperty]
-    private string _oAuth2ClientSecret = string.Empty;
-
-    [ObservableProperty]
-    private string _oAuth2Scope = string.Empty;
-
-    [ObservableProperty]
-    private string _oAuth2CredentialsPlacement = "body";
-
-    // OAuth2 password grant
-    [ObservableProperty]
-    private string _oAuth2Username = string.Empty;
-
-    [ObservableProperty]
-    private string _oAuth2Password = string.Empty;
-
-    // OAuth2 authorization_code (with PKCE)
-    [ObservableProperty]
-    private string _oAuth2AuthorizationUrl = string.Empty;
-
-    [ObservableProperty]
-    private string _oAuth2CallbackUrl = "http://127.0.0.1:8765/oauth/callback";
-
-    [ObservableProperty]
-    private string _oAuth2State = string.Empty;
-
-    [ObservableProperty]
-    private bool _oAuth2UsePkce = true;
-
-    // ----- OAuth2: Bruno-parity additions -----
-
-    /// <summary>Optional second token endpoint used for refresh_token grant calls. Empty
-    /// falls back to <see cref="OAuth2TokenUrl"/>. Matches Bruno's "Refresh Token URL".</summary>
-    [ObservableProperty]
-    private string _oAuth2RefreshTokenUrl = string.Empty;
-
-    /// <summary>Which field of the token response to use as the request's bearer.
-    /// "access_token" (default) / "id_token" / "refresh_token". Aligns with Bruno's
-    /// "Token Source" dropdown — useful for IdPs that issue both access + id tokens
-    /// and you need the id_token on downstream requests.</summary>
-    [ObservableProperty]
-    private string _oAuth2TokenSource = "access_token";
-
-    /// <summary>Stable label used in the cache key so multiple OAuth2 clients sharing the
-    /// same (tokenUrl, clientId, scope) tuple can have independent cache slots. Defaults
-    /// to "credentials" matching Bruno. Set to e.g. "user-a" / "user-b" to isolate.</summary>
-    [ObservableProperty]
-    private string _oAuth2TokenId = "credentials";
-
-    /// <summary>Where the acquired token is attached on the outgoing request:
-    /// "headers" (default) / "queryparams" / "body".</summary>
-    [ObservableProperty]
-    private string _oAuth2AddTokenTo = "headers";
-
-    /// <summary>String prepended to the token when injecting into Authorization header.
-    /// Defaults to "Bearer". Some IdPs require "JWT", "Token", or empty.</summary>
-    [ObservableProperty]
-    private string _oAuth2HeaderPrefix = "Bearer";
-
-    /// <summary>When true, Send automatically acquires a token if one isn't already cached.
-    /// Mirrors Bruno's "Automatically fetch token if not found".</summary>
-    [ObservableProperty]
-    private bool _oAuth2AutoFetch = true;
-
-    /// <summary>When true and a refresh_token is available, the acquirer refreshes the
-    /// access token transparently before it expires. Mirrors Bruno's "Auto refresh token
-    /// (with refresh URL)".</summary>
-    [ObservableProperty]
-    private bool _oAuth2AutoRefresh;
-
-    /// <summary>UI-only — toggles the client-secret eye icon between * and plaintext.
-    /// Not persisted.</summary>
-    [ObservableProperty]
-    private bool _oAuth2IsClientSecretVisible;
-
-    /// <summary>The most recently acquired access token, surfaced in the "Access Token"
-    /// section of the auth panel. Updated when the user clicks Get Access Token or Send.
-    /// Not persisted — it's a live runtime value.</summary>
-    [ObservableProperty]
-    private string _oAuth2LastAccessToken = string.Empty;
-
-    /// <summary>Pretty-printed JWT payload of <see cref="OAuth2LastAccessToken"/> when it
-    /// looks like a JWT. Empty otherwise. Not persisted.</summary>
-    [ObservableProperty]
-    private string _oAuth2DecodedPayload = string.Empty;
-
-    /// <summary>Token type from the most recent token response (typically "Bearer").
-    /// Surfaced in the Access Token preview. Not persisted.</summary>
-    [ObservableProperty]
-    private string _oAuth2TokenType = "Bearer";
-
-    /// <summary>Status text shown next to the Get Access Token button — last fetch outcome
-    /// ("Fetched from cache", error messages, etc.). Not persisted.</summary>
-    [ObservableProperty]
-    private string _oAuth2StatusMessage = string.Empty;
-
-    /// <summary>Free-form key/value/where-to-send rows added to the token request. Bruno
-    /// surfaces these under "Additional Parameters → Token".</summary>
-    public ObservableCollection<OAuth2AdditionalParameter> OAuth2TokenParameters { get; } = new();
-
-    /// <summary>Same shape, applied only to refresh_token grant requests.</summary>
-    public ObservableCollection<OAuth2AdditionalParameter> OAuth2RefreshParameters { get; } = new();
-
-    public static readonly IReadOnlyList<string> OAuth2TokenSources = new[]
-    {
-        "access_token", "id_token", "refresh_token"
-    };
-
-    public static readonly IReadOnlyList<string> OAuth2AddTokenToOptions = new[]
-    {
-        "headers", "queryparams", "body"
-    };
-
-    public static readonly IReadOnlyList<string> OAuth2AdditionalParamSendIn = new[]
-    {
-        "body", "headers", "queryparams"
-    };
-
-    public IReadOnlyList<string> AvailableOAuth2TokenSources => OAuth2TokenSources;
-    public IReadOnlyList<string> AvailableOAuth2AddTokenTo => OAuth2AddTokenToOptions;
-    public IReadOnlyList<string> AvailableOAuth2ParamSendIn => OAuth2AdditionalParamSendIn;
-
-    // AWS SigV4
-    [ObservableProperty] private string _awsAccessKeyId     = string.Empty;
-    [ObservableProperty] private string _awsSecretAccessKey = string.Empty;
-    [ObservableProperty] private string _awsRegion          = string.Empty;
-    [ObservableProperty] private string _awsService         = string.Empty;
-    [ObservableProperty] private string _awsSessionToken    = string.Empty;
-
-    public IReadOnlyList<string> AvailableAuthTypes => AuthTypes;
-    public IReadOnlyList<string> AvailableApiKeyPlacements => ApiKeyPlacements;
-    public IReadOnlyList<string> AvailableOAuth2GrantTypes => OAuth2GrantTypes;
-    public IReadOnlyList<string> AvailableOAuth2CredentialPlacements => OAuth2CredentialPlacements;
 
     [ObservableProperty]
     private int _responseStatusCode;
@@ -1388,7 +1192,7 @@ public partial class RequestEditorViewModel : ObservableObject
                     if (!string.IsNullOrEmpty(name)) Variables.Add(new KvEntry(name, val, enabled));
                 }
             }
-            if (root.TryGetProperty("auth", out var at)) AuthType = at.GetString() ?? "none";
+            if (root.TryGetProperty("auth", out var at)) Auth.AuthType = at.GetString() ?? "none";
             if (root.TryGetProperty("preRequestScript", out var prs)) PreRequestScript = prs.GetString() ?? string.Empty;
             if (root.TryGetProperty("postResponseScript", out var pors)) PostResponseScript = pors.GetString() ?? string.Empty;
             if (root.TryGetProperty("tests", out var ts)) TestsScript = ts.GetString() ?? string.Empty;
@@ -1472,6 +1276,22 @@ public partial class RequestEditorViewModel : ObservableObject
         _secretRegistry = secretRegistry;
         _schemaCache = schemaCache;
 
+        // The shared auth surface. Three seams connect it to this editor: the variable
+        // snapshot it highlights + interpolates with, the inheritance chain its Override
+        // action pulls from, and its change signal feeding the dirty flag.
+        Auth = new AuthSectionViewModel(AuthScope.Request, oauth2)
+        {
+            VariablesProvider = ResolveCurrentVariables,
+            InheritedAuthProvider = ResolveInheritedAuth,
+        };
+        Auth.OverrideApplied += (_, _) => RefreshInheritanceHints();
+        Auth.Changed += (_, _) => { if (!_loading) IsDirty = true; };
+        Auth.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(AuthSectionViewModel.HasData)) OnPropertyChanged(nameof(AuthHasData));
+        };
+        VariablesSnapshotChanged += (_, _) => Auth.RefreshVariablesSnapshot();
+
         // Builder tree → query text. The guard stops the text change from bouncing back
         // into SyncFromQuery (the builder already reflects what it just generated).
         QueryBuilder.QueryRegenerated += text =>
@@ -1512,8 +1332,6 @@ public partial class RequestEditorViewModel : ObservableObject
         WireDirtyTracking(PostResponseVariables);
         WireDirtyTracking(FormUrlEncodedItems);
         WireDirtyTracking(MultipartItems);
-        WireDirtyTracking(OAuth2TokenParameters);
-        WireDirtyTracking(OAuth2RefreshParameters);
 
         // Ghost-row UX (Bruno parity): every KV table keeps a blank placeholder row at its
         // tail — typing into it spawns the next one, so there's no "+ Add row" step. Seeded
@@ -1529,8 +1347,6 @@ public partial class RequestEditorViewModel : ObservableObject
         KvAutoAppend.Wire(Variables, () => new KvEntry(), r => r.IsBlank, () => _loading);
         KvAutoAppend.Wire(PostResponseVariables, () => new KvEntry(), r => r.IsBlank, () => _loading);
         KvAutoAppend.Wire(FormUrlEncodedItems, () => new KvEntry(), r => r.IsBlank, () => _loading);
-        KvAutoAppend.Wire(OAuth2TokenParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank, () => _loading);
-        KvAutoAppend.Wire(OAuth2RefreshParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank, () => _loading);
     }
 
     /// <summary>Appends the trailing blank row to every auto-append KV table that lost it —
@@ -1543,8 +1359,6 @@ public partial class RequestEditorViewModel : ObservableObject
         KvAutoAppend.EnsureTrailingBlank(Variables, () => new KvEntry(), r => r.IsBlank);
         KvAutoAppend.EnsureTrailingBlank(PostResponseVariables, () => new KvEntry(), r => r.IsBlank);
         KvAutoAppend.EnsureTrailingBlank(FormUrlEncodedItems, () => new KvEntry(), r => r.IsBlank);
-        KvAutoAppend.EnsureTrailingBlank(OAuth2TokenParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank);
-        KvAutoAppend.EnsureTrailingBlank(OAuth2RefreshParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank);
     }
 
     /// <summary>Routes both collection-level (add/remove/clear) and item-level
@@ -1825,97 +1639,28 @@ public partial class RequestEditorViewModel : ObservableObject
         var composedUrl = ComposeUrl(Url, Params, vars);
         if (composedUrl is null) { ErrorMessage = "URL is empty."; HasResponse = false; return; }
 
-        // Auth: prefer the composed config (which honored Inherit fallthrough) over the bare VM state.
-        // For OAuth2, acquire a token first then apply as Bearer. AWS SigV4 is signed below
-        // (after the body is composed, since the signature includes the body hash).
-        AuthConfig? authToApply = composedView.Auth ?? BuildAuthConfig();
-        if (AuthType == "oauth2")
+        // Auth: everything runs off the COMPOSED config, so auth defined on a folder or the
+        // collection behaves exactly like auth defined on the request — including the
+        // multi-step schemes (OAuth2 exchange, SigV4 signing, digest challenge, NTLM creds).
+        // AuthPreparer stage 1 covers token acquisition + static headers + query placement;
+        // signatures that need the final body are applied further down.
+        AuthConfig? authToApply = composedView.Auth ?? Auth.BuildAuthConfig();
+        var prepared = await Vegha.Core.Requests.AuthPreparer.PrepareAsync(
+            authToApply, composedUrl, vars, _oauth2, cancellationToken);
+        if (prepared.IsError)
         {
-            // Apply the Bruno-parity panel additions: additional token params, token-id
-            // isolation, token source selection, refresh URL. The acquirer reads them
-            // and threads them through cache lookup / token-endpoint POST / refresh flow.
-            var additionalTokenParams = OAuth2TokenParameters
-                .Where(p => p.IsActive && !string.IsNullOrEmpty(p.Key))
-                .Select(p => new OAuth2AdditionalParam(p.Key, p.Value, p.SendIn))
-                .ToList();
-            var additionalRefreshParams = OAuth2RefreshParameters
-                .Where(p => p.IsActive && !string.IsNullOrEmpty(p.Key))
-                .Select(p => new OAuth2AdditionalParam(p.Key, p.Value, p.SendIn))
-                .ToList();
-            var refreshUrl = string.IsNullOrWhiteSpace(OAuth2RefreshTokenUrl) ? null : OAuth2RefreshTokenUrl;
-
-            OAuth2TokenResult token = OAuth2GrantType switch
-            {
-                "password" => await _oauth2.AcquirePasswordAsync(
-                    new OAuth2PasswordConfig(
-                        TokenUrl: OAuth2TokenUrl,
-                        ClientId: OAuth2ClientId,
-                        ClientSecret: OAuth2ClientSecret,
-                        Username: OAuth2Username,
-                        Password: OAuth2Password,
-                        Scope: string.IsNullOrWhiteSpace(OAuth2Scope) ? null : OAuth2Scope,
-                        CredentialsPlacement: OAuth2CredentialsPlacement,
-                        AdditionalParameters: additionalTokenParams,
-                        TokenId: OAuth2TokenId,
-                        TokenSource: OAuth2TokenSource,
-                        RefreshTokenUrl: refreshUrl,
-                        RefreshParameters: additionalRefreshParams),
-                    vars, cancellationToken),
-                "authorization_code" => await _oauth2.AcquireAuthorizationCodeAsync(
-                    new OAuth2AuthorizationCodeConfig(
-                        AuthorizationUrl: OAuth2AuthorizationUrl,
-                        TokenUrl: OAuth2TokenUrl,
-                        ClientId: OAuth2ClientId,
-                        ClientSecret: OAuth2ClientSecret,
-                        CallbackUrl: OAuth2CallbackUrl,
-                        Scope: string.IsNullOrWhiteSpace(OAuth2Scope) ? null : OAuth2Scope,
-                        State: string.IsNullOrWhiteSpace(OAuth2State) ? null : OAuth2State,
-                        UsePkce: OAuth2UsePkce,
-                        CredentialsPlacement: OAuth2CredentialsPlacement,
-                        AdditionalParameters: additionalTokenParams,
-                        TokenId: OAuth2TokenId,
-                        TokenSource: OAuth2TokenSource,
-                        RefreshTokenUrl: refreshUrl,
-                        RefreshParameters: additionalRefreshParams),
-                    vars, cancellationToken),
-                _ => await _oauth2.AcquireClientCredentialsAsync(
-                    new OAuth2ClientCredentialsConfig(
-                        TokenUrl: OAuth2TokenUrl,
-                        ClientId: OAuth2ClientId,
-                        ClientSecret: OAuth2ClientSecret,
-                        Scope: string.IsNullOrWhiteSpace(OAuth2Scope) ? null : OAuth2Scope,
-                        CredentialsPlacement: OAuth2CredentialsPlacement,
-                        AdditionalParameters: additionalTokenParams,
-                        TokenId: OAuth2TokenId,
-                        TokenSource: OAuth2TokenSource,
-                        RefreshTokenUrl: refreshUrl,
-                        RefreshParameters: additionalRefreshParams),
-                    vars, cancellationToken)
-            };
-
-            if (!token.IsSuccess || string.IsNullOrEmpty(token.AccessToken))
-            {
-                ErrorMessage = token.ErrorMessage ?? "OAuth2 token acquisition failed.";
-                HasResponse = false;
-                return;
-            }
-
-            // Surface the acquired token in the panel preview so users see what's in flight.
-            OAuth2LastAccessToken = token.AccessToken!;
-            OAuth2TokenType = string.IsNullOrEmpty(token.TokenType) ? "Bearer" : token.TokenType!;
-            OAuth2DecodedPayload = JwtDecoder.PrettyPrintPayload(token.AccessToken!);
-
-            // Inject into the outgoing request according to the panel's "Add token to" /
-            // "Header Prefix" — defaults match the existing Bearer-on-Authorization behavior.
-            authToApply = BuildOAuth2BearerAuth(token.AccessToken!);
+            ErrorMessage = prepared.ErrorMessage;
+            HasResponse = false;
+            return;
         }
 
-        // Apply auth — may add headers and/or query params (for API Key in queryparams placement).
-        var authResult = AuthApplier.Apply(authToApply, composedUrl, vars);
+        // Echo an OAuth2 exchange back into the panel so the user sees the token in flight —
+        // even when the config that produced it came from a parent scope.
+        if (prepared.OAuth2Token is not null) Auth.ApplyTokenResult(prepared.OAuth2Token);
 
-        if (!Uri.TryCreate(authResult.Url, UriKind.Absolute, out var uri))
+        if (!Uri.TryCreate(prepared.Url, UriKind.Absolute, out var uri))
         {
-            ErrorMessage = $"URL is not a valid absolute URI: {authResult.Url}";
+            ErrorMessage = $"URL is not a valid absolute URI: {prepared.Url}";
             HasResponse = false;
             return;
         }
@@ -1961,7 +1706,7 @@ public partial class RequestEditorViewModel : ObservableObject
                     Interpolator.Resolve(h.Value, vars)))
                 .ToList();
             // Append auth headers after request headers — auth wins on conflict.
-            foreach (var h in authResult.Headers) headers.Add(h);
+            foreach (var h in prepared.Headers) headers.Add(h);
 
             // Detect any {{var}} placeholders that survived interpolation — those are sent
             // as literal text and almost always cause server-side errors. Surface up front so
@@ -1972,70 +1717,15 @@ public partial class RequestEditorViewModel : ObservableObject
                 ResponseStatusText = $"Unresolved variable(s): {string.Join(", ", unresolved)} — request sent with literal placeholders";
             }
 
-            // AWS SigV4 needs the final URL + headers + body — sign here, after composition.
-            if (AuthType == "awsv4")
-            {
-                var sigCfg = BuildAuthConfig();
-                if (sigCfg is not null)
-                {
-                    var sig = AwsV4Signer.SignFromAuthConfig(
-                        sigCfg, Method, uri, headers, body ?? string.Empty, vars);
-                    if (sig is not null)
-                    {
-                        headers.Add(new KeyValuePair<string, string>("X-Amz-Date", sig.XAmzDate));
-                        headers.Add(new KeyValuePair<string, string>("X-Amz-Content-Sha256", sig.XAmzContentSha256));
-                        if (sig.XAmzSecurityToken is not null)
-                            headers.Add(new KeyValuePair<string, string>("X-Amz-Security-Token", sig.XAmzSecurityToken));
-                        headers.Add(new KeyValuePair<string, string>("Authorization", sig.Authorization));
-                    }
-                }
-            }
-
-            // OAuth1 also needs the final URL + method to compute the signature base string.
-            // Sign here, after auth-applier headers + AWS sigv4 (which is mutually exclusive with OAuth1).
-            if (AuthType == "oauth1" && !string.IsNullOrEmpty(OAuth1ConsumerKey))
-            {
-                var oauthHeader = OAuth1Signer.BuildAuthorizationHeader(
-                    new OAuth1Signer.Config(
-                        ConsumerKey: Interpolator.Resolve(OAuth1ConsumerKey, vars),
-                        ConsumerSecret: Interpolator.Resolve(OAuth1ConsumerSecret, vars),
-                        SignatureMethod: OAuth1SignatureMethod,
-                        Token: string.IsNullOrEmpty(OAuth1Token) ? null : Interpolator.Resolve(OAuth1Token, vars),
-                        TokenSecret: string.IsNullOrEmpty(OAuth1TokenSecret) ? null : Interpolator.Resolve(OAuth1TokenSecret, vars),
-                        Realm: string.IsNullOrEmpty(OAuth1Realm) ? null : OAuth1Realm),
-                    Method, uri.ToString());
-                headers.Add(new KeyValuePair<string, string>("Authorization", oauthHeader));
-            }
-
-            // WSSE UsernameToken — header form (in-band SOAP envelope inclusion is the
-            // SOAP workspace's job; the header path is what most non-SOAP APIs accept).
-            if (AuthType == "wsse" && !string.IsNullOrEmpty(WsseUsername))
-            {
-                var nonceBytes = new byte[16];
-                System.Security.Cryptography.RandomNumberGenerator.Fill(nonceBytes);
-                var nonceB64 = Convert.ToBase64String(nonceBytes);
-                var created = DateTime.UtcNow.ToString("o");
-                var passwordResolved = Interpolator.Resolve(WssePassword, vars);
-                var digestSrc = Encoding.UTF8.GetBytes(Convert.ToBase64String(nonceBytes) + created + passwordResolved);
-                // Per WSSE spec: PasswordDigest = base64(sha1(nonce + created + password))
-                var sha = System.Security.Cryptography.SHA1.HashData(
-                    nonceBytes.Concat(Encoding.UTF8.GetBytes(created + passwordResolved)).ToArray());
-                var passwordDigest = Convert.ToBase64String(sha);
-                var wsseHeader = $"UsernameToken Username=\"{Interpolator.Resolve(WsseUsername, vars)}\", " +
-                                 $"PasswordDigest=\"{passwordDigest}\", Nonce=\"{nonceB64}\", Created=\"{created}\"";
-                headers.Add(new KeyValuePair<string, string>("X-WSSE", wsseHeader));
-            }
+            // Stage 2 — AWS SigV4 / OAuth1 / WSSE sign over the final URL, headers and body,
+            // so they can only run once composition is done.
+            Vegha.Core.Requests.AuthPreparer.ApplySignatures(
+                authToApply, Method, uri, headers, body ?? string.Empty, vars);
 
             // Always pass options so the cookie jar engages for cookie-bearing requests.
-            // NTLM creds (if the user picked NTLM) ride on the same options bag so the
-            // executor can swap to HttpClientHandler-with-Credentials for that request.
-            System.Net.NetworkCredential? ntlmCred = null;
-            if (AuthType == "ntlm" && !string.IsNullOrEmpty(NtlmUsername))
-            {
-                ntlmCred = string.IsNullOrEmpty(NtlmDomain)
-                    ? new System.Net.NetworkCredential(NtlmUsername, NtlmPassword)
-                    : new System.Net.NetworkCredential(NtlmUsername, NtlmPassword, NtlmDomain);
-            }
+            // NTLM creds ride on the same options bag so the executor can swap to
+            // HttpClientHandler-with-Credentials for that request.
+            var ntlmCred = prepared.NtlmCredential;
 
             // mTLS client certificate — load from PFX or PEM. Best-effort; failures
             // surface in the status message rather than aborting the request.
@@ -2120,9 +1810,10 @@ public partial class RequestEditorViewModel : ObservableObject
             // Digest auth: 401 → parse WWW-Authenticate challenge → resend with response header.
             // The first leg is the deliberate "ping" that surfaces realm + nonce; final timing
             // and body come from the second response.
-            if (AuthType == "digest" && result.StatusCode == 401)
+            if (result.StatusCode == 401 && Vegha.Core.Requests.AuthPreparer.UsesDigest(authToApply))
             {
-                var digestRetry = TryBuildDigestRetry(result, uri);
+                var digestRetry = Vegha.Core.Requests.AuthPreparer.BuildDigestRetry(
+                    authToApply, result.Headers, Method, uri, vars);
                 if (digestRetry is not null)
                 {
                     headers.Add(new KeyValuePair<string, string>("Authorization", digestRetry));
@@ -2705,6 +2396,10 @@ public partial class RequestEditorViewModel : ObservableObject
             // the current file. LoadFromRequestItem clears IsDirty; we re-arm it after
             // since the pasted curl is unsaved by definition.
             var path = SourcePath;
+            // A curl carries a URL-derived name. That's only ever a fallback: once the request has a
+            // deliberate name, pasting a curl replaces the request's *content*, not its identity.
+            if (HasExplicitName)
+                item = item with { Name = RequestName };
             LoadFromRequestItem(item, path);
             IsDirty = true;
         }
@@ -3069,44 +2764,8 @@ public partial class RequestEditorViewModel : ObservableObject
         IsSubscriptionActive = false;
         _ = Task.Run(async () => { try { await client.DisposeAsync(); } catch { } });
     }
-    partial void OnAuthTypeChanged(string value)
-    {
-        if (!_loading) IsDirty = true;
-        OnPropertyChanged(nameof(AuthHasData));
-    }
-    partial void OnBearerTokenChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnBasicUsernameChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnBasicPasswordChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnDigestUsernameChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnDigestPasswordChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnNtlmUsernameChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnNtlmPasswordChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnNtlmDomainChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth1ConsumerKeyChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth1ConsumerSecretChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth1TokenChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth1TokenSecretChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth1SignatureMethodChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth1RealmChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnWsseUsernameChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnWssePasswordChanged(string value) { if (!_loading) IsDirty = true; }
     partial void OnMtlsCertPathChanged(string value) { if (!_loading) IsDirty = true; }
     partial void OnMtlsCertPasswordChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnApiKeyNameChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnApiKeyValueChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnApiKeyPlacementChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2GrantTypeChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2TokenUrlChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2ClientIdChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2ClientSecretChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2ScopeChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2CredentialsPlacementChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2UsernameChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2PasswordChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2AuthorizationUrlChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2CallbackUrlChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2StateChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnOAuth2UsePkceChanged(bool value) { if (!_loading) IsDirty = true; }
     partial void OnSettingFollowRedirectsChanged(bool value) { if (!_loading) IsDirty = true; }
     partial void OnSettingVerifySslChanged(bool value) { if (!_loading) IsDirty = true; }
     partial void OnSettingEncodeUrlChanged(bool value) { if (!_loading) IsDirty = true; }
@@ -3133,11 +2792,6 @@ public partial class RequestEditorViewModel : ObservableObject
         if (!_loading) IsDirty = true;
         OnPropertyChanged(nameof(DocsHasData));
     }
-    partial void OnAwsAccessKeyIdChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnAwsSecretAccessKeyChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnAwsRegionChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnAwsServiceChanged(string value) { if (!_loading) IsDirty = true; }
-    partial void OnAwsSessionTokenChanged(string value) { if (!_loading) IsDirty = true; }
 
     /// <summary>True while a request is being loaded from disk — suppresses dirty flag.</summary>
     private bool _loading;
@@ -3193,7 +2847,7 @@ public partial class RequestEditorViewModel : ObservableObject
             PostResponseVariables.Clear();
             foreach (var v in item.PostResponseVars) PostResponseVariables.Add(new KvEntry(v.Name, v.Value, v.Enabled));
 
-            ApplyAuthConfig(item.Auth);
+            Auth.ApplyAuthConfig(item.Auth);
             PreRequestScript = item.PreRequestScript ?? string.Empty;
             PostResponseScript = item.PostResponseScript ?? string.Empty;
             TestsScript = item.Tests ?? string.Empty;
@@ -3227,6 +2881,11 @@ public partial class RequestEditorViewModel : ObservableObject
             EnsureGhostRows();
 
             _loadedItem = item;
+            // A named item (loaded from a .bru, or restored from the session DB) latches the name
+            // as deliberate; a nameless draft leaves it unlatched so the tab label can track the URL
+            // until the user actually names it.
+            RequestName = item.Name ?? string.Empty;
+            HasExplicitName = IsDeliberateName(RequestName);
             SourcePath = sourcePath;
             IsDirty = false;
             OnPropertyChanged(nameof(IsSoapRequest));
@@ -3237,7 +2896,9 @@ public partial class RequestEditorViewModel : ObservableObject
         }
     }
 
-    /// <summary>The original RequestItem this VM was loaded from; preserves fields the VM doesn't surface.</summary>
+    /// <summary>The original RequestItem this VM was loaded from; preserves fields the VM doesn't
+    /// surface. Its Name is NOT authoritative — <see cref="RequestName"/> is — so a stale copy here
+    /// can never leak back into a save.</summary>
     private RequestItem? _loadedItem;
 
     /// <summary>Builds a RequestItem from the current VM state, preserving fields not editable in the UI yet.</summary>
@@ -3246,6 +2907,9 @@ public partial class RequestEditorViewModel : ObservableObject
         var seed = _loadedItem ?? new RequestItem();
         return seed with
         {
+            // Name comes from the VM's own cell, never from the seed — that's what keeps a rename
+            // from being undone by the next save.
+            Name = RequestName,
             Method = Method,
             Url = Url,
             // IsBlank filters drop the auto-appended ghost row (and any manually blanked
@@ -3281,7 +2945,7 @@ public partial class RequestEditorViewModel : ObservableObject
                 GraphQLQuery     = string.IsNullOrEmpty(GraphQLQuery) ? null : GraphQLQuery,
                 GraphQLVariables = string.IsNullOrEmpty(GraphQLVariables) ? null : GraphQLVariables,
             },
-            Auth = BuildAuthConfig(),
+            Auth = this.Auth.BuildAuthConfig(),
             PreRequestScript = string.IsNullOrEmpty(PreRequestScript) ? null : PreRequestScript,
             PostResponseScript = string.IsNullOrEmpty(PostResponseScript) ? null : PostResponseScript,
             Tests = string.IsNullOrEmpty(TestsScript) ? null : TestsScript,
@@ -3380,31 +3044,6 @@ public partial class RequestEditorViewModel : ObservableObject
         return trimmed.StartsWith('{') || trimmed.StartsWith('[');
     }
 
-    /// <summary>Reads <c>WWW-Authenticate</c> from a 401, parses the Digest challenge,
-    /// and constructs the <c>Authorization</c> value for the retry. Returns null if no
-    /// digest challenge is present or required digest fields are missing.</summary>
-    private string? TryBuildDigestRetry(HttpExecutionResult challengeResponse, Uri uri)
-    {
-        if (string.IsNullOrEmpty(DigestUsername)) return null;
-
-        // RFC 7235 allows multiple WWW-Authenticate headers; iterate until we find a Digest one.
-        foreach (var (name, value) in challengeResponse.Headers)
-        {
-            if (!string.Equals(name, "WWW-Authenticate", StringComparison.OrdinalIgnoreCase)) continue;
-            // A single header may comma-separate schemes (e.g., "Digest ..., Basic ..."); split on the
-            // first non-quoted comma followed by an alpha token would be hard, but in practice servers
-            // either send separate headers or just Digest. Try each header value as-is first.
-            if (DigestAuthenticator.TryParseChallenge(value, out var challenge) && challenge is not null)
-            {
-                var digestUri = uri.PathAndQuery;
-                var built = DigestAuthenticator.BuildAuthorizationHeader(
-                    challenge, Method, digestUri, DigestUsername, DigestPassword);
-                return built.Value;
-            }
-        }
-        return null;
-    }
-
     /// <summary>Builds a flat dict from enabled, named variable rows. Last-wins for duplicates.</summary>
     public static Dictionary<string, string> BuildVariableLookup(IEnumerable<KvEntry> vars)
     {
@@ -3452,322 +3091,6 @@ public partial class RequestEditorViewModel : ObservableObject
     }
     private bool _snapshotSubscribed;
 
-    /// <summary>Builds the AuthConfig that AuthApplier consumes from the per-type observable properties.</summary>
-    /// <summary>Builds an AuthConfig that the AuthApplier turns into the right wire format
-    /// for the acquired OAuth2 token, honoring the panel's "Add token to" + "Header Prefix"
-    /// selections. Defaults (headers + "Bearer") produce the classic
-    /// <c>Authorization: Bearer &lt;token&gt;</c> header.</summary>
-    private AuthConfig BuildOAuth2BearerAuth(string accessToken)
-    {
-        // "headers" → Authorization: <prefix> <token>. Custom prefix supports the few IdPs
-        // that demand JWT / Token / empty instead of Bearer.
-        if (string.Equals(OAuth2AddTokenTo, "headers", StringComparison.OrdinalIgnoreCase))
-        {
-            // Bearer auth applier writes "Authorization: Bearer <token>". If the panel set
-            // a different prefix, encode it as an ApiKey-on-header so the applier emits the
-            // raw "Authorization: <prefix> <token>" form rather than re-prefixing Bearer.
-            if (string.Equals(OAuth2HeaderPrefix, "Bearer", StringComparison.Ordinal) ||
-                string.IsNullOrEmpty(OAuth2HeaderPrefix))
-            {
-                return new AuthConfig
-                {
-                    Type = DomainAuthType.Bearer,
-                    Parameters = new Dictionary<string, string> { ["token"] = accessToken },
-                };
-            }
-            // Custom prefix path: deliver as an API-key header so the AuthApplier writes
-            // the value verbatim without prepending "Bearer ".
-            return new AuthConfig
-            {
-                Type = DomainAuthType.ApiKey,
-                Parameters = new Dictionary<string, string>
-                {
-                    ["key"] = "Authorization",
-                    ["value"] = string.IsNullOrEmpty(OAuth2HeaderPrefix)
-                        ? accessToken
-                        : OAuth2HeaderPrefix + " " + accessToken,
-                    ["placement"] = "header",
-                },
-            };
-        }
-
-        // "queryparams" → token=<token> on the URL.
-        if (string.Equals(OAuth2AddTokenTo, "queryparams", StringComparison.OrdinalIgnoreCase))
-        {
-            return new AuthConfig
-            {
-                Type = DomainAuthType.ApiKey,
-                Parameters = new Dictionary<string, string>
-                {
-                    ["key"] = "access_token",
-                    ["value"] = accessToken,
-                    ["placement"] = "queryparams",
-                },
-            };
-        }
-
-        // "body" is rarely useful for outgoing requests, but support it for parity — fall
-        // through to the Authorization header (same as default).
-        return new AuthConfig
-        {
-            Type = DomainAuthType.Bearer,
-            Parameters = new Dictionary<string, string> { ["token"] = accessToken },
-        };
-    }
-
-    /// <summary>JSON-serializes Additional Parameters rows for storage inside the flat
-    /// AuthConfig.Parameters dictionary. Empty list serializes to "[]" — survives a load
-    /// without surprise. Used by both Token and Refresh sections (same shape).</summary>
-    internal static string SerializeAdditionalParams(IEnumerable<OAuth2AdditionalParameter> rows)
-    {
-        // Ghost (blank) rows are UI chrome — never persist them.
-        var list = rows.Where(r => !r.IsBlank)
-                       .Select(r => new { key = r.Key, value = r.Value, sendIn = r.SendIn, enabled = r.IsActive });
-        return System.Text.Json.JsonSerializer.Serialize(list);
-    }
-
-    /// <summary>Inverse of <see cref="SerializeAdditionalParams"/>. Tolerant of missing
-    /// fields and bad JSON — returns an empty enumerable instead of throwing so a single
-    /// malformed entry can't corrupt the auth panel.</summary>
-    internal static IEnumerable<OAuth2AdditionalParameter> DeserializeAdditionalParams(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json)) yield break;
-        System.Text.Json.JsonDocument? doc;
-        try { doc = System.Text.Json.JsonDocument.Parse(json); }
-        catch { yield break; }
-        using (doc)
-        {
-            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) yield break;
-            foreach (var el in doc.RootElement.EnumerateArray())
-            {
-                yield return new OAuth2AdditionalParameter
-                {
-                    Key = el.TryGetProperty("key", out var k) && k.ValueKind == System.Text.Json.JsonValueKind.String ? (k.GetString() ?? string.Empty) : string.Empty,
-                    Value = el.TryGetProperty("value", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? (v.GetString() ?? string.Empty) : string.Empty,
-                    SendIn = el.TryGetProperty("sendIn", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.String && !string.IsNullOrEmpty(s.GetString()) ? s.GetString()! : "body",
-                    IsActive = !el.TryGetProperty("enabled", out var e) || e.ValueKind != System.Text.Json.JsonValueKind.False,
-                };
-            }
-        }
-    }
-
-    public AuthConfig? BuildAuthConfig() => AuthType switch
-    {
-        "none"    => null,
-        "inherit" => new AuthConfig { Type = DomainAuthType.Inherit },
-        "bearer"  => new AuthConfig
-        {
-            Type = DomainAuthType.Bearer,
-            Parameters = new Dictionary<string, string> { ["token"] = BearerToken }
-        },
-        "basic"   => new AuthConfig
-        {
-            Type = DomainAuthType.Basic,
-            Parameters = new Dictionary<string, string>
-            {
-                ["username"] = BasicUsername,
-                ["password"] = BasicPassword
-            }
-        },
-        "digest"  => new AuthConfig
-        {
-            Type = DomainAuthType.Digest,
-            Parameters = new Dictionary<string, string>
-            {
-                ["username"] = DigestUsername,
-                ["password"] = DigestPassword
-            }
-        },
-        "ntlm"    => new AuthConfig
-        {
-            Type = DomainAuthType.Ntlm,
-            Parameters = new Dictionary<string, string>
-            {
-                ["username"] = NtlmUsername,
-                ["password"] = NtlmPassword,
-                ["domain"]   = NtlmDomain,
-            }
-        },
-        "oauth1"  => new AuthConfig
-        {
-            Type = DomainAuthType.OAuth1,
-            Parameters = new Dictionary<string, string>
-            {
-                ["consumerKey"]      = OAuth1ConsumerKey,
-                ["consumerSecret"]   = OAuth1ConsumerSecret,
-                ["token"]            = OAuth1Token,
-                ["tokenSecret"]      = OAuth1TokenSecret,
-                ["signatureMethod"]  = OAuth1SignatureMethod,
-                ["realm"]            = OAuth1Realm,
-            }
-        },
-        "wsse"    => new AuthConfig
-        {
-            Type = DomainAuthType.Wsse,
-            Parameters = new Dictionary<string, string>
-            {
-                ["username"] = WsseUsername,
-                ["password"] = WssePassword,
-            }
-        },
-        "apikey"  => new AuthConfig
-        {
-            Type = DomainAuthType.ApiKey,
-            Parameters = new Dictionary<string, string>
-            {
-                ["key"] = ApiKeyName,
-                ["value"] = ApiKeyValue,
-                ["placement"] = ApiKeyPlacement
-            }
-        },
-        "oauth2"  => new AuthConfig
-        {
-            Type = DomainAuthType.OAuth2,
-            Parameters = new Dictionary<string, string>
-            {
-                ["grant_type"] = OAuth2GrantType,
-                ["access_token_url"] = OAuth2TokenUrl,
-                ["authorization_url"] = OAuth2AuthorizationUrl,
-                ["callback_url"] = OAuth2CallbackUrl,
-                ["client_id"] = OAuth2ClientId,
-                ["client_secret"] = OAuth2ClientSecret,
-                ["scope"] = OAuth2Scope,
-                ["state"] = OAuth2State,
-                ["use_pkce"] = OAuth2UsePkce ? "true" : "false",
-                ["username"] = OAuth2Username,
-                ["password"] = OAuth2Password,
-                ["credentials_placement"] = OAuth2CredentialsPlacement,
-                // Bruno-parity additions — see RequestEditorViewModel for the property docs.
-                ["refresh_token_url"] = OAuth2RefreshTokenUrl,
-                ["token_source"]      = OAuth2TokenSource,
-                ["token_id"]          = OAuth2TokenId,
-                ["add_token_to"]      = OAuth2AddTokenTo,
-                ["header_prefix"]     = OAuth2HeaderPrefix,
-                ["auto_fetch"]        = OAuth2AutoFetch ? "true" : "false",
-                ["auto_refresh"]      = OAuth2AutoRefresh ? "true" : "false",
-                // Additional parameters serialized as JSON so the flat IDictionary<string,string>
-                // shape of AuthConfig.Parameters keeps backward-compat with every existing file
-                // format (no schema bump). Empty arrays are stored as "[]" — round-tripped
-                // through ApplyAuthConfig.
-                ["additional_token_params"]   = SerializeAdditionalParams(OAuth2TokenParameters),
-                ["additional_refresh_params"] = SerializeAdditionalParams(OAuth2RefreshParameters),
-            }
-        },
-        "awsv4"   => new AuthConfig
-        {
-            Type = DomainAuthType.AwsV4,
-            Parameters = new Dictionary<string, string>
-            {
-                ["accessKeyId"]     = AwsAccessKeyId,
-                ["secretAccessKey"] = AwsSecretAccessKey,
-                ["region"]          = AwsRegion,
-                ["service"]         = AwsService,
-                ["sessionToken"]    = AwsSessionToken,
-            }
-        },
-        _ => null
-    };
-
-    /// <summary>Populate auth fields from a Domain.AuthConfig (used when loading a request from disk).</summary>
-    public void ApplyAuthConfig(AuthConfig? config)
-    {
-        if (config is null)
-        {
-            AuthType = "none";
-            return;
-        }
-
-        switch (config.Type)
-        {
-            case DomainAuthType.Inherit:
-                AuthType = "inherit";
-                break;
-            case DomainAuthType.Bearer:
-                AuthType = "bearer";
-                BearerToken = config.Parameters.TryGetValue("token", out var t) ? t : string.Empty;
-                break;
-            case DomainAuthType.Basic:
-                AuthType = "basic";
-                BasicUsername = config.Parameters.TryGetValue("username", out var u) ? u : string.Empty;
-                BasicPassword = config.Parameters.TryGetValue("password", out var p) ? p : string.Empty;
-                break;
-            case DomainAuthType.Digest:
-                AuthType = "digest";
-                DigestUsername = config.Parameters.TryGetValue("username", out var du) ? du : string.Empty;
-                DigestPassword = config.Parameters.TryGetValue("password", out var dp) ? dp : string.Empty;
-                break;
-            case DomainAuthType.Ntlm:
-                AuthType = "ntlm";
-                NtlmUsername = config.Parameters.TryGetValue("username", out var nu) ? nu : string.Empty;
-                NtlmPassword = config.Parameters.TryGetValue("password", out var np) ? np : string.Empty;
-                NtlmDomain   = config.Parameters.TryGetValue("domain",   out var nd) ? nd : string.Empty;
-                break;
-            case DomainAuthType.OAuth1:
-                AuthType = "oauth1";
-                OAuth1ConsumerKey    = config.Parameters.TryGetValue("consumerKey",     out var o1ck) ? o1ck : string.Empty;
-                OAuth1ConsumerSecret = config.Parameters.TryGetValue("consumerSecret",  out var o1cs) ? o1cs : string.Empty;
-                OAuth1Token          = config.Parameters.TryGetValue("token",           out var o1t)  ? o1t  : string.Empty;
-                OAuth1TokenSecret    = config.Parameters.TryGetValue("tokenSecret",     out var o1ts) ? o1ts : string.Empty;
-                OAuth1SignatureMethod = config.Parameters.TryGetValue("signatureMethod", out var o1sm) && !string.IsNullOrEmpty(o1sm) ? o1sm : "HMAC-SHA1";
-                OAuth1Realm          = config.Parameters.TryGetValue("realm",           out var o1r)  ? o1r  : string.Empty;
-                break;
-            case DomainAuthType.Wsse:
-                AuthType = "wsse";
-                WsseUsername = config.Parameters.TryGetValue("username", out var wu) ? wu : string.Empty;
-                WssePassword = config.Parameters.TryGetValue("password", out var wp) ? wp : string.Empty;
-                break;
-            case DomainAuthType.ApiKey:
-                AuthType = "apikey";
-                ApiKeyName = config.Parameters.TryGetValue("key", out var k) && !string.IsNullOrEmpty(k) ? k : "X-API-Key";
-                ApiKeyValue = config.Parameters.TryGetValue("value", out var v) ? v : string.Empty;
-                ApiKeyPlacement = config.Parameters.TryGetValue("placement", out var pl) && !string.IsNullOrEmpty(pl) ? pl : "header";
-                break;
-            case DomainAuthType.OAuth2:
-                AuthType = "oauth2";
-                OAuth2GrantType = config.Parameters.TryGetValue("grant_type", out var gt) && !string.IsNullOrEmpty(gt) ? gt : "client_credentials";
-                OAuth2TokenUrl = config.Parameters.TryGetValue("access_token_url", out var tu) ? tu : string.Empty;
-                OAuth2AuthorizationUrl = config.Parameters.TryGetValue("authorization_url", out var au) ? au : string.Empty;
-                OAuth2CallbackUrl = config.Parameters.TryGetValue("callback_url", out var cb) && !string.IsNullOrEmpty(cb) ? cb : "http://127.0.0.1:8765/oauth/callback";
-                OAuth2ClientId = config.Parameters.TryGetValue("client_id", out var ci) ? ci : string.Empty;
-                OAuth2ClientSecret = config.Parameters.TryGetValue("client_secret", out var cs) ? cs : string.Empty;
-                OAuth2Scope = config.Parameters.TryGetValue("scope", out var sc) ? sc : string.Empty;
-                OAuth2State = config.Parameters.TryGetValue("state", out var stt) ? stt : string.Empty;
-                OAuth2UsePkce = !config.Parameters.TryGetValue("use_pkce", out var up) || !string.Equals(up, "false", StringComparison.OrdinalIgnoreCase);
-                OAuth2Username = config.Parameters.TryGetValue("username", out var ouu) ? ouu : string.Empty;
-                OAuth2Password = config.Parameters.TryGetValue("password", out var oup) ? oup : string.Empty;
-                OAuth2CredentialsPlacement = config.Parameters.TryGetValue("credentials_placement", out var cp) && !string.IsNullOrEmpty(cp) ? cp : "body";
-                // Bruno-parity additions. Defaults preserve current behavior when the field
-                // is missing — older files load cleanly without surprise UI flips.
-                OAuth2RefreshTokenUrl = config.Parameters.TryGetValue("refresh_token_url", out var rtu) ? rtu : string.Empty;
-                OAuth2TokenSource = config.Parameters.TryGetValue("token_source", out var ts) && !string.IsNullOrEmpty(ts) ? ts : "access_token";
-                OAuth2TokenId = config.Parameters.TryGetValue("token_id", out var tid) && !string.IsNullOrEmpty(tid) ? tid : "credentials";
-                OAuth2AddTokenTo = config.Parameters.TryGetValue("add_token_to", out var att) && !string.IsNullOrEmpty(att) ? att : "headers";
-                OAuth2HeaderPrefix = config.Parameters.TryGetValue("header_prefix", out var hp) ? hp : "Bearer";
-                OAuth2AutoFetch = !config.Parameters.TryGetValue("auto_fetch", out var af) || !string.Equals(af, "false", StringComparison.OrdinalIgnoreCase);
-                OAuth2AutoRefresh = config.Parameters.TryGetValue("auto_refresh", out var ar) && string.Equals(ar, "true", StringComparison.OrdinalIgnoreCase);
-                OAuth2TokenParameters.Clear();
-                config.Parameters.TryGetValue("additional_token_params", out var tokParamsJson);
-                foreach (var addP in DeserializeAdditionalParams(tokParamsJson))
-                    OAuth2TokenParameters.Add(addP);
-                OAuth2RefreshParameters.Clear();
-                config.Parameters.TryGetValue("additional_refresh_params", out var refParamsJson);
-                foreach (var addP in DeserializeAdditionalParams(refParamsJson))
-                    OAuth2RefreshParameters.Add(addP);
-                break;
-            case DomainAuthType.AwsV4:
-                AuthType = "awsv4";
-                AwsAccessKeyId     = config.Parameters.TryGetValue("accessKeyId", out var ak) ? ak : string.Empty;
-                AwsSecretAccessKey = config.Parameters.TryGetValue("secretAccessKey", out var sk) ? sk : string.Empty;
-                AwsRegion          = config.Parameters.TryGetValue("region", out var rg) ? rg : string.Empty;
-                AwsService         = config.Parameters.TryGetValue("service", out var sv) ? sv : string.Empty;
-                AwsSessionToken    = config.Parameters.TryGetValue("sessionToken", out var st) ? st : string.Empty;
-                break;
-            default:
-                AuthType = "none";
-                break;
-        }
-    }
-
     private void RebuildTimelinePhases(Vegha.Core.Requests.HttpExecutionTiming t)
     {
         TimelinePhases.Clear();
@@ -3797,131 +3120,6 @@ public partial class RequestEditorViewModel : ObservableObject
         sb.Append(result.Body);
         return sb.ToString();
     }
-
-    // ====================================================================
-    // OAuth2 panel commands — Get Access Token / Clear Cache / Add Param
-    // ====================================================================
-
-    /// <summary>Acquires (or refreshes from cache) an OAuth2 access token using the current
-    /// VM state, then surfaces it in <see cref="OAuth2LastAccessToken"/> + decodes the JWT
-    /// payload into <see cref="OAuth2DecodedPayload"/>. Invoked by the "Get Access Token"
-    /// button. Failures land in <see cref="OAuth2StatusMessage"/>.</summary>
-    [RelayCommand]
-    public async Task GetOAuth2AccessTokenAsync(CancellationToken cancellationToken = default)
-    {
-        if (AuthType != "oauth2")
-        {
-            OAuth2StatusMessage = "Auth type is not OAuth 2.0.";
-            return;
-        }
-
-        var vars = ResolveCurrentVariables();
-        var additionalToken = OAuth2TokenParameters
-            .Where(p => p.IsActive && !string.IsNullOrEmpty(p.Key))
-            .Select(p => new OAuth2AdditionalParam(p.Key, p.Value, p.SendIn))
-            .ToList();
-
-        OAuth2TokenResult token;
-        try
-        {
-            token = OAuth2GrantType switch
-            {
-                "password" => await _oauth2.AcquirePasswordAsync(
-                    new OAuth2PasswordConfig(
-                        TokenUrl: OAuth2TokenUrl,
-                        ClientId: OAuth2ClientId,
-                        ClientSecret: OAuth2ClientSecret,
-                        Username: OAuth2Username,
-                        Password: OAuth2Password,
-                        Scope: string.IsNullOrWhiteSpace(OAuth2Scope) ? null : OAuth2Scope,
-                        CredentialsPlacement: OAuth2CredentialsPlacement,
-                        AdditionalParameters: additionalToken,
-                        TokenId: OAuth2TokenId,
-                        TokenSource: OAuth2TokenSource),
-                    vars, cancellationToken),
-                "authorization_code" => await _oauth2.AcquireAuthorizationCodeAsync(
-                    new OAuth2AuthorizationCodeConfig(
-                        AuthorizationUrl: OAuth2AuthorizationUrl,
-                        TokenUrl: OAuth2TokenUrl,
-                        ClientId: OAuth2ClientId,
-                        ClientSecret: OAuth2ClientSecret,
-                        CallbackUrl: OAuth2CallbackUrl,
-                        Scope: string.IsNullOrWhiteSpace(OAuth2Scope) ? null : OAuth2Scope,
-                        State: string.IsNullOrWhiteSpace(OAuth2State) ? null : OAuth2State,
-                        UsePkce: OAuth2UsePkce,
-                        CredentialsPlacement: OAuth2CredentialsPlacement,
-                        AdditionalParameters: additionalToken,
-                        TokenId: OAuth2TokenId,
-                        TokenSource: OAuth2TokenSource),
-                    vars, cancellationToken),
-                _ => await _oauth2.AcquireClientCredentialsAsync(
-                    new OAuth2ClientCredentialsConfig(
-                        TokenUrl: OAuth2TokenUrl,
-                        ClientId: OAuth2ClientId,
-                        ClientSecret: OAuth2ClientSecret,
-                        Scope: string.IsNullOrWhiteSpace(OAuth2Scope) ? null : OAuth2Scope,
-                        CredentialsPlacement: OAuth2CredentialsPlacement,
-                        AdditionalParameters: additionalToken,
-                        TokenId: OAuth2TokenId,
-                        TokenSource: OAuth2TokenSource),
-                    vars, cancellationToken)
-            };
-        }
-        catch (Exception ex)
-        {
-            OAuth2StatusMessage = $"Failed: {ex.Message}";
-            return;
-        }
-
-        if (!token.IsSuccess || string.IsNullOrEmpty(token.AccessToken))
-        {
-            OAuth2StatusMessage = token.ErrorMessage ?? "OAuth2 token acquisition failed.";
-            return;
-        }
-
-        OAuth2LastAccessToken = token.AccessToken!;
-        OAuth2TokenType = string.IsNullOrEmpty(token.TokenType) ? "Bearer" : token.TokenType!;
-        OAuth2DecodedPayload = JwtDecoder.PrettyPrintPayload(token.AccessToken!);
-        OAuth2StatusMessage = token.FromCache ? "Fetched from cache." : "Fetched.";
-    }
-
-    /// <summary>Clears the OAuth2 token cache slot for the current configuration so the next
-    /// fetch goes back to the wire. Wired to the "Clear Cache" button.</summary>
-    [RelayCommand]
-    public void ClearOAuth2Cache()
-    {
-        _oauth2.InvalidateCacheForTokenId(OAuth2TokenId);
-        OAuth2LastAccessToken = string.Empty;
-        OAuth2DecodedPayload = string.Empty;
-        OAuth2StatusMessage = "Cache cleared.";
-    }
-
-    /// <summary>"+ Add Parameter" handler for the Token tab of Additional Parameters.</summary>
-    [RelayCommand]
-    public void AddOAuth2TokenParameter() => OAuth2TokenParameters.Add(new OAuth2AdditionalParameter());
-
-    /// <summary>"+ Add Parameter" handler for the Refresh tab of Additional Parameters.</summary>
-    [RelayCommand]
-    public void AddOAuth2RefreshParameter() => OAuth2RefreshParameters.Add(new OAuth2AdditionalParameter());
-
-    /// <summary>Row-X remove on Additional Parameters / Token tab.</summary>
-    [RelayCommand]
-    public void RemoveOAuth2TokenParameter(OAuth2AdditionalParameter? row)
-    {
-        if (row is not null) OAuth2TokenParameters.Remove(row);
-    }
-
-    /// <summary>Row-X remove on Additional Parameters / Refresh tab.</summary>
-    [RelayCommand]
-    public void RemoveOAuth2RefreshParameter(OAuth2AdditionalParameter? row)
-    {
-        if (row is not null) OAuth2RefreshParameters.Remove(row);
-    }
-
-    /// <summary>Eye-icon toggle for the Client Secret field. Inverts the bool;
-    /// the XAML binds PasswordChar to it.</summary>
-    [RelayCommand]
-    public void ToggleOAuth2SecretVisibility() => OAuth2IsClientSecretVisible = !OAuth2IsClientSecretVisible;
 
     // ====================================================================
     // Body editor commands — multipart + form-urlencoded + file

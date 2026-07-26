@@ -120,7 +120,7 @@ public class RequestEditorDirtyTrackingTests
     public void OAuth2TokenParameters_Add_TriggersDirty()
     {
         var vm = CreateVm();
-        vm.OAuth2TokenParameters.Add(new OAuth2AdditionalParameter());
+        vm.Auth.OAuth2TokenParameters.Add(new OAuth2AdditionalParameter());
         vm.IsDirty.Should().BeTrue();
     }
 
@@ -128,7 +128,7 @@ public class RequestEditorDirtyTrackingTests
     public void OAuth2RefreshParameters_Add_TriggersDirty()
     {
         var vm = CreateVm();
-        vm.OAuth2RefreshParameters.Add(new OAuth2AdditionalParameter());
+        vm.Auth.OAuth2RefreshParameters.Add(new OAuth2AdditionalParameter());
         vm.IsDirty.Should().BeTrue();
     }
 

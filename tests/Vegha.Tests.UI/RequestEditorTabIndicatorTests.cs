@@ -44,11 +44,11 @@ public class RequestEditorTabIndicatorTests
         var vm = CreateVm();
         vm.AuthHasData.Should().BeFalse("default AuthType is 'none'");
 
-        vm.AuthType = "bearer";
+        vm.Auth.AuthType = "bearer";
         vm.AuthHasData.Should().BeTrue();
 
         // "inherit" is treated as no-data too — the dot only lights up for a concrete choice.
-        vm.AuthType = "inherit";
+        vm.Auth.AuthType = "inherit";
         vm.AuthHasData.Should().BeFalse();
     }
 

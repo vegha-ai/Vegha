@@ -40,6 +40,29 @@ public sealed class OverflowHeaderPanel : Panel
     /// over-reserve is better than that oscillation.</summary>
     private const double ChevronReserve = 32;
 
+    /// <summary>Slack when comparing natural tab width against the slot. Mirrors
+    /// <see cref="OverflowTabsPanel"/>'s own tolerance so the two never disagree about
+    /// whether the strip fits.</summary>
+    private const double Epsilon = 1.0;
+
+    private static OverflowTabsPanel? InnerPanel(Visual items) =>
+        items.GetVisualDescendants().OfType<OverflowTabsPanel>().FirstOrDefault();
+
+    /// <summary>The single source of truth for "does the strip overflow, and how much width
+    /// does the items presenter get" — called with identical inputs from both measure and
+    /// arrange. Previously arrange re-derived the items width from the presenter's
+    /// DesiredSize, so any measure/arrange drift (layout rounding at fractional render
+    /// scales, a stale desired size) let the arrange pass hide a tab and light the chevron
+    /// on a strip measure had judged to fit comfortably.</summary>
+    private static (double ItemsSlot, bool Overflow) Layout(double panelWidth, double tagW, double naturalTabsWidth)
+    {
+        double slot = Math.Max(0, panelWidth - tagW - ItemsLeftPad);
+        bool overflow = naturalTabsWidth > slot + Epsilon;
+        // When everything fits, hand the presenter the whole slot: the inner panel then
+        // provably packs every tab, so no arrange-time eviction can occur.
+        return (overflow ? Math.Max(0, slot - ChevronReserve) : slot, overflow);
+    }
+
     protected override Size MeasureOverride(Size availableSize)
     {
         if (Children.Count < 3)
@@ -62,26 +85,22 @@ public sealed class OverflowHeaderPanel : Panel
         chev.Measure(availableSize);
 
         double tagW = tag.DesiredSize.Width;
-        double chevronW = Math.Max(ChevronReserve, chev.DesiredSize.Width);
         // The trailing tools are always docked to the right edge — never packed beside
         // the items strip. So the slot available for the tab strip is the width minus
         // the tag and the items' left padding. The chevron lives in the dead space
         // between the last visible tab and the right-aligned tag when overflow occurs.
         double slotForTabs = Math.Max(0, availableSize.Width - tagW - ItemsLeftPad);
 
+        // First pass exists only to make the inner panel report its natural width.
         items.Measure(new Size(slotForTabs, availableSize.Height));
-        var inner = items.GetVisualDescendants().OfType<OverflowTabsPanel>().FirstOrDefault();
-        double naturalTabsWidth = inner?.NaturalWidth ?? items.DesiredSize.Width;
-        bool overflow = naturalTabsWidth > slotForTabs + 0.5;
-        if (overflow)
-        {
-            items.Measure(new Size(Math.Max(0, slotForTabs - chevronW), availableSize.Height));
-        }
+        double naturalTabsWidth = InnerPanel(items)?.NaturalWidth ?? items.DesiredSize.Width;
+        var (itemsSlot, overflow) = Layout(availableSize.Width, tagW, naturalTabsWidth);
+        items.Measure(new Size(itemsSlot, availableSize.Height));
 
         double height = Math.Max(items.DesiredSize.Height,
                           Math.Max(chev.DesiredSize.Height, tag.DesiredSize.Height));
         return new Size(double.IsInfinity(availableSize.Width)
-            ? ItemsLeftPad + items.DesiredSize.Width + (overflow ? chevronW : 0) + tagW
+            ? ItemsLeftPad + items.DesiredSize.Width + (overflow ? ChevronReserve : 0) + tagW
             : availableSize.Width, height);
     }
 
@@ -103,16 +122,21 @@ public sealed class OverflowHeaderPanel : Panel
         var tag = Children[2];
 
         double tagW = tag.DesiredSize.Width;
-        double itemsW = items.DesiredSize.Width;
-        double chW = chev.IsVisible ? chev.DesiredSize.Width : 0;
+        var inner = InnerPanel(items);
+        double naturalTabsWidth = inner?.NaturalWidth ?? items.DesiredSize.Width;
+        var (itemsSlot, _) = Layout(finalSize.Width, tagW, naturalTabsWidth);
 
-        items.Arrange(new Rect(ItemsLeftPad, 0, itemsW, finalSize.Height));
-        // Chevron sits flush against the right edge of the items presenter's
-        // rendered width (= last visible tab) rather than at the right edge of
-        // a wider grid column. When the chevron is collapsed (IsVisible=false)
-        // we arrange it at zero size so it doesn't reserve any space.
+        items.Arrange(new Rect(ItemsLeftPad, 0, itemsSlot, finalSize.Height));
+
+        // Read the width the tabs *actually* took (set during the arrange above) rather
+        // than the presenter's desired width — that's what keeps the chevron flush against
+        // the last visible tab instead of stranding it after a tab-sized gap.
+        double usedByTabs = inner?.VisibleWidth ?? items.DesiredSize.Width;
+        double chW = chev.IsVisible ? chev.DesiredSize.Width : 0;
+        // When the chevron is collapsed (IsVisible=false) we arrange it at zero size so it
+        // doesn't reserve any space.
         if (chev.IsVisible)
-            chev.Arrange(new Rect(ItemsLeftPad + itemsW, 0, chW, finalSize.Height));
+            chev.Arrange(new Rect(ItemsLeftPad + usedByTabs, 0, chW, finalSize.Height));
         else
             chev.Arrange(new Rect(0, 0, 0, 0));
         // Trailing tools are always right-aligned to the panel's far edge — both when
@@ -120,7 +144,7 @@ public sealed class OverflowHeaderPanel : Panel
         // pushes the tag right only if the items + chevron would otherwise overlap a
         // strictly right-aligned tag, which only happens on extreme widths where the
         // tab strip is already eating into the tag's reserved area.
-        double tagX = Math.Max(ItemsLeftPad + itemsW + chW, finalSize.Width - tagW);
+        double tagX = Math.Max(ItemsLeftPad + usedByTabs + chW, finalSize.Width - tagW);
         tag.Arrange(new Rect(tagX, 0, tagW, finalSize.Height));
 
         return finalSize;

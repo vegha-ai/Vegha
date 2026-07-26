@@ -223,30 +223,62 @@
                                TextWrapping="Wrap"
                                Text="{Binding PreRequestHint}"
                                Margin="0,0,0,6" />
-                    <ws:VariableAwareTextEditor Grid.Row="1"
-                        Text="{Binding Props.PreRequestScript, Mode=TwoWay}"
-                        Variables="{Binding Props.ResolvedVariablesSnapshot}"
-                        SingleLine="False"
-                        ShowLineNumbers="True"
-                        SyntaxHighlightingName="JavaScript"
-                        CompletionMode="Script"
-                        ScriptKind="PreRequest"
-                        Watermark="// pre-request script (JavaScript)" />
+                    <!-- Two stacked editors — each pane is short, so they get the compact
+                         empty-state variant (no icon circle / shortcut chip). -->
+                    <Grid Grid.Row="1">
+                        <ws:VariableAwareTextEditor
+                            Text="{Binding Props.PreRequestScript, Mode=TwoWay}"
+                            Variables="{Binding Props.ResolvedVariablesSnapshot}"
+                            SingleLine="False"
+                            ShowLineNumbers="True"
+                            SyntaxHighlightingName="JavaScript"
+                            CompletionMode="Script"
+                            ScriptKind="PreRequest" />
+                        <StackPanel IsVisible="{Binding Props.PreRequestScript, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                    IsHitTestVisible="False"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Spacing="6" MaxWidth="380">
+                            <TextBlock Text="No pre-request script"
+                                       FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text1Brush}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding PreRequestEmptyHint}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
                     <TextBlock Grid.Row="3"
                                FontSize="10" FontStyle="Italic"
                                Foreground="{DynamicResource Text3Brush}"
                                TextWrapping="Wrap"
                                Text="Post-response — runs after every response, before tests."
                                Margin="0,0,0,6" />
-                    <ws:VariableAwareTextEditor Grid.Row="4"
-                        Text="{Binding Props.PostResponseScript, Mode=TwoWay}"
-                        Variables="{Binding Props.ResolvedVariablesSnapshot}"
-                        SingleLine="False"
-                        ShowLineNumbers="True"
-                        SyntaxHighlightingName="JavaScript"
-                        CompletionMode="Script"
-                        ScriptKind="PostResponse"
-                        Watermark="// post-response script (JavaScript)" />
+                    <Grid Grid.Row="4">
+                        <ws:VariableAwareTextEditor
+                            Text="{Binding Props.PostResponseScript, Mode=TwoWay}"
+                            Variables="{Binding Props.ResolvedVariablesSnapshot}"
+                            SingleLine="False"
+                            ShowLineNumbers="True"
+                            SyntaxHighlightingName="JavaScript"
+                            CompletionMode="Script"
+                            ScriptKind="PostResponse" />
+                        <StackPanel IsVisible="{Binding Props.PostResponseScript, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                    IsHitTestVisible="False"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Spacing="6" MaxWidth="380">
+                            <TextBlock Text="No post-response script"
+                                       FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text1Brush}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding PostResponseEmptyHint}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </TabItem>
 
@@ -267,16 +299,54 @@
                                    Foreground="{DynamicResource StatusErrBrush}"
                                    FontFamily="{StaticResource MonoFont}" FontSize="11" TextWrapping="Wrap" />
                     </Border>
-                    <ws:VariableAwareTextEditor
-                        x:Name="NodeTestsEditor"
-                        Text="{Binding Props.TestsScript, Mode=TwoWay}"
-                        Variables="{Binding Props.ResolvedVariablesSnapshot}"
-                        SingleLine="False"
-                        ShowLineNumbers="True"
-                        SyntaxHighlightingName="JavaScript"
-                        CompletionMode="Script"
-                        ScriptKind="Tests"
-                        Watermark="// tests (JavaScript) — test('name', () =&gt; expect(res.status).to.equal(200))" />
+                    <Grid>
+                        <ws:VariableAwareTextEditor
+                            x:Name="NodeTestsEditor"
+                            Text="{Binding Props.TestsScript, Mode=TwoWay}"
+                            Variables="{Binding Props.ResolvedVariablesSnapshot}"
+                            SingleLine="False"
+                            ShowLineNumbers="True"
+                            SyntaxHighlightingName="JavaScript"
+                            CompletionMode="Script"
+                            ScriptKind="Tests" />
+                        <StackPanel IsVisible="{Binding Props.TestsScript, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                    IsHitTestVisible="False"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Spacing="12" MaxWidth="380">
+                            <Border Width="52" Height="52" CornerRadius="26"
+                                    Background="{DynamicResource Bg3Brush}"
+                                    HorizontalAlignment="Center">
+                                <icons:Icon Kind="Play" Size="22"
+                                            Foreground="{DynamicResource Text3Brush}"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Text="No tests yet"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text1Brush}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding TestsEmptyHint}"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                            <Border Background="{DynamicResource Bg3Brush}"
+                                    BorderBrush="{DynamicResource Border1Brush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Padding="10,4" HorizontalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="Ctrl + Space"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text1Brush}"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="Autocomplete"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
                 </DockPanel>
             </TabItem>
 

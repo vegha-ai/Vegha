@@ -5,6 +5,7 @@
              xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:ws="using:Vegha.App.Controls.Workspace"
              xmlns:cmn="using:Vegha.App.Controls.Common"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
              x:Class="Vegha.App.Controls.Workspace.RequestWorkspace"
              x:DataType="vm:RequestEditorViewModel">
@@ -133,7 +134,7 @@
                                  IsVisible="{Binding AuthHasData}" />
                     </StackPanel>
                 </TabItem.Header>
-                <ws:AuthEditor />
+                <ws:AuthEditor DataContext="{Binding Auth}" />
             </TabItem>
 
             <!-- Headers — superscript count -->
@@ -259,17 +260,58 @@
                                    Foreground="{DynamicResource StatusErrBrush}"
                                    FontFamily="{StaticResource MonoFont}" FontSize="11" TextWrapping="Wrap" />
                     </Border>
-                    <ws:VariableAwareTextEditor
-                        x:Name="PreScriptEditor"
-                        Text="{Binding PreRequestScript, Mode=TwoWay}"
-                        Variables="{Binding ResolvedVariablesSnapshot}"
-                        SingleLine="False"
-                        ShowLineNumbers="True"
-                        SyntaxHighlightingName="JavaScript"
-                        CompletionMode="Script"
-                        ScriptKind="PreRequest"
-                        Bordered="False"
-                        Watermark="// pre-request script (JavaScript)" />
+                    <Grid>
+                        <ws:VariableAwareTextEditor
+                            x:Name="PreScriptEditor"
+                            Text="{Binding PreRequestScript, Mode=TwoWay}"
+                            Variables="{Binding ResolvedVariablesSnapshot}"
+                            SingleLine="False"
+                            ShowLineNumbers="True"
+                            SyntaxHighlightingName="JavaScript"
+                            CompletionMode="Script"
+                            ScriptKind="PreRequest"
+                            Bordered="False" />
+                        <!-- Designed empty state (same pattern as the response pane's "No
+                             response yet"). Hit-test transparent so clicking anywhere focuses
+                             the editor underneath and typing dismisses it. -->
+                        <StackPanel IsVisible="{Binding PreRequestScript, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                    IsHitTestVisible="False"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Spacing="12" MaxWidth="380">
+                            <Border Width="52" Height="52" CornerRadius="26"
+                                    Background="{DynamicResource Bg3Brush}"
+                                    HorizontalAlignment="Center">
+                                <icons:Icon Kind="Code" Size="22"
+                                            Foreground="{DynamicResource Text3Brush}"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Text="No pre-request script"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text1Brush}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="Start typing to run JavaScript before this request is sent — set variables, sign a payload, or reshape the request."
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                            <Border Background="{DynamicResource Bg3Brush}"
+                                    BorderBrush="{DynamicResource Border1Brush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Padding="10,4" HorizontalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="Ctrl + Space"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text1Brush}"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="Autocomplete"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
                 </DockPanel>
             </TabItem>
 
@@ -314,17 +356,55 @@
                                    Foreground="{DynamicResource StatusErrBrush}"
                                    FontFamily="{StaticResource MonoFont}" FontSize="11" TextWrapping="Wrap" />
                     </Border>
-                    <ws:VariableAwareTextEditor
-                        x:Name="PostScriptEditor"
-                        Text="{Binding PostResponseScript, Mode=TwoWay}"
-                        Variables="{Binding ResolvedVariablesSnapshot}"
-                        SingleLine="False"
-                        ShowLineNumbers="True"
-                        SyntaxHighlightingName="JavaScript"
-                        CompletionMode="Script"
-                        ScriptKind="PostResponse"
-                        Bordered="False"
-                        Watermark="// post-response script (JavaScript)&#x0A;// e.g. bru.setEnvVar('token', res.getBody().access_token);" />
+                    <Grid>
+                        <ws:VariableAwareTextEditor
+                            x:Name="PostScriptEditor"
+                            Text="{Binding PostResponseScript, Mode=TwoWay}"
+                            Variables="{Binding ResolvedVariablesSnapshot}"
+                            SingleLine="False"
+                            ShowLineNumbers="True"
+                            SyntaxHighlightingName="JavaScript"
+                            CompletionMode="Script"
+                            ScriptKind="PostResponse"
+                            Bordered="False" />
+                        <StackPanel IsVisible="{Binding PostResponseScript, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                    IsHitTestVisible="False"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Spacing="12" MaxWidth="380">
+                            <Border Width="52" Height="52" CornerRadius="26"
+                                    Background="{DynamicResource Bg3Brush}"
+                                    HorizontalAlignment="Center">
+                                <icons:Icon Kind="Code" Size="22"
+                                            Foreground="{DynamicResource Text3Brush}"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Text="No post-response script"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text1Brush}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="Start typing to run JavaScript once the response arrives — extract a token with bru.setEnvVar, inspect headers, or prep the next request."
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                            <Border Background="{DynamicResource Bg3Brush}"
+                                    BorderBrush="{DynamicResource Border1Brush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Padding="10,4" HorizontalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="Ctrl + Space"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text1Brush}"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="Autocomplete"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
                 </DockPanel>
             </TabItem>
 
@@ -369,17 +449,55 @@
                                    Foreground="{DynamicResource StatusErrBrush}"
                                    FontFamily="{StaticResource MonoFont}" FontSize="11" TextWrapping="Wrap" />
                     </Border>
-                    <ws:VariableAwareTextEditor
-                        x:Name="TestsScriptEditor"
-                        Text="{Binding TestsScript, Mode=TwoWay}"
-                        Variables="{Binding ResolvedVariablesSnapshot}"
-                        SingleLine="False"
-                        ShowLineNumbers="True"
-                        SyntaxHighlightingName="JavaScript"
-                        CompletionMode="Script"
-                        ScriptKind="Tests"
-                        Bordered="False"
-                        Watermark="// tests (JavaScript)&#x0A;// test('status is 200', () => { expect(res.getStatus()).to.equal(200); });" />
+                    <Grid>
+                        <ws:VariableAwareTextEditor
+                            x:Name="TestsScriptEditor"
+                            Text="{Binding TestsScript, Mode=TwoWay}"
+                            Variables="{Binding ResolvedVariablesSnapshot}"
+                            SingleLine="False"
+                            ShowLineNumbers="True"
+                            SyntaxHighlightingName="JavaScript"
+                            CompletionMode="Script"
+                            ScriptKind="Tests"
+                            Bordered="False" />
+                        <StackPanel IsVisible="{Binding TestsScript, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                                    IsHitTestVisible="False"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Spacing="12" MaxWidth="380">
+                            <Border Width="52" Height="52" CornerRadius="26"
+                                    Background="{DynamicResource Bg3Brush}"
+                                    HorizontalAlignment="Center">
+                                <icons:Icon Kind="Play" Size="22"
+                                            Foreground="{DynamicResource Text3Brush}"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Text="No tests yet"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Text1Brush}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="Start typing to assert against the response — test('status is 200', () =&gt; expect(res.getStatus()).to.equal(200)). Results appear after each Send."
+                                       FontSize="12"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       TextWrapping="Wrap" TextAlignment="Center"
+                                       HorizontalAlignment="Center" />
+                            <Border Background="{DynamicResource Bg3Brush}"
+                                    BorderBrush="{DynamicResource Border1Brush}"
+                                    BorderThickness="1" CornerRadius="4"
+                                    Padding="10,4" HorizontalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="Ctrl + Space"
+                                               FontFamily="{StaticResource MonoFont}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text1Brush}"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="Autocomplete"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource Text2Brush}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
                 </DockPanel>
             </TabItem>
 

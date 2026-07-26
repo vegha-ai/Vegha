@@ -69,11 +69,9 @@ public partial class CollectionsPanel : UserControl
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
         if (_hookedVm is not null)
-            _hookedVm.NodePropertiesRequested -= OnNodePropertiesRequested;
         if (DataContext is CollectionsViewModel vm)
         {
             _hookedVm = vm;
-            vm.NodePropertiesRequested += OnNodePropertiesRequested;
         }
     }
 
@@ -114,8 +112,27 @@ public partial class CollectionsPanel : UserControl
     }
     private void OnHeaderRun_Click(object? sender, RoutedEventArgs e) =>
         InvokeActive(vm => vm.RunCollectionCommand);
-    private void OnHeaderClone_Click(object? sender, RoutedEventArgs e) =>
-        InvokeActive(vm => vm.CloneNodeCommand);
+    private async void OnHeaderClone_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CollectionsViewModel vm || vm.ActiveCollection is null) return;
+        await PromptAndCloneAsync(vm, vm.ActiveCollection);
+    }
+
+    /// <summary>Tree-side "Clone…" for requests, folders and collection roots. Mirrors the rename
+    /// entry: the right-clicked node arrives via the MenuItem's Tag.</summary>
+    private async void OnTreeClone_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not CollectionsViewModel vm) return;
+        if (sender is not MenuItem mi || mi.Tag is not CollectionNodeViewModel node) return;
+        await PromptAndCloneAsync(vm, node);
+    }
+
+    private async Task PromptAndCloneAsync(CollectionsViewModel vm, CollectionNodeViewModel node)
+    {
+        var owner = TopLevel.GetTopLevel(this) as global::Avalonia.Controls.Window;
+        if (owner is null) return;
+        await CollectionDialogActions.PromptAndCloneAsync(owner, vm, node);
+    }
     private async void OnHeaderRename_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not CollectionsViewModel vm || vm.ActiveCollection is null) return;
@@ -186,27 +203,6 @@ public partial class CollectionsPanel : UserControl
         var owner = TopLevel.GetTopLevel(this) as Window;
         if (owner is null) return;
         await CollectionDialogActions.ConfirmAndRemoveAsync(owner, vm, root);
-    }
-
-    private async void OnNodePropertiesRequested(object? sender, NodePropertiesRequest req)
-    {
-        if (DataContext is not CollectionsViewModel vm) return;
-        var owner = TopLevel.GetTopLevel(this) as Window;
-
-        NodePropertiesViewModel propsVm;
-        if (req.Root?.Collection is { } collection)
-            propsVm = new NodePropertiesViewModel(NodePropertiesViewModel.Kind.Collection, collection);
-        else if (req.Folder?.Folder is { } folder)
-            propsVm = new NodePropertiesViewModel(NodePropertiesViewModel.Kind.Folder, folder);
-        else return;
-
-        var dlg = new NodePropertiesDialog { DataContext = propsVm };
-        var result = owner is null ? null : await dlg.ShowDialog<bool?>(owner);
-        if (result == true)
-        {
-            var snapshot = propsVm.BuildSnapshot();
-            vm.ApplyNodeSnapshot(req, snapshot);
-        }
     }
 
     private void OnClearFilter_Click(object? sender, RoutedEventArgs e)

@@ -43,6 +43,10 @@ public sealed partial class CollectionRunTabViewModel : RequestTabViewModel
     private readonly RequestComposition.WorkspaceContext? _workspace;
     private readonly Vegha.Integrations.Secrets.SecretRegistry? _secretRegistry;
 
+    /// <summary>Handed to the pipeline so runs can perform OAuth2 token exchange — the same
+    /// acquirer (and therefore the same token cache) the editor uses.</summary>
+    private readonly OAuth2TokenAcquirer? _oauth2;
+
     // -------- Mode + configuration --------
 
     [ObservableProperty]
@@ -263,7 +267,8 @@ public sealed partial class CollectionRunTabViewModel : RequestTabViewModel
         HttpExecutor http,
         JintHost scripting,
         RequestComposition.WorkspaceContext? workspace = null,
-        Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null)
+        Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null,
+        OAuth2TokenAcquirer? oauth2 = null)
     {
         TargetCollection = collection;
         Id = id;
@@ -274,6 +279,7 @@ public sealed partial class CollectionRunTabViewModel : RequestTabViewModel
         _scripting = scripting;
         _workspace = workspace;
         _secretRegistry = secretRegistry;
+        _oauth2 = oauth2;
 
         BuildRequestRows();
     }
@@ -453,7 +459,8 @@ public sealed partial class CollectionRunTabViewModel : RequestTabViewModel
 
             var executor = new PipelineRequestExecutor(
                 _http, _scripting, _workspace, _secretRegistry,
-                persistResponses: PersistResponses, turnOffLogs: TurnOffLogs, keepVariableValues: KeepVariableValues);
+                persistResponses: PersistResponses, turnOffLogs: TurnOffLogs,
+                keepVariableValues: KeepVariableValues, oauth2: _oauth2);
 
             var totalRequestCount = Math.Max(1, orderedNames.Count) * options.EffectiveIterations;
             var completed = 0;
@@ -541,7 +548,8 @@ public sealed partial class CollectionRunTabViewModel : RequestTabViewModel
 
         var executor = new PipelineRequestExecutor(
             _http, _scripting, _workspace, _secretRegistry,
-            persistResponses: false, turnOffLogs: true, keepVariableValues: KeepVariableValues);
+            persistResponses: false, turnOffLogs: true,
+            keepVariableValues: KeepVariableValues, oauth2: _oauth2);
         var runDelegate = executor.AsDelegate(TargetCollection, EnvironmentVariables ?? new Dictionary<string, string>());
 
         var options = new RunnerOptions(

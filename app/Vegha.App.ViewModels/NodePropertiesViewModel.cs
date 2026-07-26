@@ -32,14 +32,11 @@ public partial class NodePropertiesViewModel : ObservableObject
     [ObservableProperty] private string _testsScript = string.Empty;
     [ObservableProperty] private string _docs = string.Empty;
 
-    public IReadOnlyList<string> AvailableAuthTypes { get; } = new[]
-    {
-        "none", "inherit", "apikey", "bearer", "basic", "digest",
-        "oauth1", "oauth2", "awsv4", "ntlm", "wsse"
-    };
-
-    [ObservableProperty] private string _authType = "none";
-    [ObservableProperty] private string _authParametersText = string.Empty;
+    /// <summary>The same auth editing surface the request editor uses — full per-type forms,
+    /// OAuth2 token panel and all. A collection- or folder-level block is byte-for-byte what a
+    /// request-level one would be, and <see cref="Vegha.Core.Requests.AuthPreparer"/> executes
+    /// it identically at send time.</summary>
+    public AuthSectionViewModel Auth { get; }
 
     // ---- Presets (collection-only; new-request defaults) ----
     public IReadOnlyList<string> AvailablePresetTypes { get; } = new[]
@@ -57,7 +54,11 @@ public partial class NodePropertiesViewModel : ObservableObject
     public event EventHandler<NodePropertiesSaveEventArgs>? SaveRequested;
     public event EventHandler? CancelRequested;
 
-    public NodePropertiesViewModel(Kind nodeKind, Collection collection) : this(nodeKind)
+    public NodePropertiesViewModel(
+        Kind nodeKind,
+        Collection collection,
+        Vegha.Core.Requests.OAuth2TokenAcquirer? oauth2 = null)
+        : this(nodeKind, oauth2)
     {
         Name = collection.Name;
         SeedKv(Variables, collection.Variables);
@@ -66,7 +67,7 @@ public partial class NodePropertiesViewModel : ObservableObject
         PostResponseScript = collection.PostResponseScript ?? string.Empty;
         TestsScript = collection.TestsScript ?? string.Empty;
         Docs = collection.Docs ?? string.Empty;
-        ApplyAuth(collection.Auth);
+        Auth.ApplyAuthConfig(collection.Auth);
         if (collection.Presets is { } presets)
         {
             PresetRequestType = string.IsNullOrEmpty(presets.RequestType) ? "http" : presets.RequestType;
@@ -74,7 +75,11 @@ public partial class NodePropertiesViewModel : ObservableObject
         }
     }
 
-    public NodePropertiesViewModel(Kind nodeKind, Folder folder) : this(nodeKind)
+    public NodePropertiesViewModel(
+        Kind nodeKind,
+        Folder folder,
+        Vegha.Core.Requests.OAuth2TokenAcquirer? oauth2 = null)
+        : this(nodeKind, oauth2)
     {
         Name = folder.Name;
         SeedKv(Variables, folder.Variables);
@@ -83,12 +88,35 @@ public partial class NodePropertiesViewModel : ObservableObject
         PostResponseScript = folder.PostResponseScript ?? string.Empty;
         TestsScript = folder.TestsScript ?? string.Empty;
         Docs = folder.Docs ?? string.Empty;
-        ApplyAuth(folder.Auth);
+        Auth.ApplyAuthConfig(folder.Auth);
     }
 
-    private NodePropertiesViewModel(Kind nodeKind)
+    /// <summary>Variables declared on this node, as the flat bag the editors highlight and
+    /// interpolate against — the node-scope counterpart of the request editor's snapshot.
+    /// Rebuilt on read; the Variables table is small and edits are interactive.</summary>
+    public IReadOnlyDictionary<string, string> ResolvedVariablesSnapshot =>
+        Variables
+            .Where(v => v.IsActive && !string.IsNullOrEmpty(v.Name))
+            .GroupBy(v => v.Name, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Last().Value, StringComparer.Ordinal);
+
+    private NodePropertiesViewModel(Kind nodeKind, Vegha.Core.Requests.OAuth2TokenAcquirer? oauth2)
     {
         NodeKind = nodeKind;
+        Auth = new AuthSectionViewModel(
+            nodeKind == Kind.Collection ? AuthScope.Collection : AuthScope.Folder,
+            oauth2)
+        {
+            // Variables declared on this node are in scope for its own auth fields, so
+            // {{token}} highlights and resolves the same way it does on a request.
+            VariablesProvider = () => ResolvedVariablesSnapshot,
+        };
+        // Editing a variable row re-highlights the auth + script editors.
+        Variables.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(ResolvedVariablesSnapshot));
+            Auth.RefreshVariablesSnapshot();
+        };
         // Ghost-row UX: typing into the trailing blank row spawns the next one — no
         // "+ Add" click needed. BuildSnapshot's empty-name filter keeps ghosts out of
         // the emitted .bru.
@@ -101,14 +129,6 @@ public partial class NodePropertiesViewModel : ObservableObject
     {
         foreach (var p in source) sink.Add(new KvEntry(p.Name, p.Value, p.Enabled));
         KvAutoAppend.EnsureTrailingBlank(sink, () => new KvEntry(), r => r.IsBlank);
-    }
-
-    private void ApplyAuth(AuthConfig? auth)
-    {
-        if (auth is null) { AuthType = "none"; return; }
-        AuthType = auth.Type.ToString().ToLowerInvariant();
-        AuthParametersText = string.Join("\n",
-            auth.Parameters.Select(kv => $"{kv.Key}: {kv.Value}"));
     }
 
     [RelayCommand]
@@ -149,7 +169,7 @@ public partial class NodePropertiesViewModel : ObservableObject
         var varList = Variables
             .Where(v => !string.IsNullOrEmpty(v.Name))
             .Select(v => new KvPair(v.Name, v.Value, v.Enabled)).ToList();
-        var auth = BuildAuthConfig();
+        var auth = Auth.BuildAuthConfig();
 
         if (NodeKind == Kind.Collection)
         {
@@ -189,38 +209,6 @@ public partial class NodePropertiesViewModel : ObservableObject
         }
     }
 
-    private AuthConfig? BuildAuthConfig()
-    {
-        if (string.Equals(AuthType, "none", StringComparison.OrdinalIgnoreCase)) return null;
-        if (string.Equals(AuthType, "inherit", StringComparison.OrdinalIgnoreCase))
-            return new AuthConfig { Type = Vegha.Core.Domain.AuthType.Inherit };
-        var parsed = AuthType.ToLowerInvariant() switch
-        {
-            "apikey" => Vegha.Core.Domain.AuthType.ApiKey,
-            "bearer" => Vegha.Core.Domain.AuthType.Bearer,
-            "basic" => Vegha.Core.Domain.AuthType.Basic,
-            "digest" => Vegha.Core.Domain.AuthType.Digest,
-            "oauth1" => Vegha.Core.Domain.AuthType.OAuth1,
-            "oauth2" => Vegha.Core.Domain.AuthType.OAuth2,
-            "awsv4" => Vegha.Core.Domain.AuthType.AwsV4,
-            "ntlm" => Vegha.Core.Domain.AuthType.Ntlm,
-            "wsse" => Vegha.Core.Domain.AuthType.Wsse,
-            _ => Vegha.Core.Domain.AuthType.None,
-        };
-        var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (!string.IsNullOrWhiteSpace(AuthParametersText))
-        {
-            foreach (var line in AuthParametersText.Split('\n'))
-            {
-                var t = line.TrimEnd('\r').Trim();
-                if (t.Length == 0 || t.StartsWith('#')) continue;
-                var idx = t.IndexOf(':');
-                if (idx <= 0) continue;
-                parameters[t[..idx].Trim()] = t[(idx + 1)..].Trim();
-            }
-        }
-        return new AuthConfig { Type = parsed, Parameters = parameters };
-    }
 }
 
 public sealed record NodeSnapshot(NodePropertiesViewModel.Kind Kind, Collection? Collection, Folder? Folder);

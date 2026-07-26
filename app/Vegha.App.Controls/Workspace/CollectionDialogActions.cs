@@ -36,6 +36,27 @@ public static class CollectionDialogActions
             vm.RenameNodeCommand.Execute(node);
     }
 
+    /// <summary>Pops a name prompt seeded with "&lt;name&gt; (copy)" and, on confirm, clones the node
+    /// under the chosen name. The VM raises <c>RequestFileCloned</c> for request clones, which is
+    /// what opens the copy in a tab — cloning something and being left on the original is the kind
+    /// of small dead-end this flow exists to avoid.</summary>
+    public static async Task PromptAndCloneAsync(
+        Window owner, CollectionsViewModel vm, CollectionNodeViewModel node)
+    {
+        var label = node switch
+        {
+            CollectionRootViewModel => "Collection name",
+            CollectionFolderViewModel => "Folder name",
+            _ => "Request name",
+        };
+        var suggested = vm.SuggestCloneName(node);
+        if (string.IsNullOrEmpty(suggested)) return;
+        var dlg = new RenameDialog("Clone", label, suggested, confirmLabel: "Clone");
+        var ok = await dlg.ShowDialog<bool>(owner);
+        if (!ok || string.IsNullOrWhiteSpace(dlg.ResultName)) return;
+        vm.CloneNodeAs(node, dlg.ResultName.Trim());
+    }
+
     /// <summary>Pops the destructive warning dialog (showing the on-disk path) and, on confirm,
     /// detaches the collection from the workspace. Files on disk are untouched.</summary>
     public static async Task ConfirmAndRemoveAsync(

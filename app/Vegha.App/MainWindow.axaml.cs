@@ -150,7 +150,7 @@ public partial class MainWindow : Window
         // Tab strip: "+" / per-tab right-click menu actions that need host services (file IO,
         // dialogs, the scratch + collection stores) bubble up here.
         RequestTabStripControl.NewRequestRequested += (_, _) => CreateScratchRequest();
-        RequestTabStripControl.CloneRequested += (_, tab) => CloneTabToScratch(tab);
+        RequestTabStripControl.CloneRequested += async (_, tab) => await CloneTabToScratchAsync(tab);
         RequestTabStripControl.RenameRequested += async (_, tab) => await RenameTabAsync(tab);
         RequestTabStripControl.RevertRequested += async (_, tab) => await RevertTabAsync(tab);
         RequestTabStripControl.SaveToCollectionRequested += async (_, tab) => await SaveTabToCollectionAsync(tab);
@@ -250,19 +250,45 @@ public partial class MainWindow : Window
                             continue;
                         t.Id = e.NewPath;
                         t.SourcePath = e.NewPath;
-                        t.Name = e.NewName;
                         t.Editor.SourcePath = e.NewPath;
+                        // Writes the one name cell the tab label reads and every save emits from,
+                        // and latches it as deliberate so no later URL edit rewrites it.
+                        t.Editor.ApplyRename(e.NewName);
                     }
                     PersistTabs(tabs, tabStateStore);
                 };
 
-            // Collection Settings — open (or activate) a settings tab for the picked collection.
+            // A cloned request opens in its own tab, so "Clone…" lands the user in the copy they
+            // just named rather than leaving them on the original.
             if (collectionsForTabs is not null)
-                collectionsForTabs.CollectionSettingsTabRequested += (_, root) =>
+                collectionsForTabs.RequestFileCloned += async (_, newPath) =>
                 {
-                    var tab = new Vegha.App.ViewModels.Tabs.CollectionSettingsTabViewModel(collectionsForTabs, root);
-                    tabs.OpenCollectionSettingsTab(tab);
+                    try
+                    {
+                        if (!File.Exists(newPath)) return;
+                        var item = await ParseBruFromDiskAsync(newPath);
+                        if (item is null) return;
+                        // Scope the tab to the collection the copy landed in, or it leaks into
+                        // every collection's tab strip.
+                        var dir = Path.GetDirectoryName(newPath);
+                        var root = string.IsNullOrEmpty(dir) ? null : collectionsForTabs.FindRootForDirectory(dir);
+                        tabs.OpenOrActivate(item, newPath, root?.Collection,
+                            Array.Empty<Vegha.Core.Domain.Folder>(), root?.SourcePath);
+                    }
+                    catch { /* best-effort — the clone is on disk regardless. */ }
                 };
+
+            // Settings tabs — collections and folders both open the same surface.
+            if (collectionsForTabs is not null)
+            {
+                collectionsForTabs.CollectionSettingsTabRequested += (_, root) =>
+                    tabs.OpenNodeSettingsTab(
+                        new Vegha.App.ViewModels.Tabs.NodeSettingsTabViewModel(collectionsForTabs, root));
+
+                collectionsForTabs.FolderSettingsTabRequested += (_, folder) =>
+                    tabs.OpenNodeSettingsTab(
+                        new Vegha.App.ViewModels.Tabs.NodeSettingsTabViewModel(collectionsForTabs, folder));
+            }
 
             // A collection removed from the tree → close its settings tab so it doesn't linger.
             // Only genuine removals — NOT a Replace, which is how a settings save reloads the root
@@ -275,7 +301,7 @@ public partial class MainWindow : Window
                         return;
                     if (e.OldItems is null) return;
                     foreach (var old in e.OldItems.OfType<Vegha.App.ViewModels.CollectionRootViewModel>())
-                        tabs.CloseCollectionSettingsTab(old.SourcePath);
+                        tabs.CloseNodeSettingsTabsUnder(old.SourcePath);
                 };
 
             // Workspace switch → repoint the scratch scope and persist. Tabs stay in memory and
@@ -566,7 +592,8 @@ public partial class MainWindow : Window
         }
 
         var tab = tabs.OpenRunTab(root.Collection, http, script, wsCtx, root.SourcePath,
-            App.Services?.GetService<Vegha.Integrations.Secrets.SecretRegistry>());
+            App.Services?.GetService<Vegha.Integrations.Secrets.SecretRegistry>(),
+            App.Services?.GetService<Vegha.Core.Requests.OAuth2TokenAcquirer>());
         // Initial env snapshot — workspace (global) env underneath the collection env so the
         // collection env wins. Mid-run env changes don't affect an in-flight run by design.
         if (collectionsVm is not null)
@@ -1145,19 +1172,27 @@ public partial class MainWindow : Window
         tabs.CreateScratch(workspaceId);
     }
 
-    /// <summary>Duplicates a tab's current (possibly unsaved) state into a new scratch request.</summary>
-    private void CloneTabToScratch(Vegha.App.ViewModels.Tabs.RequestTabViewModel tab)
+    /// <summary>Duplicates a tab's current (possibly unsaved) state into a new scratch request,
+    /// after prompting for the copy's name. Without the prompt the clone carried the source's name
+    /// verbatim, leaving two identically-labelled tabs open.</summary>
+    private async Task CloneTabToScratchAsync(Vegha.App.ViewModels.Tabs.RequestTabViewModel tab)
     {
         var tabs = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
         if (tabs is null) return;
         if (tab is not Vegha.App.ViewModels.Tabs.HttpRequestTabViewModel http)
             return; // SOAP (and any future non-editor) tabs aren't clonable through this path yet.
 
+        var dlg = new Vegha.App.Controls.Workspace.RenameDialog(
+            "Clone request", "Request name", tab.Name + " (copy)", confirmLabel: "Clone");
+        var ok = await dlg.ShowDialog<bool>(this);
+        if (!ok || string.IsNullOrWhiteSpace(dlg.ResultName)) return;
+
         var workspaceId = App.Services.GetService<WorkspacesViewModel>()?.ActiveWorkspace?.FolderPath;
         var clone = tabs.CreateScratch(workspaceId);
         // Copy the source's current editor state into the new draft and mark it unsaved.
         var item = http.Editor.BuildRequestItemFromVm();
         clone.Editor.LoadFromRequestItem(item, sourcePath: null);
+        clone.Editor.ApplyRename(dlg.ResultName.Trim());
         clone.Editor.IsDirty = true;
     }
 
@@ -1171,10 +1206,21 @@ public partial class MainWindow : Window
         var newName = dlg.ResultName.Trim();
         if (string.Equals(newName, tab.Name, StringComparison.Ordinal)) return;
 
-        // Draft with no backing file: in-memory title change is all we can do.
-        if (string.IsNullOrEmpty(tab.SourcePath) || tab is not Vegha.App.ViewModels.Tabs.HttpRequestTabViewModel http)
+        if (tab is not Vegha.App.ViewModels.Tabs.HttpRequestTabViewModel http)
         {
             tab.Name = newName;
+            return;
+        }
+
+        // Draft with no backing file. Naming one used to be a title-only change, which left a
+        // request that looks saved — it even survives a restart, because the session DB keeps the
+        // tab — but exists in no collection and never appears in the tree. Naming a draft is the
+        // user saying "this is a real request called X", so give it a home: carry the name over and
+        // run the save-to-collection flow.
+        if (string.IsNullOrEmpty(tab.SourcePath))
+        {
+            http.Editor.ApplyRename(newName);
+            await SaveTabToCollectionAsync(tab);
             return;
         }
 
@@ -1196,14 +1242,16 @@ public partial class MainWindow : Window
 
             // Re-emit with the new meta.name (keeps the tree/label in sync) and persist the
             // editor's current state, then move the tab onto the new path.
-            var item = http.Editor.BuildRequestItemFromVm() with { Name = stem };
+            // Set the name first, then emit: the file's meta.name comes from the same cell the tab
+            // label and every subsequent save read, so all three are written from one value.
+            http.Editor.ApplyRename(stem);
+            var item = http.Editor.BuildRequestItemFromVm();
             File.WriteAllText(newPath, Vegha.Core.Importers.BruEmitter.Emit(item));
             if (!string.Equals(newPath, oldPath, StringComparison.OrdinalIgnoreCase) && File.Exists(oldPath))
                 File.Delete(oldPath);
 
             tab.Id = newPath;
             tab.SourcePath = newPath;
-            tab.Name = stem;
             http.Editor.SourcePath = newPath;
             http.Editor.IsDirty = false;
             // Collection-backed tabs refresh themselves: the per-root file watcher picks up the
