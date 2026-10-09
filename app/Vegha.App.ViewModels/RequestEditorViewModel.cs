@@ -2038,18 +2038,25 @@ public partial class RequestEditorViewModel : ObservableObject
             }
 
             // mTLS client certificate — load from PFX/P12 or PEM via the shared loader.
-            // Best-effort; failures surface in the status message rather than aborting the request.
+            // Path and password support {{var}} interpolation, matching the runner pipeline.
+            // Best-effort; failures are logged rather than aborting the request.
             System.Security.Cryptography.X509Certificates.X509Certificate2? clientCert = null;
-            if (!string.IsNullOrWhiteSpace(MtlsCertPath) && File.Exists(MtlsCertPath))
+            var certPath = string.IsNullOrWhiteSpace(MtlsCertPath)
+                ? string.Empty
+                : Interpolator.Resolve(MtlsCertPath, vars);
+            if (!string.IsNullOrWhiteSpace(certPath) && File.Exists(certPath))
             {
                 try
                 {
+                    var certPassword = string.IsNullOrEmpty(MtlsCertPassword)
+                        ? null
+                        : Interpolator.Resolve(MtlsCertPassword, vars);
                     clientCert = Vegha.Core.Requests.CertificateLoader
-                        .LoadClientCertificate(MtlsCertPath, MtlsCertPassword);
+                        .LoadClientCertificate(certPath, certPassword);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to load mTLS client cert from {Path}", MtlsCertPath);
+                    _logger.LogWarning(ex, "Failed to load mTLS client cert from {Path}", certPath);
                 }
             }
 
@@ -3199,7 +3206,10 @@ public partial class RequestEditorViewModel : ObservableObject
             SettingSaveCookies     = item.Settings.SaveCookies;
             SettingHttp2           = item.Settings.EnableHttp2;
             MtlsCertPath           = item.Settings.MtlsCertPath ?? string.Empty;
-            MtlsCertPassword       = item.Settings.MtlsCertPassword ?? string.Empty;
+            // Only a {{var}} reference is persisted; keep a literal password typed this
+            // session rather than wiping it when the file (correctly) has none.
+            if (item.Settings.MtlsCertPassword is not null)
+                MtlsCertPassword   = item.Settings.MtlsCertPassword;
 
             var soap = item.Soap;
             SoapTimestampEnabled     = soap?.Timestamp is not null;

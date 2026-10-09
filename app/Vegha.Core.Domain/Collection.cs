@@ -190,8 +190,17 @@ public sealed record RequestSettingsConfig
     /// (cert+key). Supports {{var}} interpolation at execution time.</summary>
     public string? MtlsCertPath { get; init; }
     /// <summary>Password for a PKCS#12 client certificate. Supports {{var}}
-    /// interpolation so secrets can live in environments instead of the file.</summary>
+    /// interpolation so secrets can live in environments instead of the file.
+    /// Only a pure <c>{{var}}</c> reference is ever written to the .bru file (see
+    /// <see cref="IsVariableReference"/>); a literal password stays in memory only.</summary>
     public string? MtlsCertPassword { get; init; }
+
+    /// <summary>True when <paramref name="value"/> is exactly one <c>{{name}}</c> reference
+    /// (surrounding whitespace allowed) — i.e. safe to persist because the secret itself
+    /// lives in an environment/secret store, not in the (usually git-tracked) .bru file.</summary>
+    public static bool IsVariableReference(string? value) =>
+        value is not null &&
+        System.Text.RegularExpressions.Regex.IsMatch(value, @"^\s*\{\{[^{}]+\}\}\s*$");
 }
 
 public enum RequestKind
