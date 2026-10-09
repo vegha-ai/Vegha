@@ -142,9 +142,10 @@ internal static class Program
         // --- Resolve the collection --------------------------------------
         WriteSeg("Resolving collection ", ConsoleColor.DarkGray);
         Vegha.Core.Domain.Collection collection;
+        var loadIssues = new System.Collections.Concurrent.ConcurrentBag<(string File, string Error)>();
         try
         {
-            collection = CollectionLoader.Load(root);
+            collection = CollectionLoader.Load(root, (file, err) => loadIssues.Add((file, err)));
         }
         catch (Exception ex)
         {
@@ -154,6 +155,8 @@ internal static class Program
         }
         WriteSeg("………………………… ", ConsoleColor.DarkGray);
         WriteSeg("✓\n", ConsoleColor.Green);
+        foreach (var (file, err) in loadIssues.OrderBy(i => i.File, StringComparer.Ordinal))
+            WriteSeg($"  warning: skipped '{Path.GetFileName(file)}': {err}\n", ConsoleColor.Yellow);
 
         // --- Resolve the environment -------------------------------------
         var envVars = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -451,7 +454,10 @@ internal static class Program
         {
             var root = doc.RootElement;
             if (root.TryGetProperty("info", out _) && root.TryGetProperty("item", out _))
-                return PostmanV2Importer.ImportFromJson(content);
+                return PostmanV2Importer.ImportFromJson(content, new PostmanImportOptions(
+                    TranslateScripts: true,
+                    OnDiagnostic: d => Console.Error.WriteLine(
+                        $"  warning: {d.RequestName} ({d.Phase}): untranslated Postman tokens: {string.Join(", ", d.UnhandledTokens)}")));
             if (root.TryGetProperty("openapi", out _) || root.TryGetProperty("swagger", out _))
                 return OpenApiImporter.ImportFromString(content);
             if ((root.TryGetProperty("type", out var t) && (t.GetString() ?? string.Empty).StartsWith("collection.insomnia"))

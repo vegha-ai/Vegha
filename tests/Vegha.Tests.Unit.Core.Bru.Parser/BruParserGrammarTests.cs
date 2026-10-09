@@ -378,4 +378,50 @@ public class BruParserGrammarTests
         // Body kept verbatim
         ((TextBlock)doc.Blocks[5]).Text.Should().Contain("\"hello\": \"world\"");
     }
+
+    // ==================== Text-block terminator strictness ====================
+
+    [Fact]
+    public void TextBlock_UnindentedJsCloser_DoesNotTerminateBlock()
+    {
+        // A column-0 "});" inside a tests block is valid JS the author forgot to indent.
+        // The terminator must be a '}' ALONE on its line; "});" is content, not the end.
+        var bru = "tests {\n  test('one', () => {\n    expect(1).to.equal(1);\n});\n}\n";
+        var doc = BruParser.Parse(bru);
+
+        doc.Blocks.Should().HaveCount(1);
+        var t = (TextBlock)doc.Blocks[0];
+        t.Text.Should().Contain("});");
+        t.Text.Should().Contain("expect(1)");
+    }
+
+    [Fact]
+    public void TextBlock_CloserWithTrailingWhitespace_StillTerminates()
+    {
+        var bru = "tests {\n  expect(1);\n}   \n";
+        var doc = BruParser.Parse(bru);
+
+        doc.Blocks.Should().HaveCount(1);
+        ((TextBlock)doc.Blocks[0]).Text.Should().Be("  expect(1);");
+    }
+
+    [Fact]
+    public void TextBlock_UnindentedCloserThenNextBlock_ParsesBothBlocks()
+    {
+        var bru = "tests {\n  test('a', () => {\n    expect(1).to.equal(1);\n});\n}\n\ndocs {\n  hello\n}\n";
+        var doc = BruParser.Parse(bru);
+
+        doc.Blocks.Should().HaveCount(2);
+        ((TextBlock)doc.Blocks[0]).Text.Should().Contain("});");
+        ((TextBlock)doc.Blocks[1]).Text.Should().Contain("hello");
+    }
+
+    [Fact]
+    public void TextBlock_CloserAtEndOfFileWithoutTrailingNewline_Terminates()
+    {
+        var bru = "tests {\n  expect(1);\n}";
+        var doc = BruParser.Parse(bru);
+
+        ((TextBlock)doc.Blocks[0]).Text.Should().Be("  expect(1);");
+    }
 }

@@ -130,9 +130,19 @@ public static class RequestPipeline
                 consoleAll);
         }
 
-        // 4. Resolve auth. Pipeline v1 supports None/Inherit/Bearer/Basic/ApiKey; anything else
-        //    is surfaced as an error so the user knows to run via the editor tab.
+        // 4. Resolve auth. Pipeline v1 supports None/Inherit/Bearer/Basic/ApiKey natively,
+        //    plus OAuth2 via headless grants (client_credentials, password) resolved to a
+        //    Bearer/ApiKey auth before the send. Anything else is surfaced as an error so
+        //    the user knows to run via the editor tab.
         var authToApply = composed.Auth ?? inputs.Request.Auth;
+        if (authToApply is { Type: AuthType.OAuth2 })
+        {
+            var (oauthAuth, oauthError) = await PipelineOAuth2
+                .ResolveAsync(authToApply, vars, ct).ConfigureAwait(false);
+            if (oauthError is not null)
+                return Failure(inputs, composed, sw.ElapsedMilliseconds, oauthError, consoleAll);
+            authToApply = oauthAuth;
+        }
         if (!IsSupportedAuth(authToApply))
             return Failure(inputs, composed, sw.ElapsedMilliseconds,
                 $"Auth type {authToApply!.Type} not supported by Collection Runner v1. Run via the request editor.",
@@ -145,6 +155,13 @@ public static class RequestPipeline
 
         // 5. Compose body + headers (composed-inheritance headers + auth-emitted headers + request-level).
         var (body, contentType) = ComposeBody(inputs.Request.Body, vars);
+
+        // 5b. SOAP WS-Security / WS-Addressing: inject the configured headers into the
+        //     envelope so runner/CLI sends match the request editor's behavior.
+        if (!string.IsNullOrEmpty(body) && SoapSecurityProcessor.HasOutgoing(inputs.Request.Soap))
+            body = SoapSecurityProcessor.Apply(body!, inputs.Request.Soap,
+                s => Interpolator.Resolve(s, vars));
+
         var headerList = ComposeHeaders(composed.Headers, vars);
         foreach (var h in authResult.Headers) headerList.Add(h);
         if (!string.IsNullOrEmpty(contentType)
