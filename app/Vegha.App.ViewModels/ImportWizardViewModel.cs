@@ -579,7 +579,7 @@ public partial class ImportWizardViewModel : ObservableObject
         ProgressMessage = "Preparing import…";
         // Force one render pass before doing any file I/O so the overlay is on screen
         // before the per-item loop starts blocking the UI thread.
-        await YieldForRenderAsync();
+        await YieldForRender();
         try
         {
             var selected = StagedItems.Where(i => i.IsSelected && i.Result.Success).ToList();
@@ -590,7 +590,7 @@ public partial class ImportWizardViewModel : ObservableObject
                 var item = selected[i];
                 ProgressMessage = $"Importing {i + 1} of {selected.Count}: {item.DisplayName}";
                 // Yield so the dispatcher gets a layout + render pass before the next item.
-                await YieldForRenderAsync();
+                await YieldForRender();
                 var result = item.Result;
                 if (result.Collection is not null)
                 {
@@ -609,6 +609,12 @@ public partial class ImportWizardViewModel : ObservableObject
             OnFinished?.Invoke();
         }
     }
+
+    /// <summary>Render-yield used by <see cref="ImportAsync"/> between items. Defaults to
+    /// <see cref="YieldForRenderAsync"/>; tests without a running Avalonia dispatcher swap
+    /// in <c>() =&gt; Task.CompletedTask</c>, otherwise the import awaits a dispatcher
+    /// job that is never pumped and never completes.</summary>
+    public Func<Task> YieldForRender { get; set; } = YieldForRenderAsync;
 
     /// <summary>Yields the UI thread for long enough to guarantee a Layout + Render pass
     /// happens. Posts a no-op at Background priority (lower than Render) so the dispatcher

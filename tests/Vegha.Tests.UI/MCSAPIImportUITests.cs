@@ -312,12 +312,14 @@ public class MCSAPIImportUITests
     }
 
     /// <summary>Pulls the first successfully-staged Collection out of the wizard VM.
-    /// Mirrors what <see cref="ImportWizardViewModel.Import"/> hands to
-    /// <c>OnCollectionConfirmed</c> — without invoking the side-effecting confirm path.</summary>
+    /// Mirrors what <c>ImportAsync</c> hands to <c>OnCollectionConfirmed</c> — without
+    /// invoking the side-effecting confirm path. The render yield is stubbed out so the
+    /// import completes synchronously instead of waiting on an unpumped dispatcher job.</summary>
     private static Vegha.Core.Domain.Collection ExtractStagedCollection(ImportWizardViewModel vm)
     {
         Vegha.Core.Domain.Collection? captured = null;
         vm.OnCollectionConfirmed = (c, _) => { captured ??= c; };
+        vm.YieldForRender = () => Task.CompletedTask;
         vm.ImportCommand.Execute(null);
         captured.Should().NotBeNull("ImportCommand should have surfaced a Collection");
         return captured!;

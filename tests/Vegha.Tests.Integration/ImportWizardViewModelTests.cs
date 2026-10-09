@@ -20,8 +20,10 @@ public class ImportWizardViewModelTests : IDisposable
         if (Directory.Exists(_tempDir)) Directory.Delete(_tempDir, recursive: true);
     }
 
+    // No Avalonia dispatcher runs in these tests, so skip the render yield — otherwise
+    // ImportAsync awaits a dispatcher job that is never pumped and the test hangs.
     private ImportWizardViewModel NewVm() =>
-        new(NullLogger<ImportWizardViewModel>.Instance);
+        new(NullLogger<ImportWizardViewModel>.Instance) { YieldForRender = () => Task.CompletedTask };
 
     [Fact]
     public void DetectsPostmanV21_FromInfoAndItem()
@@ -110,7 +112,7 @@ public class ImportWizardViewModelTests : IDisposable
     }
 
     [Fact]
-    public void OnConfirmed_FiresWithStagedCollection_OrEnvironment()
+    public async Task OnConfirmed_FiresWithStagedCollection_OrEnvironment()
     {
         var path = Path.Combine(_tempDir, "pm-env.json");
         File.WriteAllText(path, """{ "name": "E", "values": [{ "key": "k", "value": "v" }] }""");
@@ -119,7 +121,7 @@ public class ImportWizardViewModelTests : IDisposable
         Vegha.Core.Domain.Environment? captured = null;
         vm.OnEnvironmentConfirmed = e => captured = e;
         vm.SelectedPath = path;
-        vm.ImportCommand.Execute(null);
+        await vm.ImportCommand.ExecuteAsync(null);
 
         captured.Should().NotBeNull();
         captured!.Name.Should().Be("E");
@@ -157,7 +159,7 @@ public class ImportWizardViewModelTests : IDisposable
     }
 
     [Fact]
-    public void EnvOnly_AcceptEnvironmentsFalse_ImportDoesNotFireEnvironmentCallback()
+    public async Task EnvOnly_AcceptEnvironmentsFalse_ImportDoesNotFireEnvironmentCallback()
     {
         var path = Path.Combine(_tempDir, "pm-env.json");
         File.WriteAllText(path, """{ "name": "E", "values": [{ "key": "k", "value": "v" }] }""");
@@ -169,7 +171,7 @@ public class ImportWizardViewModelTests : IDisposable
         vm.SelectedPath = path;
 
         // CanExecute is false but invoke Import anyway to verify the inner guard.
-        vm.ImportCommand.Execute(null);
+        await vm.ImportCommand.ExecuteAsync(null);
         captured.Should().BeNull();
     }
 }

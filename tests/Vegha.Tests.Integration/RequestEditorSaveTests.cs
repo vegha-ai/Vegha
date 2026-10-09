@@ -110,12 +110,21 @@ public class RequestEditorSaveTests : IDisposable
     }
 
     [Fact]
-    public void SaveCommand_DisabledWhenSourcePathNull()
+    public async Task SaveCommand_WhenSourcePathNull_RaisesSaveAsRequested()
     {
+        // A dirty scratch draft (no file yet) can Save: it routes to the host's
+        // Save-to-collection flow via SaveAsRequested instead of writing to disk.
         _vm.LoadFromRequestItem(new RequestItem { Name = "x", Url = "https://x", Method = "GET" });
         _vm.Url = "https://changed";
         _vm.IsDirty.Should().BeTrue();
         _vm.SourcePath.Should().BeNull();
-        _vm.SaveCommand.CanExecute(null).Should().BeFalse();
+
+        var raised = 0;
+        _vm.SaveAsRequested += (_, _) => raised++;
+        _vm.SaveCommand.CanExecute(null).Should().BeTrue();
+        await _vm.SaveCommand.ExecuteAsync(null);
+
+        raised.Should().Be(1);
+        _vm.IsDirty.Should().BeTrue("nothing was written yet — the host completes the save");
     }
 }
