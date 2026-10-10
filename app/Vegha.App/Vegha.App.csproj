@@ -15,6 +15,21 @@
     <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
+  <!-- Mac App Store flavor: publish as a single-file app. A sandboxed MAS build that
+       runs the plain multi-file CoreCLR host aborts at launch inside
+       [NSApplication sharedApplication] on macOS 26: the sandbox denies the
+       mach-lookup of com.apple.coreservices.launchservicesd, and HIServices
+       aborts with "unable to get application ASN from launchservicesd". Single-file
+       hosting avoids it; verified on macOS 26.6.2 with a provisioning-profile-signed,
+       sandboxed build (App Review rejection of 1.2.4, Guideline 2.1(a)). See
+       AvaloniaUI/Avalonia#6529. The temporary-exception entitlement that also
+       "fixes" it is not accepted by App Review. Native dylibs (Skia, Avalonia,
+       sqlite, libgit2) stay as separate files so codesign signs each one. -->
+  <PropertyGroup Condition="'$(VeghaFlavor)' == 'MAS'">
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
   <ItemGroup>
     <AvaloniaResource Include="Assets\logo.png" />
     <AvaloniaResource Include="Assets\app.ico" />
