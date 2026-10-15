@@ -141,23 +141,24 @@ Generate equivalent request code in:
 
 ## Install
 
-> Pre-built installers ship once we hit MVP.
-> Until then, build from source — see [Build](#build).
+Download the latest build from [vegha.ai](https://vegha.ai/) or the [GitHub releases page](https://github.com/vegha-ai/Vegha/releases/latest). Direct-download builds update themselves in-app via **Velopack**. Checksums are in `SHA256SUMS.txt` on each release.
 
-### Direct download *(planned)*
+### Direct download
 
-Signed installers with **Velopack auto-update**:
-
-| Platform | Format |
+| Platform | Download |
 | --- | --- |
-| Windows | `.exe` installer + portable `.zip` |
-| macOS   | Universal `.dmg` (Apple-silicon + Intel) |
-| Linux   | `.AppImage`, `.deb`, `.rpm` |
+| Windows (x64)   | [`Vegha-win-x64-Setup.exe`](https://github.com/vegha-ai/Vegha/releases/latest/download/Vegha-win-x64-Setup.exe) · [portable `.zip`](https://github.com/vegha-ai/Vegha/releases/latest/download/Vegha-win-x64-Portable.zip) |
+| Windows (arm64) | [`Vegha-win-arm64-Setup.exe`](https://github.com/vegha-ai/Vegha/releases/latest/download/Vegha-win-arm64-Setup.exe) · [portable `.zip`](https://github.com/vegha-ai/Vegha/releases/latest/download/Vegha-win-arm64-Portable.zip) |
+| macOS (Apple silicon) | [`Vegha-osx-arm64.dmg`](https://github.com/vegha-ai/Vegha/releases/latest/download/Vegha-osx-arm64.dmg) |
+| Linux (x86_64)  | [`Vegha-linux-x64.AppImage`](https://github.com/vegha-ai/Vegha/releases/latest/download/Vegha-linux-x64.AppImage) |
 
-### Store builds *(planned)*
+**Requirements:** Windows 10+, macOS 12 Monterey+, or a modern Linux distro (Ubuntu 22+, Fedora 38+, Arch).
 
-- **Microsoft Store** — MSIX, Store-managed updates
-- **Mac App Store** — sandboxed, signed `.pkg`
+### Store builds
+
+- **Microsoft Store** — [Vegha on the Microsoft Store](https://apps.microsoft.com/detail/9nhrldr9k0jb) (MSIX, Store-managed updates)
+
+Prefer to build it yourself? See [Build](#build).
 
 ---
 
@@ -168,7 +169,7 @@ Signed installers with **Velopack auto-update**:
 Clone the repo and build the full solution:
 
 ```bash
-git clone https://github.com/vamsimaddirala/Vegha.git
+git clone https://github.com/vegha-ai/Vegha.git
 cd Vegha
 
 dotnet restore
