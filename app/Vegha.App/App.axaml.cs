@@ -20,6 +20,8 @@ public partial class App : Application
     public override void OnFrameworkInitializationCompleted()
     {
         Program.Trace("FII:start");
+        // Every dialog gets the Settings-style themed title bar (logo + title + ✕).
+        Vegha.App.Controls.Services.DialogChrome.Register();
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // Show a lightweight splash immediately. Building the DI graph + resolving

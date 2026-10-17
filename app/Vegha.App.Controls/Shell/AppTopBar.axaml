@@ -134,7 +134,7 @@
 
                                     <!-- Scrollable, filtered list of collections. Rows are built in code-behind. -->
                                     <ScrollViewer x:Name="CollectionPickerScroller"
-                                                  MaxHeight="360"
+                                                  MaxHeight="420"
                                                   VerticalScrollBarVisibility="Auto"
                                                   HorizontalScrollBarVisibility="Disabled">
                                         <StackPanel x:Name="CollectionPickerList" Margin="0,4,0,8" />

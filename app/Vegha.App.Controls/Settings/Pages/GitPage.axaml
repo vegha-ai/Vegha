@@ -1,0 +1,163 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels.Settings"
+             xmlns:cred="using:Vegha.Integrations.Git.Credentials"
+             xmlns:git="using:Vegha.App.Controls.Git"
+             mc:Ignorable="d" d:DesignWidth="780"
+             x:Class="Vegha.App.Controls.Settings.Pages.GitPage"
+             x:DataType="vm:GitSettingsViewModel">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="CornerRadius" Value="3" />
+        </Style>
+        <Style Selector="Button.secondary">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+    </UserControl.Styles>
+
+    <StackPanel Spacing="28" MaxWidth="820">
+        <TextBlock Text="Git" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource Text0Brush}" />
+
+        <!-- Executable -->
+        <StackPanel Spacing="10">
+            <TextBlock Classes="section" Text="GIT EXECUTABLE" />
+            <TextBlock Text="{Binding DetectedGit}" FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource Text1Brush}" />
+            <Grid ColumnDefinitions="*,8,Auto">
+                <TextBox Grid.Column="0" Text="{Binding GitExecutablePath}" Watermark="Auto-detect (leave blank)" />
+                <Button Grid.Column="2" Classes="secondary" Content="Browse…" Click="OnBrowseGit_Click" />
+            </Grid>
+            <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding IsGitMissing}">
+                <Button Classes="secondary" Content="Download portable Git for Vegha" Command="{Binding InstallGitCommand}"
+                        IsEnabled="{Binding !IsInstalling}" />
+                <TextBlock Classes="hint" VerticalAlignment="Center" Text="Or install Git system-wide (Windows: winget install Git.Git · macOS: xcode-select --install)." />
+            </StackPanel>
+            <TextBlock Classes="hint" Text="{Binding InstallStatus}" IsVisible="{Binding InstallStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+
+        <!-- Behavior -->
+        <StackPanel Spacing="10">
+            <TextBlock Classes="section" Text="SYNC BEHAVIOR" />
+            <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto">
+                <TextBlock Grid.Row="0" Text="When pulling" VerticalAlignment="Center" Foreground="{DynamicResource Text1Brush}" />
+                <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding PullModes}" SelectedItem="{Binding SelectedPullMode}" HorizontalAlignment="Stretch" />
+                <TextBlock Grid.Row="1" Text="Clone into" VerticalAlignment="Center" Margin="0,10,0,0" Foreground="{DynamicResource Text1Brush}" />
+                <TextBox Grid.Row="1" Grid.Column="1" Margin="0,10,0,0" Text="{Binding DefaultCloneFolder}" Watermark="~/Vegha/repos" />
+                <CheckBox Grid.Row="2" Grid.Column="1" Margin="0,10,0,0" IsChecked="{Binding ScanSecretsOnCommit}"
+                          Content="Warn before committing values that look like credentials" />
+            </Grid>
+        </StackPanel>
+
+        <!-- Network & sign-in -->
+        <StackPanel Spacing="8">
+            <TextBlock Classes="section" Text="NETWORK &amp; ENTERPRISE SIGN-IN" />
+            <CheckBox IsChecked="{Binding UseAppProxy}" Content="Use the proxy from Settings → Network for Git (when proxy mode is On)" />
+            <CheckBox IsChecked="{Binding UseOsCertificateStore}" IsVisible="{Binding IsWindows}"
+                      Content="Verify TLS with the Windows certificate store (needed behind TLS-inspecting proxies)" />
+            <CheckBox IsChecked="{Binding UseWindowsBroker}" IsVisible="{Binding IsWindows}"
+                      Content="Sign in to Azure DevOps with your Windows account (WAM: SSO, MFA, Conditional Access)" />
+            <CheckBox IsChecked="{Binding AzureReposOAuth}" Content="Azure Repos: use OAuth instead of saved personal access tokens (asks you to sign in again)" />
+            <CheckBox IsChecked="{Binding PreferWindowsOpenSsh}" IsVisible="{Binding IsWindows}"
+                      Content="Use Windows OpenSSH (works with the Windows ssh-agent service) for SSH remotes" />
+            <StackPanel Spacing="3" Margin="0,6,0,0">
+                <TextBlock Text="GitHub Enterprise Server hosts (one per line)" FontSize="12" Foreground="{DynamicResource Text1Brush}" />
+                <TextBox Text="{Binding EnterpriseHostsText}" AcceptsReturn="True" MinHeight="54" Watermark="github.acme.com" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Credentials -->
+        <StackPanel Spacing="10" IsVisible="{Binding IsAvailable}">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="section" Text="CREDENTIALS PER HOST" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Classes="secondary" Content="Add…" Command="{Binding AddProfileCommand}" />
+            </Grid>
+            <TextBlock Classes="hint" Text="Hosts without a profile use your system Git credentials (Git Credential Manager, keychain, SSH agent). Add a profile for a personal access token, a specific SSH key, GitHub CLI or Azure CLI sign-in — scope it to a path (dev.azure.com/contoso, github.com/acme) to use different accounts on the same host." />
+            <ListBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}" MaxHeight="160"
+                     Background="{DynamicResource Bg2Brush}" IsVisible="{Binding Profiles.Count}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="cred:GitCredentialProfile">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" FontSize="12">
+                                <Run Text="{Binding HostPattern}" FontWeight="SemiBold" />
+                                <Run Text="  " />
+                                <Run Text="{Binding DisplayName}" Foreground="{DynamicResource Text2Brush}" />
+                            </TextBlock>
+                            <TextBlock Grid.Column="1" Text="{Binding Method}" FontSize="11" Foreground="{DynamicResource Text3Brush}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <Border Background="{DynamicResource Bg2Brush}" CornerRadius="4" Padding="14"
+                    IsVisible="{Binding Editor, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <git:GitCredentialEditorView DataContext="{Binding Editor}" />
+            </Border>
+        </StackPanel>
+
+        <!-- SSH -->
+        <StackPanel Spacing="10" IsVisible="{Binding IsAvailable}">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="section" Text="SSH KEYS" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Classes="secondary" Content="Refresh" Command="{Binding RefreshSshKeysCommand}" />
+            </Grid>
+            <ListBox ItemsSource="{Binding SshKeys}" SelectedItem="{Binding SelectedSshKey}" MaxHeight="130"
+                     Background="{DynamicResource Bg2Brush}" IsVisible="{Binding SshKeys.Count}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="cred:SshKeyInfo">
+                        <TextBlock FontSize="12">
+                            <Run Text="{Binding PrivateKeyPath}" />
+                            <Run Text="  " />
+                            <Run Text="{Binding Type}" Foreground="{DynamicResource Text3Brush}" />
+                            <Run Text="{Binding Comment}" Foreground="{DynamicResource Text3Brush}" />
+                        </TextBlock>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <Button Classes="secondary" Content="Copy public key" Command="{Binding CopyPublicKeyCommand}" HorizontalAlignment="Left"
+                    IsEnabled="{Binding SelectedSshKey, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            <Grid ColumnDefinitions="*,8,*,8,*,8,Auto">
+                <TextBox Grid.Column="0" Text="{Binding NewKeyName}" Watermark="Key file name" />
+                <TextBox Grid.Column="2" Text="{Binding NewKeyComment}" Watermark="Comment (e.g. email)" />
+                <TextBox Grid.Column="4" Text="{Binding NewKeyPassphrase}" PasswordChar="•" Watermark="Passphrase (optional)" />
+                <Button Grid.Column="6" Classes="secondary" Content="Generate ed25519 key" Command="{Binding GenerateSshKeyCommand}" />
+            </Grid>
+            <TextBlock Classes="hint" Text="{Binding SshStatus}" IsVisible="{Binding SshStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+
+        <!-- Diagnostics -->
+        <StackPanel Spacing="10" IsVisible="{Binding IsAvailable}">
+            <TextBlock Classes="section" Text="TEST CONNECTION" />
+            <Grid ColumnDefinitions="*,8,Auto,8,Auto">
+                <TextBox Grid.Column="0" Text="{Binding DiagnosticsUrl}" Watermark="https://github.com/acme/api-collections.git" />
+                <Button Grid.Column="2" Classes="secondary" Content="Run" Command="{Binding RunDiagnosticsCommand}" IsEnabled="{Binding !IsDiagnosing}" />
+                <Button Grid.Column="4" Classes="secondary" Content="Copy report" Command="{Binding CopyDiagnosticsCommand}" />
+            </Grid>
+            <Border Background="{DynamicResource Bg2Brush}" CornerRadius="4" Padding="10" MaxHeight="260"
+                    IsVisible="{Binding DiagnosticsReport, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <ScrollViewer>
+                    <SelectableTextBlock Text="{Binding DiagnosticsReport}" FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                         TextWrapping="Wrap" Foreground="{DynamicResource Text1Brush}" />
+                </ScrollViewer>
+            </Border>
+        </StackPanel>
+    </StackPanel>
+</UserControl>

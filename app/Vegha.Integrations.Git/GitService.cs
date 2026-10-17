@@ -20,15 +20,17 @@ namespace Vegha.Integrations.Git;
 public sealed partial class GitService
 {
     private readonly GitProcessRunner _runner;
-    private readonly GitCredentialsService? _credentials;
+    private readonly IGitEnvironmentProvider? _environmentProvider;
 
     public GitService() : this(new GitProcessRunner(), null) { }
 
-    public GitService(GitProcessRunner runner, GitCredentialsService? credentials = null)
+    public GitService(GitProcessRunner runner, IGitEnvironmentProvider? environmentProvider = null)
     {
         _runner = runner;
-        _credentials = credentials;
+        _environmentProvider = environmentProvider;
     }
+
+    public GitProcessRunner Runner => _runner;
 
     private static readonly CompareOptions RenameAware = new()
     {
@@ -38,7 +40,13 @@ public sealed partial class GitService
 
     // ------------------------------------------------------------ Repo basics
 
+    /// <summary>True when <paramref name="path"/> is inside a git working tree (walks up the
+    /// folder hierarchy like git does — a collection inside a cloned workspace counts).</summary>
     public bool IsRepository(string path) =>
+        GitRepoLocator.Locate(path) is not null;
+
+    /// <summary>True only when <paramref name="path"/> is itself a repository root.</summary>
+    public bool IsRepositoryRoot(string path) =>
         Repository.IsValid(path);
 
     public void Init(string path) =>
@@ -322,7 +330,10 @@ public sealed partial class GitService
         var branch = repo.Branches[branchName];
         if (branch?.TrackedBranch is null) return null;
         var tracked = branch.TrackedBranch;
-        return (tracked.RemoteName ?? "origin", tracked.FriendlyName.Replace($"{tracked.RemoteName}/", ""));
+        var remote = tracked.RemoteName ?? repo.Config.Get<string>($"branch.{branchName}.remote")?.Value;
+        if (string.IsNullOrEmpty(remote)) return null;
+        var friendly = tracked.FriendlyName;
+        return (remote, friendly.StartsWith(remote + "/", StringComparison.Ordinal) ? friendly[(remote.Length + 1)..] : friendly);
     }
 
     public (int Ahead, int Behind) AheadBehind(string path, string branchName)

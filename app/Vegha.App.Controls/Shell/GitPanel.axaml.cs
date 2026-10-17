@@ -15,6 +15,13 @@ public partial class GitPanel : UserControl
     /// host shows a small dialog and writes via <c>GitViewModel.SetGitIdentityCommand</c>.</summary>
     public event EventHandler? ConfigureIdentityRequested;
 
+    /// <summary>Raised by the empty states' "Open from Git…" button. The host opens the
+    /// clone-in-place dialog.</summary>
+    public event EventHandler? OpenFromGitRequested;
+
+    private void OnOpenFromGit_Click(object? s, RoutedEventArgs e) =>
+        OpenFromGitRequested?.Invoke(this, EventArgs.Empty);
+
     public GitPanel()
     {
         InitializeComponent();

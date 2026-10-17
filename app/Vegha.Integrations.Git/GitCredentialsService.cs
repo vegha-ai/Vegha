@@ -1,24 +1,11 @@
-using System.Diagnostics;
-using System.Text;
-
 namespace Vegha.Integrations.Git;
 
-/// <summary>Resolves Git credentials for libgit2sharp's transport when shelling out to
-/// <c>git.exe</c> isn't an option. Uses <c>git credential fill</c> (which delegates to GCM /
-/// the user's helper chain) when available; UI hosts can additionally subscribe a fallback
-/// prompt that runs when the shell-out yields nothing.
-///
-/// API is intentionally synchronous: libgit2sharp's <see cref="LibGit2Sharp.CredentialsHandler"/>
-/// runs inside libgit2 during fetch/push and can't await. Callers must invoke this off the UI
-/// thread; the UI fallback marshals to <c>Dispatcher.UIThread.InvokeAsync(...).GetAwaiter().GetResult()</c>.</summary>
+/// <summary>Thin wrapper over <c>git credential fill / approve / reject</c>. These delegate to
+/// whatever helper chain the user has configured (Git Credential Manager on Windows / macOS,
+/// osxkeychain, libsecret, …), so a PAT saved here is also what the terminal uses and vice
+/// versa.</summary>
 public sealed class GitCredentialsService
 {
-    /// <summary>Optional UI-thread prompt invoked when <c>git credential fill</c> can't satisfy
-    /// the request. Implementations should show a modal dialog (Username + PAT / password)
-    /// and return the entered values, or null on cancel. Marshaling to the UI thread is the
-    /// implementation's responsibility.</summary>
-    public Func<CredentialsRequest, CredentialsResponse?>? PromptFallback { get; set; }
-
     private readonly GitProcessRunner _runner;
 
     public GitCredentialsService(GitProcessRunner runner)
@@ -26,116 +13,94 @@ public sealed class GitCredentialsService
         _runner = runner;
     }
 
-    public bool TryGet(string url, string? usernameHint, out string username, out string secret)
+    /// <summary>Asks the helper chain for a credential without any UI (<c>GCM_INTERACTIVE=never</c>).
+    /// Returns null when nothing is stored.</summary>
+    public async Task<(string Username, string Secret)?> FillAsync(string url, string? usernameHint, CancellationToken ct = default)
     {
-        username = string.Empty;
-        secret = string.Empty;
-
-        // Try git credential fill — this delegates to whatever helper chain the user has
-        // configured (Windows: Git Credential Manager by default).
-        if (_runner.IsAvailable && TryCredentialFill(url, usernameHint, out username, out secret))
-            return true;
-
-        // UI fallback.
-        if (PromptFallback is { } prompt)
-        {
-            var response = prompt(new CredentialsRequest(url, usernameHint));
-            if (response is not null)
-            {
-                username = response.Username;
-                secret = response.Secret;
-                if (response.Remember)
-                    TryCredentialApprove(url, username, secret);
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>Stores credentials back through the helper chain. Best-effort.</summary>
-    public void Forget(string url, string username)
-    {
-        if (!_runner.IsAvailable) return;
+        if (!_runner.IsAvailable) return null;
         try
         {
-            var input = $"url={url}\nusername={username}\n\n";
-            var psi = NewCredentialPsi("reject");
-            using var p = Process.Start(psi);
-            if (p is null) return;
-            p.StandardInput.Write(input);
-            p.StandardInput.Close();
-            p.WaitForExit(3000);
-        }
-        catch { /* best-effort */ }
-    }
-
-    private bool TryCredentialFill(string url, string? usernameHint, out string username, out string secret)
-    {
-        username = string.Empty;
-        secret = string.Empty;
-        try
-        {
-            var input = new StringBuilder().Append("url=").Append(url).Append('\n');
-            if (!string.IsNullOrEmpty(usernameHint))
-                input.Append("username=").Append(usernameHint).Append('\n');
-            input.Append('\n');
-
-            var psi = NewCredentialPsi("fill");
-            using var p = Process.Start(psi);
-            if (p is null) return false;
-            p.StandardInput.Write(input.ToString());
-            p.StandardInput.Close();
-
-            var output = p.StandardOutput.ReadToEnd();
-            p.WaitForExit(15000);
-            if (p.ExitCode != 0) return false;
-
-            foreach (var raw in output.Split('\n'))
+            var input = Describe(url, usernameHint, null);
+            var env = HelperEnvironment(url);
+            var result = await _runner.RunAsync(Path.GetTempPath(), new[] { "credential", "fill" },
+                new GitRunOptions { StdIn = input, Environment = env, Timeout = TimeSpan.FromSeconds(20) }, ct).ConfigureAwait(false);
+            if (!result.Success) return null;
+            string? user = null, secret = null;
+            foreach (var raw in result.StdOut.Split('\n'))
             {
                 var line = raw.TrimEnd('\r');
-                if (string.IsNullOrEmpty(line)) break;
+                if (line.Length == 0) break;
                 var eq = line.IndexOf('=');
                 if (eq < 0) continue;
                 var key = line[..eq];
                 var value = line[(eq + 1)..];
-                if (key == "username") username = value;
+                if (key == "username") user = value;
                 else if (key == "password") secret = value;
             }
-            return !string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(secret);
+            return !string.IsNullOrEmpty(secret) ? (user ?? string.Empty, secret!) : null;
         }
-        catch
-        {
-            return false;
-        }
+        catch (OperationCanceledException) { throw; }
+        catch { return null; }
     }
 
-    private void TryCredentialApprove(string url, string username, string secret)
+    /// <summary>Stores a credential in the helper chain (GCM / keychain).</summary>
+    public Task<bool> ApproveAsync(string url, string username, string secret, CancellationToken ct = default) =>
+        RunAsync("approve", Describe(url, username, secret), ct);
+
+    /// <summary>Removes a stored credential from the helper chain.</summary>
+    public Task<bool> RejectAsync(string url, string? username, CancellationToken ct = default) =>
+        RunAsync("reject", Describe(url, username, null), ct);
+
+    /// <summary>The configured helper chain (<c>git config --show-origin --get-all credential.helper</c>).</summary>
+    public async Task<string> DescribeHelpersAsync(CancellationToken ct = default)
     {
-        if (!_runner.IsAvailable) return;
+        if (!_runner.IsAvailable) return "(git not available)";
+        var r = await _runner.RunAsync(Path.GetTempPath(), new[] { "config", "--show-origin", "--get-all", "credential.helper" }, ct: ct).ConfigureAwait(false);
+        return string.IsNullOrWhiteSpace(r.StdOut) ? "(none configured)" : r.StdOut.Trim();
+    }
+
+    private async Task<bool> RunAsync(string action, string input, CancellationToken ct)
+    {
+        if (!_runner.IsAvailable) return false;
         try
         {
-            var input = $"url={url}\nusername={username}\npassword={secret}\n\n";
-            var psi = NewCredentialPsi("approve");
-            using var p = Process.Start(psi);
-            if (p is null) return;
-            p.StandardInput.Write(input);
-            p.StandardInput.Close();
-            p.WaitForExit(3000);
+            var env = HelperEnvironment(input);
+            var r = await _runner.RunAsync(Path.GetTempPath(), new[] { "credential", action },
+                new GitRunOptions { StdIn = input, Environment = env, Timeout = TimeSpan.FromSeconds(20) }, ct).ConfigureAwait(false);
+            return r.Success;
         }
-        catch { /* best-effort */ }
+        catch (OperationCanceledException) { throw; }
+        catch { return false; }
     }
 
-    private static ProcessStartInfo NewCredentialPsi(string action) => new("git", $"credential {action}")
+    /// <summary>No GCM UI; for Azure DevOps key credentials by path (one host, many orgs) — the
+    /// same setting the broker applies to network operations so lookups match.</summary>
+    private static GitEnvironment HelperEnvironment(string urlOrInput)
     {
-        RedirectStandardInput = true,
-        RedirectStandardOutput = true,
-        RedirectStandardError = true,
-        UseShellExecute = false,
-        CreateNoWindow = true,
-    };
+        var env = new GitEnvironment().Set("GCM_INTERACTIVE", "never");
+        foreach (var host in new[] { "dev.azure.com" })
+            if (urlOrInput.Contains(host, StringComparison.OrdinalIgnoreCase))
+                env.AddConfig($"credential.https://{host}.useHttpPath", "true");
+        return env;
+    }
+
+    private static string Describe(string url, string? username, string? secret)
+    {
+        var sb = new System.Text.StringBuilder();
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            sb.Append("protocol=").Append(uri.Scheme).Append('\n');
+            sb.Append("host=").Append(uri.IsDefaultPort ? uri.Host : $"{uri.Host}:{uri.Port}").Append('\n');
+            var path = uri.AbsolutePath.Trim('/');
+            if (path.Length > 0) sb.Append("path=").Append(path).Append('\n');
+        }
+        else
+        {
+            sb.Append("url=").Append(url).Append('\n');
+        }
+        if (!string.IsNullOrEmpty(username)) sb.Append("username=").Append(username).Append('\n');
+        if (!string.IsNullOrEmpty(secret)) sb.Append("password=").Append(secret).Append('\n');
+        sb.Append('\n');
+        return sb.ToString();
+    }
 }
-
-public sealed record CredentialsRequest(string Url, string? UsernameHint);
-
-public sealed record CredentialsResponse(string Username, string Secret, bool Remember);

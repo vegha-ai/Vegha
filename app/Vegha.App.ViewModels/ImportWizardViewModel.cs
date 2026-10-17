@@ -200,10 +200,24 @@ public partial class ImportWizardViewModel : ObservableObject
     [ObservableProperty]
     private string? _progressMessage;
 
-    public ImportWizardViewModel(ILogger<ImportWizardViewModel> logger)
+    private readonly Vegha.Integrations.Git.GitService? _git;
+
+    public ImportWizardViewModel(ILogger<ImportWizardViewModel> logger, Vegha.Integrations.Git.GitService? git = null)
     {
         _logger = logger;
+        _git = git;
     }
+
+    /// <summary>Raised when the user picks "Open from Git (keep in sync)…" in the Git / GitHub
+    /// tabs — the host closes the import dialog and opens the clone-in-place dialog with the
+    /// URL pre-filled.</summary>
+    public event EventHandler<string?>? OpenFromGitRequested;
+
+    [RelayCommand]
+    private void OpenFromGit() =>
+        OpenFromGitRequested?.Invoke(this, !string.IsNullOrWhiteSpace(GitUrl) ? GitUrl
+            : !string.IsNullOrWhiteSpace(GitHubOwner) && !string.IsNullOrWhiteSpace(GitHubRepo) ? $"https://github.com/{GitHubOwner}/{GitHubRepo}.git"
+            : null);
 
     // -------------- File tab routing --------------
 
@@ -298,10 +312,10 @@ public partial class ImportWizardViewModel : ObservableObject
         IsFetching = true;
         try
         {
-            await Task.Run(() => CloneAndStageImpl(
-                GitUrl,
+            await CloneAndStageAsync(
+                Vegha.Integrations.Git.Providers.GitProviderRegistry.Normalize(GitUrl),
                 string.IsNullOrWhiteSpace(GitBranch) ? null : GitBranch,
-                BuildGitCredentials()));
+                BuildGitCredentials());
         }
         catch (Exception ex)
         {
@@ -366,10 +380,10 @@ public partial class ImportWizardViewModel : ObservableObject
             var creds = string.IsNullOrEmpty(GitHubToken)
                 ? null
                 : new GitCloneCredentials("https-pat", "x-access-token", GitHubToken, null);
-            await Task.Run(() => CloneAndStageImpl(
+            await CloneAndStageAsync(
                 url,
                 string.IsNullOrEmpty(GitHubBranch) ? null : GitHubBranch,
-                creds));
+                creds);
         }
         catch (Exception ex)
         {
@@ -380,11 +394,14 @@ public partial class ImportWizardViewModel : ObservableObject
         finally { IsFetching = false; }
     }
 
-    private void CloneAndStageImpl(string url, string? branch, GitCloneCredentials? creds)
+    /// <summary>Snapshot import: clones into a temp folder with the git CLI (inherits GCM / SSH
+    /// agent / proxy) and stages the detected collection as a copy. For a live, two-way synced
+    /// checkout use "Open from Git" instead.</summary>
+    private async Task CloneAndStageAsync(string url, string? branch, GitCloneCredentials? creds)
     {
+        var git = _git ?? new Vegha.Integrations.Git.GitService();
         var tempRoot = Path.Combine(Path.GetTempPath(), "Vegha-clone-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempRoot);
-        Vegha.Integrations.Git.GitCloneService.Clone(url, tempRoot, branch, ToServiceCreds(creds));
+        await git.CloneAsync(url, tempRoot, branch, partial: false, progress: null, ct: default, credentials: ToEnvironment(url, creds));
 
         var result = ImportPipeline.ScanDirectory(tempRoot, BuildPostmanOptions());
         // Override the auto-derived name with the repo name when we have one — the user
@@ -407,13 +424,15 @@ public partial class ImportWizardViewModel : ObservableObject
         _ => null,
     };
 
-    private static Vegha.Integrations.Git.GitCloneCredentials? ToServiceCreds(GitCloneCredentials? c)
+    private static Vegha.Integrations.Git.GitEnvironment? ToEnvironment(string url, GitCloneCredentials? c)
     {
         if (c is null) return null;
         return c.Mode switch
         {
-            "https-pat" => Vegha.Integrations.Git.GitCloneCredentials.HttpsPat(c.Username ?? "x-access-token", c.Password ?? ""),
-            "ssh-key"   => Vegha.Integrations.Git.GitCloneCredentials.SshKey(c.SshKeyPath ?? ""),
+            "https-pat" when !string.IsNullOrEmpty(c.Password) =>
+                Vegha.Integrations.Git.Credentials.GitCredentialBroker.ExplicitPat(url, c.Username, c.Password!),
+            "ssh-key" when !string.IsNullOrEmpty(c.SshKeyPath) =>
+                Vegha.Integrations.Git.Credentials.GitCredentialBroker.ExplicitSshKey(c.SshKeyPath!),
             _ => null,
         };
     }
@@ -631,7 +650,5 @@ public partial class ImportWizardViewModel : ObservableObject
     }
 }
 
-/// <summary>Local DTO that crosses the VM/integration boundary. Mirrors
-/// <c>Vegha.Integrations.Git.GitCloneCredentials</c> so the VM can build credentials
-/// without taking a project reference change in this file's compilation unit.</summary>
+/// <summary>Credentials typed into the Import wizard's Git tab (used once, never stored).</summary>
 public sealed record GitCloneCredentials(string Mode, string? Username, string? Password, string? SshKeyPath);
