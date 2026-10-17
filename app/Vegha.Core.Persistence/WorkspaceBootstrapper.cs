@@ -109,6 +109,35 @@ public static class WorkspaceBootstrapper
         catch { /* best-effort — missing .gitignore won't break the app */ }
     }
 
+    /// <summary>Seeds a <c>.gitignore</c> at a repository root that may contain several
+    /// collections (a workspace repo or a monorepo): ignores every collection's
+    /// <c>.secrets/</c> sidecar plus OS / editor noise. Idempotent — appends missing lines.</summary>
+    public static void EnsureRepoGitIgnore(string repoRoot)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(repoRoot) || !Directory.Exists(repoRoot)) return;
+            var gitIgnorePath = Path.Combine(repoRoot, ".gitignore");
+            var required = new[]
+            {
+                "# Vegha: local secrets (encrypted env values, secret-provider config)",
+                "**/.secrets/",
+                "# OS / editor noise",
+                ".DS_Store",
+                "Thumbs.db",
+                "*.swp",
+            };
+            var existing = File.Exists(gitIgnorePath) ? File.ReadAllText(gitIgnorePath) : string.Empty;
+            var existingLines = existing.Split('\n').Select(l => l.Trim()).ToHashSet(StringComparer.Ordinal);
+            var missing = required.Where(l => !existingLines.Contains(l)).ToList();
+            // Don't append comment lines on their own when every real entry is already present.
+            if (missing.All(l => l.StartsWith('#'))) return;
+            var prefix = existing.Length == 0 || existing.EndsWith('\n') ? string.Empty : "\n";
+            File.AppendAllText(gitIgnorePath, prefix + string.Join('\n', missing) + '\n');
+        }
+        catch { /* best-effort */ }
+    }
+
     private static string NormalizePath(string p)
     {
         try { return Path.GetFullPath(p).TrimEnd('\\', '/'); }

@@ -30,7 +30,8 @@ internal static class ServiceRegistration
                 shortcutRows: KeyboardShortcutsCatalog.All,
                 secretProviderFactory: Vegha.App.Secrets.SecretProviderRegistrar.TryCreate,
                 appVersion: updates?.CurrentVersion,
-                updatesSupported: updates?.IsSupported ?? false);
+                updatesSupported: updates?.IsSupported ?? false,
+                git: sp.GetService<Vegha.Integrations.Git.GitIntegration>());
         });
 
         services.AddTransient<WelcomeViewModel>();
@@ -139,10 +140,22 @@ internal static class ServiceRegistration
         });
         services.AddSingleton<HistoryViewModel>();
         services.AddSingleton<CookiesViewModel>();
-        services.AddSingleton<Vegha.Integrations.Git.GitProcessRunner>();
-        services.AddSingleton<Vegha.Integrations.Git.GitCredentialsService>();
-        services.AddSingleton<Vegha.Integrations.Git.GitService>();
-        services.AddSingleton<GitViewModel>();
+        // Git: one wired stack (locator → runner → credential broker → service), configured
+        // from AppSettings and re-applied live when settings change.
+        services.AddSingleton<Vegha.Integrations.Git.GitIntegration>(sp =>
+        {
+            var git = new Vegha.Integrations.Git.GitIntegration();
+            Vegha.App.Services.GitSettingsApplier.Attach(git, sp.GetRequiredService<AppSettingsStore>());
+            return git;
+        });
+        services.AddSingleton(sp => sp.GetRequiredService<Vegha.Integrations.Git.GitIntegration>().Runner);
+        services.AddSingleton(sp => sp.GetRequiredService<Vegha.Integrations.Git.GitIntegration>().Credentials);
+        services.AddSingleton(sp => sp.GetRequiredService<Vegha.Integrations.Git.GitIntegration>().Service);
+        services.AddSingleton<GitViewModel>(sp => new GitViewModel(
+            sp.GetRequiredService<Vegha.Integrations.Git.GitService>(),
+            sp.GetRequiredService<CollectionsViewModel>(),
+            sp.GetRequiredService<ILogger<GitViewModel>>(),
+            sp.GetRequiredService<AppSettingsStore>()));
         services.AddSingleton<Vegha.Integrations.Secrets.SecretRegistry>();
         services.AddSingleton<OpenApiViewModel>(sp => new OpenApiViewModel(
             sp.GetRequiredService<CollectionsViewModel>(),

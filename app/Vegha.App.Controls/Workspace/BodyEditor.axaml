@@ -255,16 +255,57 @@
 
         <!-- Raw editor (json / xml / text / sparql) — variable-aware + line numbers + syntax.
              Borderless so the body area renders flush with no boxed input chrome. -->
-        <ws:VariableAwareTextEditor
-            IsVisible="{Binding IsBodyRaw}"
-            Text="{Binding BodyContent, Mode=TwoWay}"
-            Variables="{Binding ResolvedVariablesSnapshot}"
-            SyntaxHighlightingName="{Binding BodySyntaxHighlightingName}"
-            SingleLine="False"
-            ShowLineNumbers="True"
-            Bordered="False"
-            FontSize="{DynamicResource EditorFontSize}"
-            Watermark="(empty body — pick a type and start typing)" />
+        <Grid IsVisible="{Binding IsBodyRaw}">
+            <ws:VariableAwareTextEditor
+                Text="{Binding BodyContent, Mode=TwoWay}"
+                Variables="{Binding ResolvedVariablesSnapshot}"
+                SyntaxHighlightingName="{Binding BodySyntaxHighlightingName}"
+                SingleLine="False"
+                ShowLineNumbers="True"
+                Bordered="False"
+                FontSize="{DynamicResource EditorFontSize}" />
+            <!-- Designed empty state (same pattern as the response pane's "No response yet").
+                 Hit-test transparent so clicking anywhere focuses the editor underneath and
+                 typing dismisses it. Replaces the old editor watermark, which floated mid-pane
+                 in monospace and collided with the line-number gutter. -->
+            <StackPanel IsVisible="{Binding BodyContent, Converter={x:Static StringConverters.IsNullOrEmpty}}"
+                        IsHitTestVisible="False"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Spacing="12" MaxWidth="380">
+                <Border Width="52" Height="52" CornerRadius="26"
+                        Background="{DynamicResource Bg3Brush}"
+                        HorizontalAlignment="Center">
+                    <icons:Icon Kind="FileText" Size="22"
+                                Foreground="{DynamicResource Text3Brush}"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="{Binding BodyEmptyTitle}"
+                           FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource Text1Brush}"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="{Binding BodyEmptySubtitle}"
+                           FontSize="12"
+                           Foreground="{DynamicResource Text2Brush}"
+                           TextWrapping="Wrap" TextAlignment="Center"
+                           HorizontalAlignment="Center" />
+                <Border Background="{DynamicResource Bg3Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        BorderThickness="1" CornerRadius="4"
+                        Padding="10,4" HorizontalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{}{{variable}}"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text1Brush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="Insert variables"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
 
         <!-- Form URL-Encoded body — key/value table. The wire form is
              application/x-www-form-urlencoded; the executor encodes via FormUrlEncodedContent. -->
@@ -481,21 +522,44 @@
             </Border>
         </DockPanel>
 
-        <!-- "none" empty state — centered title + subtitle, matching the response pane's
-             empty-state typography instead of a lone italic line in the top-left corner. -->
+        <!-- "none" empty state — the designed empty-state pattern (icon circle + title +
+             subtitle + chip), same as the response pane's "No response yet". -->
         <Border IsVisible="{Binding BodyType, Converter={x:Static ObjectConverters.Equal}, ConverterParameter=none}"
                 Padding="20" Background="{DynamicResource Bg2Brush}">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Spacing="6" MaxWidth="320" Margin="0,0,0,60">
-                <TextBlock Text="No body will be sent"
-                           FontSize="13" FontWeight="SemiBold"
+                        Spacing="12" MaxWidth="380">
+                <Border Width="52" Height="52" CornerRadius="26"
+                        Background="{DynamicResource Bg3Brush}"
+                        HorizontalAlignment="Center">
+                    <icons:Icon Kind="FileText" Size="22"
+                                Foreground="{DynamicResource Text3Brush}"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="{Binding BodyNoneTitle}"
+                           FontSize="14" FontWeight="SemiBold"
                            Foreground="{DynamicResource Text1Brush}"
                            HorizontalAlignment="Center" />
-                <TextBlock Text="Pick a body type from the dropdown above to add one."
-                           FontSize="11"
+                <TextBlock Text="{Binding BodyNoneSubtitle}"
+                           FontSize="12"
                            Foreground="{DynamicResource Text2Brush}"
                            TextWrapping="Wrap" TextAlignment="Center"
                            HorizontalAlignment="Center" />
+                <Border Background="{DynamicResource Bg3Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}"
+                        BorderThickness="1" CornerRadius="4"
+                        Padding="10,4" HorizontalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="No Body ▾"
+                                   FontFamily="{StaticResource MonoFont}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text1Brush}"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Text="Choose a body type"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource Text2Brush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </Border>
     </Grid>

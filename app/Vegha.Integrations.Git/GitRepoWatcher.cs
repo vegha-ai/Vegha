@@ -19,9 +19,10 @@ public sealed class GitRepoWatcher : IDisposable
     /// a bulk rebase / branch checkout doesn't fire a flood.</summary>
     public int DebounceMs { get; init; } = 300;
 
-    public GitRepoWatcher(string repoPath)
+    public GitRepoWatcher(string repoPath, string? gitDir = null)
     {
-        var gitFolder = Path.Combine(repoPath, ".git");
+        // Linked worktrees / submodules keep metadata outside the working tree (.git is a file).
+        var gitFolder = !string.IsNullOrEmpty(gitDir) && Directory.Exists(gitDir) ? gitDir : Path.Combine(repoPath, ".git");
 
         _workdir = new FileSystemWatcher(repoPath)
         {

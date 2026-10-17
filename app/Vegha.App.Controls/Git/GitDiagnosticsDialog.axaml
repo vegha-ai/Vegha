@@ -1,0 +1,38 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="760" d:DesignHeight="560"
+        x:Class="Vegha.App.Controls.Git.GitDiagnosticsDialog"
+        Title="Test Git connection"
+        Width="780" Height="580"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="20">
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,8,Auto" Margin="0,0,0,10">
+            <TextBox Grid.Column="0" x:Name="UrlBox" Watermark="Remote URL"
+                     Background="{DynamicResource BgInputBrush}" BorderBrush="{DynamicResource Border1Brush}"
+                     Foreground="{DynamicResource Text0Brush}" Padding="8,6" />
+            <Button Grid.Column="2" x:Name="RunButton" Content="Run test" Click="OnRun_Click"
+                    Background="{DynamicResource AccentBrush}" Foreground="White" BorderThickness="0"
+                    Padding="16,6" CornerRadius="4" FontWeight="SemiBold" />
+        </Grid>
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,12,0,0">
+            <TextBlock Grid.Column="0" x:Name="ResultText" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold" />
+            <Button Grid.Column="2" Content="Copy report" Click="OnCopy_Click" Margin="0,0,8,0"
+                    Background="Transparent" BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                    Foreground="{DynamicResource Text0Brush}" Padding="14,6" CornerRadius="4" />
+            <Button Grid.Column="3" Content="Close" Click="OnClose_Click"
+                    Background="Transparent" BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                    Foreground="{DynamicResource Text0Brush}" Padding="14,6" CornerRadius="4" />
+        </Grid>
+        <Border Background="{DynamicResource Bg2Brush}" CornerRadius="4" Padding="10">
+            <ScrollViewer x:Name="ReportScroll">
+                <SelectableTextBlock x:Name="ReportText" FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                     Foreground="{DynamicResource Text1Brush}" TextWrapping="Wrap"
+                                     Text="Runs git with tracing against the remote and reports which credential source answered, proxy / TLS details and the exact failure." />
+            </ScrollViewer>
+        </Border>
+    </DockPanel>
+</Window>

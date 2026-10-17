@@ -107,6 +107,9 @@
                         <DataTemplate DataType="vm:NetworkSettingsViewModel">
                             <pages:NetworkPage />
                         </DataTemplate>
+                        <DataTemplate DataType="vm:GitSettingsViewModel">
+                            <pages:GitPage />
+                        </DataTemplate>
                         <DataTemplate DataType="vm:SecretManagerSettingsViewModel">
                             <pages:SecretManagerPage />
                         </DataTemplate>

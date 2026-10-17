@@ -1,0 +1,241 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Vegha.App.ViewModels.Git"
+        xmlns:prov="using:Vegha.Integrations.Git.Providers"
+        mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="640"
+        x:Class="Vegha.App.Controls.Git.CloneRepoDialog"
+        x:DataType="vm:CloneRepoViewModel"
+        Title="Open from Git"
+        Width="660"
+        SizeToContent="Height"
+        MaxHeight="820"
+        CanResize="False"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner">
+    <Window.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+            <Setter Property="Padding" Value="8,6" />
+        </Style>
+        <Style Selector="Button.secondary">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="Button.accent">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="16,6" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.link">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="20">
+        <!-- Footer -->
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto" Margin="0,16,0,0">
+            <Button Grid.Column="1" Content="Cancel" Classes="secondary" Click="OnClose_Click" Margin="0,0,8,0" />
+            <Button Grid.Column="2" Content="Clone" Classes="accent" Command="{Binding CloneCommand}"
+                    IsEnabled="{Binding CanClone}" IsVisible="{Binding !HasResult}" IsDefault="True" />
+        </Grid>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="14">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Clone a repository and keep it in sync" FontSize="15" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <TextBlock Classes="hint" Text="The repository is cloned with your Git setup (Credential Manager, SSH agent, proxy), and the .git folder is kept so commits, pulls and pushes work from Vegha." />
+                </StackPanel>
+
+                <!-- Source: URL or browse -->
+                <TabControl Padding="0,8,0,0" IsVisible="{Binding !HasResult}">
+                    <TabItem Header="Repository URL" FontSize="12">
+                        <StackPanel Spacing="3">
+                            <TextBlock Classes="label" Text="CLONE URL (HTTPS OR SSH)" />
+                            <TextBox Text="{Binding Url}" Watermark="https://github.com/acme/api.git  ·  git@ssh.dev.azure.com:v3/org/project/repo  ·  or a link to a folder" />
+                            <TextBlock Classes="hint" Text="{Binding WebUrlHint}" Margin="0,4,0,0"
+                                       IsVisible="{Binding WebUrlHint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        </StackPanel>
+                    </TabItem>
+                    <TabItem Header="Browse GitHub / Azure DevOps" FontSize="12">
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,8,Auto">
+                                <TextBox Grid.Column="0" Text="{Binding AccountUrl}" Watermark="https://github.com  ·  https://dev.azure.com/contoso  ·  https://ghe.acme.com" />
+                                <Button Grid.Column="2" Classes="secondary" Content="Load" Command="{Binding LoadOwnersCommand}" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,8,2*">
+                                <ComboBox Grid.Column="0" ItemsSource="{Binding Owners}" SelectedItem="{Binding SelectedOwner}"
+                                          HorizontalAlignment="Stretch" PlaceholderText="Account / project">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="prov:GitProviderOwner">
+                                            <TextBlock Text="{Binding Name}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBox Grid.Column="2" Text="{Binding RepoFilter}" Watermark="Filter repositories" />
+                            </Grid>
+                            <ListBox ItemsSource="{Binding FilteredRepos}" SelectedItem="{Binding SelectedRepo}" Height="170"
+                                     Background="{DynamicResource Bg2Brush}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="prov:GitProviderRepo">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0" Text="{Binding FullName}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Text="private" FontSize="10" Foreground="{DynamicResource Text3Brush}"
+                                                       IsVisible="{Binding IsPrivate}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Classes="hint" Text="{Binding BrowseStatus}"
+                                       IsVisible="{Binding BrowseStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        </StackPanel>
+                    </TabItem>
+                </TabControl>
+
+                <!-- Credentials -->
+                <Border Background="{DynamicResource Bg2Brush}" CornerRadius="4" Padding="10,8" IsVisible="{Binding !HasResult}">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <TextBlock Grid.Column="0" Text="Sign-in: " FontSize="11" Foreground="{DynamicResource Text2Brush}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding CredentialSource, TargetNullValue='—'}" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Text1Brush}" VerticalAlignment="Center" />
+                        <Button Grid.Column="2" Classes="link" Content="Configure…" Command="{Binding ConfigureCredentialsCommand}" />
+                    </Grid>
+                </Border>
+
+                <!-- Options -->
+                <Grid ColumnDefinitions="2*,8,*" IsVisible="{Binding !HasResult}">
+                    <StackPanel Grid.Column="0" Spacing="3">
+                        <TextBlock Classes="label" Text="CLONE INTO" />
+                        <Grid ColumnDefinitions="*,6,Auto">
+                            <TextBox Grid.Column="0" Text="{Binding ParentFolder}" />
+                            <Button Grid.Column="2" Classes="secondary" Content="…" Click="OnBrowseFolder_Click" />
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="3">
+                        <TextBlock Classes="label" Text="FOLDER NAME" />
+                        <TextBox Text="{Binding FolderName}" />
+                    </StackPanel>
+                </Grid>
+                <Grid ColumnDefinitions="*,8,Auto" IsVisible="{Binding !HasResult}">
+                    <StackPanel Grid.Column="0" Spacing="3">
+                        <TextBlock Classes="label" Text="BRANCH (BLANK = DEFAULT)" />
+                        <AutoCompleteBox Text="{Binding Branch}" ItemsSource="{Binding Branches}" FilterMode="Contains"
+                                         Watermark="main" MinimumPrefixLength="0" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Classes="secondary" Content="Check access &amp; list branches" VerticalAlignment="Bottom"
+                            Command="{Binding LoadBranchesCommand}" />
+                </Grid>
+                <StackPanel Spacing="3" IsVisible="{Binding !HasResult}">
+                    <TextBlock Classes="label" Text="LOOK FOR COLLECTIONS IN (OPTIONAL)" />
+                    <TextBox Text="{Binding SubFolder}" Watermark="e.g. Postman  ·  blank = search the whole repository" />
+                </StackPanel>
+                <CheckBox IsChecked="{Binding PartialClone}" IsVisible="{Binding !HasResult}"
+                          Content="Fast partial clone (download file contents on demand — best for large monorepos)" FontSize="12" />
+
+                <!-- Progress / error -->
+                <StackPanel Spacing="6">
+                    <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ProgressText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <TextBlock Grid.Column="0" Text="{Binding ProgressText}" FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource Text1Brush}" />
+                        <Button Grid.Column="1" Classes="link" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsCloning}" />
+                    </Grid>
+                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsCloning}" Height="3" />
+                    <Border Background="{DynamicResource StatusErrSoftBrush}" CornerRadius="4" Padding="10,8"
+                            IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="{Binding Error}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource StatusErrBrush}" />
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <Button Classes="link" Content="Configure credentials…" Command="{Binding ConfigureCredentialsCommand}" />
+                                <Button Classes="link" Content="Authorize for SSO ↗" Click="OnOpenSso_Click"
+                                        IsVisible="{Binding SsoAuthorizationUrl, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Result -->
+                <StackPanel Spacing="10" IsVisible="{Binding HasResult}">
+                    <TextBlock Text="{Binding ClonedPath, StringFormat='Cloned to {0}'}" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <Border Background="{DynamicResource Bg2Brush}" CornerRadius="4" Padding="12" IsVisible="{Binding IsWorkspaceRepo}">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <TextBlock Text="This repository is a Vegha workspace" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource Text0Brush}" />
+                                <TextBlock Classes="hint" Text="Open it to get its collections, environments and scripts." />
+                            </StackPanel>
+                            <Button Grid.Column="1" Classes="accent" Content="Open workspace" Command="{Binding OpenAsWorkspaceCommand}" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <StackPanel Spacing="6" IsVisible="{Binding FoundCollections.Count}">
+                        <TextBlock Classes="label" Text="COLLECTIONS FOUND" />
+                        <ItemsControl ItemsSource="{Binding FoundCollections}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:CloneFoundCollection">
+                                    <CheckBox IsChecked="{Binding IsSelected}"><TextBlock Text="{Binding RelativePath}" FontSize="12" TextWrapping="Wrap" /></CheckBox>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Classes="accent" Content="Add selected to current workspace" Command="{Binding LinkCollectionsCommand}" />
+                            <Button Classes="secondary" Content="Open repository as a new workspace" Command="{Binding OpenAsWorkspaceCommand}"
+                                    IsVisible="{Binding !IsWorkspaceRepo}" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Spacing="6" IsVisible="{Binding HasImportables}">
+                        <TextBlock Classes="label" Text="POSTMAN / INSOMNIA / OPENAPI FILES FOUND" />
+                        <ScrollViewer MaxHeight="180">
+                            <ItemsControl ItemsSource="{Binding FoundImportables}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:CloneFoundCollection">
+                                        <CheckBox IsChecked="{Binding IsSelected}"><TextBlock Text="{Binding RelativePath}" FontSize="12" TextWrapping="Wrap" /></CheckBox>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                        <Border Background="{DynamicResource Bg3Brush}" BorderBrush="{DynamicResource StatusWarnBrush}"
+                                BorderThickness="2,0,0,0" CornerRadius="2" Padding="10,8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Postman collections can't be synced with source control in Vegha" FontSize="12" FontWeight="SemiBold"
+                                           TextWrapping="Wrap" Foreground="{DynamicResource Text0Brush}" />
+                                <TextBlock Classes="hint" Text="Importing converts these files into Vegha collections and environments. Changes you make in Vegha are not written back to the Postman JSON files." />
+                                <TextBlock Classes="hint" Text="To work with Git, keep the converted Vegha collections in a repository folder and commit them — from then on, pull, commit and push them from Source Control like any other files." />
+                            </StackPanel>
+                        </Border>
+                        <Button Classes="accent" Content="Import selected into current workspace…" Command="{Binding ImportFilesCommand}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                    <StackPanel Spacing="6" IsVisible="{Binding HasNothing}">
+                        <TextBlock Classes="hint" Text="No collections were found yet. Open the repository as a workspace and create or import collections into it — they'll be versioned in this repo." />
+                        <Button Classes="accent" Content="Open repository as a new workspace" Command="{Binding OpenAsWorkspaceCommand}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

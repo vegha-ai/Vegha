@@ -26,6 +26,7 @@ public partial class SettingsWindowViewModel : ObservableObject
     public EditorSettingsViewModel Editor { get; }
     public UpdatesSettingsViewModel Updates { get; }
     public ShortcutsSettingsViewModel Shortcuts { get; }
+    public GitSettingsViewModel Git { get; }
 
     /// <summary>Raised after a successful save so the host (MainWindow) can re-apply
     /// theme / zoom / proxy / editor settings live.</summary>
@@ -39,7 +40,8 @@ public partial class SettingsWindowViewModel : ObservableObject
         IEnumerable<ShortcutRow> shortcutRows,
         Func<SecretProviderConfig, ISecretProvider?>? secretProviderFactory = null,
         string? appVersion = null,
-        bool updatesSupported = false)
+        bool updatesSupported = false,
+        Vegha.Integrations.Git.GitIntegration? git = null)
     {
         _store = store;
 
@@ -50,9 +52,11 @@ public partial class SettingsWindowViewModel : ObservableObject
         Editor = new EditorSettingsViewModel();
         Updates = new UpdatesSettingsViewModel(string.IsNullOrWhiteSpace(appVersion) ? "—" : appVersion, updatesSupported);
         Shortcuts = new ShortcutsSettingsViewModel(shortcutRows);
+        Git = new GitSettingsViewModel(git);
 
         Pages.Add(Appearance);
         Pages.Add(Network);
+        Pages.Add(Git);
         Pages.Add(SecretManager);
         Pages.Add(RequestDefaults);
         Pages.Add(Editor);

@@ -310,24 +310,9 @@ public partial class MainWindow : Window
             OpenGitDiffTab(git, row, tabs);
         };
 
-        // Wire the credentials-prompt fallback so libgit2sharp's network ops can surface a
-        // dialog when git credential fill yields nothing. The dialog must marshal back to the
-        // UI thread because libgit2 calls the handler on a worker.
-        var creds = App.Services.GetService<Vegha.Integrations.Git.GitCredentialsService>();
-        if (creds is not null)
-        {
-            creds.PromptFallback = req =>
-            {
-                return global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-                {
-                    var dlg = new Vegha.App.Controls.Workspace.CredentialsPromptDialog(req.Url, req.UsernameHint);
-                    var ok = await dlg.ShowDialog<bool>(this);
-                    if (!ok || string.IsNullOrEmpty(dlg.Username) || string.IsNullOrEmpty(dlg.Secret))
-                        return null;
-                    return new Vegha.Integrations.Git.CredentialsResponse(dlg.Username!, dlg.Secret!, dlg.Remember);
-                }).GetAwaiter().GetResult();
-            };
-        }
+        // Source Control: error-banner fixes, publish / clone flows, secret scan, remote picker.
+        if (git is not null) WireGitActions(git);
+        GitPanelControl.OpenFromGitRequested += async (_, _) => await ShowCloneRepoDialogAsync(null);
 
         // Show the "Loading workspace…" skeleton until the deferred apply completes.
         var collectionsForSkeleton = App.Services.GetService<CollectionsViewModel>();
@@ -950,10 +935,12 @@ public partial class MainWindow : Window
         TearDownBeforeClose();
     }
 
-    private async Task OpenImportWizardAsync()
+    private async Task OpenImportWizardAsync(IReadOnlyList<string>? stageFiles = null)
     {
         var vm = App.Services.GetService<ImportWizardViewModel>();
         if (vm is null) return;
+        // Pre-staged files (e.g. Postman exports found in a freshly cloned repository).
+        if (stageFiles is { Count: > 0 }) vm.StageFiles(stageFiles);
 
         var collections = App.Services.GetService<CollectionsViewModel>();
         var workspaces = App.Services.GetService<WorkspacesViewModel>();
@@ -1036,7 +1023,22 @@ public partial class MainWindow : Window
         };
 
         var dlg = new ImportWizardDialog { DataContext = vm };
+        // "Open from Git (keep in sync)…" in the Git / GitHub tabs: swap to the clone-in-place
+        // dialog with the URL carried over.
+        string? openFromGitUrl = null;
+        var wantsOpenFromGit = false;
+        vm.OpenFromGitRequested += (_, url) =>
+        {
+            wantsOpenFromGit = true;
+            openFromGitUrl = url;
+            dlg.Close();
+        };
         await dlg.ShowDialog(this);
+        if (wantsOpenFromGit)
+        {
+            await ShowCloneRepoDialogAsync(openFromGitUrl);
+            return;
+        }
 
         // After the wizard returns, surface the post-import summary dialog showing just the
         // freshly-imported collections (collected directly inside OnCollectionConfirmed
@@ -1296,10 +1298,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task OpenSettingsDialogAsync()
+    private async Task OpenSettingsDialogAsync(string? pageId = null)
     {
         var vm = App.Services.GetService<Vegha.App.ViewModels.Settings.SettingsWindowViewModel>();
         if (vm is null) return;
+        if (pageId is not null && vm.Pages.FirstOrDefault(p => p.Id == pageId) is { } page) vm.SelectedPage = page;
         var dlg = new Vegha.App.Controls.Settings.SettingsWindow
         {
             DataContext = vm,
@@ -1550,9 +1553,10 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Tabs are scoped to the active collection; the repo root may be a parent folder.
         var diffTab = new ViewModels.Tabs.GitDiffTabViewModel(
             gitService, repoPath, row.Path, mode,
-            collectionPath: repoPath);
+            collectionPath: git.CollectionPath ?? repoPath);
         tabs.Tabs.Add(diffTab);
         tabs.ActiveTab = diffTab;
     }
@@ -1568,6 +1572,184 @@ public partial class MainWindow : Window
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(abs) { UseShellExecute = true });
         }
         catch { /* best-effort */ }
+    }
+
+    // ------------------------------------------------------------------ Git flows
+
+    private Vegha.Integrations.Git.GitIntegration? GitStack => App.Services.GetService<Vegha.Integrations.Git.GitIntegration>();
+
+    /// <summary>Hooks the Source Control VM's host callbacks: classified-error actions,
+    /// pre-commit secret confirmation, and the "which remote?" picker.</summary>
+    private void WireGitActions(GitViewModel git)
+    {
+        git.ActionRequested += async (_, req) => await HandleGitActionAsync(git, req);
+        git.ConfirmSecretsAsync = async findings =>
+        {
+            var dlg = new Vegha.App.Controls.Git.GitSecretScanDialog(findings);
+            return await dlg.ShowDialog<bool>(this);
+        };
+        git.ChooseRemoteAsync = async remotes =>
+        {
+            var dlg = new Vegha.App.Controls.Git.GitChoiceDialog("Push", "Push to which remote?",
+                "This repository has several remotes and the branch isn't tracking one yet. Vegha will remember your choice as the branch's upstream.",
+                remotes, null, "Push");
+            return await dlg.ShowDialog<bool>(this) ? dlg.Choice : null;
+        };
+    }
+
+    private async Task HandleGitActionAsync(GitViewModel git, GitActionRequest req)
+    {
+        var stack = GitStack;
+        if (stack is null) return;
+        switch (req.Action)
+        {
+            case Vegha.Integrations.Git.GitErrorAction.PublishRepository:
+                await ShowPublishRepoDialogAsync(git);
+                break;
+            case Vegha.Integrations.Git.GitErrorAction.AddRemote:
+            {
+                var remotesDialog = new Vegha.App.Controls.Workspace.ManageRemotesDialog(git);
+                await remotesDialog.ShowDialog(this);
+                git.DismissErrorCommand.Execute(null);
+                await git.RefreshAsync();
+                break;
+            }
+            case Vegha.Integrations.Git.GitErrorAction.SignIn:
+            case Vegha.Integrations.Git.GitErrorAction.ConfigureCredentials:
+                await ShowGitCredentialsDialogAsync(HostKeyFor(req.RemoteUrl), req.RemoteUrl);
+                break;
+            case Vegha.Integrations.Git.GitErrorAction.OpenSsoAuthorization:
+                if (req.Error?.Url is { } ssoUrl) Vegha.App.Controls.Git.GitUiHelpers.OpenUrl(ssoUrl);
+                else await ShowGitCredentialsDialogAsync(HostKeyFor(req.RemoteUrl), req.RemoteUrl);
+                break;
+            case Vegha.Integrations.Git.GitErrorAction.TrustHost:
+                await TrustSshHostAsync(req.RemoteUrl);
+                break;
+            case Vegha.Integrations.Git.GitErrorAction.OpenDiagnostics:
+                await new Vegha.App.Controls.Git.GitDiagnosticsDialog(stack.Diagnostics, req.RemoteUrl, req.RepoRoot).ShowDialog(this);
+                break;
+            case Vegha.Integrations.Git.GitErrorAction.OpenNetworkSettings:
+            case Vegha.Integrations.Git.GitErrorAction.InstallGit:
+                await OpenSettingsDialogAsync(req.Action == Vegha.Integrations.Git.GitErrorAction.InstallGit ? "git" : "network");
+                stack.Locator.Invalidate();
+                git.Reload();
+                break;
+        }
+    }
+
+    /// <summary>Profile host key for a remote: the host, plus the organization for Azure
+    /// DevOps (one host serves many orgs with different accounts).</summary>
+    private static string? HostKeyFor(string? remoteUrl)
+    {
+        var parsed = Vegha.Integrations.Git.Credentials.GitRemoteUrl.TryParse(remoteUrl);
+        if (parsed is null || parsed.Scheme == "file") return null;
+        if (Vegha.Integrations.Git.Credentials.GitHostKinds.IsAzureDevOps(parsed.Host)
+            && Vegha.Integrations.Git.Providers.AzureDevOpsProvider.Organization(parsed) is { } org)
+            return "dev.azure.com/" + org;
+        return parsed.Host == "ssh.github.com" ? "github.com" : parsed.Host;
+    }
+
+    private async Task ShowGitCredentialsDialogAsync(string? hostKey, string? testUrl)
+    {
+        var stack = GitStack;
+        if (stack is null) return;
+        var existing = hostKey is null ? null : stack.Profiles.Load().Profiles
+            .FirstOrDefault(p => string.Equals(p.HostPattern.TrimEnd('/'), hostKey, StringComparison.OrdinalIgnoreCase));
+        var vm = new ViewModels.Git.GitCredentialEditorViewModel(stack, existing, hostKey) { TestUrl = testUrl };
+        await new Vegha.App.Controls.Git.GitCredentialsDialog(vm).ShowDialog(this);
+    }
+
+    /// <summary>"Unknown SSH host": scan the host keys, show fingerprints for verification,
+    /// and append them to known_hosts on confirmation.</summary>
+    private async Task TrustSshHostAsync(string? remoteUrl)
+    {
+        var stack = GitStack;
+        var parsed = Vegha.Integrations.Git.Credentials.GitRemoteUrl.TryParse(remoteUrl);
+        if (stack is null || parsed is null || !parsed.IsSsh) return;
+        IReadOnlyList<Vegha.Integrations.Git.Credentials.SshHostKey> keys;
+        try { keys = await stack.SshKeys.ScanHostAsync(parsed.Host, parsed.Port); }
+        catch (Exception ex)
+        {
+            await new Vegha.App.Controls.Git.GitChoiceDialog("SSH", "Couldn't read the host key", ex.Message, null, null, "OK").ShowDialog<bool>(this);
+            return;
+        }
+        if (keys.Count == 0) return;
+        var detail = string.Join("\n", keys.Select(k => $"{k.KeyType,-8} {k.Fingerprint}"));
+        var dlg = new Vegha.App.Controls.Git.GitChoiceDialog("Trust SSH host", $"Trust {parsed.Host}?",
+            "Compare these fingerprints with the ones your Git provider publishes (e.g. GitHub and Azure DevOps list them in their docs) before trusting.",
+            null, detail, "Trust host");
+        if (!await dlg.ShowDialog<bool>(this)) return;
+        Vegha.Integrations.Git.Credentials.SshKeyService.Trust(keys);
+        var git = App.Services.GetService<GitViewModel>();
+        git?.DismissErrorCommand.Execute(null);
+    }
+
+    private async Task ShowPublishRepoDialogAsync(GitViewModel git)
+    {
+        var stack = GitStack;
+        if (stack is null) return;
+        var workspace = App.Services.GetService<WorkspacesViewModel>()?.ActiveWorkspace?.FolderPath;
+        var vm = new ViewModels.Git.PublishRepoViewModel(stack, workspace, git.CollectionPath);
+        vm.ConfirmSecretsAsync = git.ConfirmSecretsAsync;
+        vm.RequestIdentityAsync = async () =>
+        {
+            var d = new Controls.Workspace.GitIdentityDialog(string.Empty, string.Empty);
+            return await d.ShowDialog<bool>(this) && !string.IsNullOrWhiteSpace(d.UserName) && !string.IsNullOrWhiteSpace(d.UserEmail)
+                ? (d.UserName!, d.UserEmail!)
+                : null;
+        };
+        vm.ConfigureCredentialsRequested += async (_, host) => await ShowGitCredentialsDialogAsync(host, null);
+        await new Vegha.App.Controls.Git.PublishRepoDialog(vm).ShowDialog<bool>(this);
+        git.Reload();
+    }
+
+    /// <summary>"Open from Git": clone in place, then open as a workspace or link the
+    /// collections it contains into the active workspace.</summary>
+    private async Task ShowCloneRepoDialogAsync(string? initialUrl)
+    {
+        var stack = GitStack;
+        if (stack is null) return;
+        var settings = App.Services.GetService<Vegha.Core.Persistence.AppSettingsStore>()?.Load();
+        var vm = new ViewModels.Git.CloneRepoViewModel(stack, settings, initialUrl);
+        vm.ConfigureCredentialsRequested += async (_, host) =>
+        {
+            await ShowGitCredentialsDialogAsync(host, vm.EffectiveUrl);
+            vm.OnCredentialsChanged();
+        };
+        var dlg = new Vegha.App.Controls.Git.CloneRepoDialog(vm);
+        await dlg.ShowDialog<bool>(this);
+        if (dlg.Outcome is not { } outcome) return;
+
+        if (outcome.Kind == ViewModels.Git.CloneOutcomeKind.ImportFiles)
+        {
+            await OpenImportWizardAsync(outcome.Collections);
+            return;
+        }
+
+        var workspaces = App.Services.GetService<WorkspacesViewModel>();
+        if (workspaces is null) return;
+        if (outcome.Kind == ViewModels.Git.CloneOutcomeKind.OpenAsWorkspace)
+        {
+            if (Vegha.Core.Persistence.WorkspaceManifestIO.Exists(outcome.RepoPath))
+                workspaces.AddWorkspace(outcome.RepoPath);
+            else
+            {
+                // Make the repo a workspace without moving anything: CreateWorkspace adds
+                // workspace.yml (+ empty standard folders, which git ignores); collections that
+                // live elsewhere in the repo are linked in place. Ones under collections/ load
+                // automatically when the workspace activates.
+                workspaces.CreateWorkspace(System.IO.Path.GetFileName(outcome.RepoPath), outcome.RepoPath);
+                var standardRoot = System.IO.Path.Combine(outcome.RepoPath, "collections") + System.IO.Path.DirectorySeparatorChar;
+                foreach (var c in ViewModels.Git.CloneRepoViewModel.FindCollections(outcome.RepoPath, 0))
+                    if (!c.StartsWith(standardRoot, StringComparison.OrdinalIgnoreCase))
+                        workspaces.LinkCollection(c);
+            }
+        }
+        else
+        {
+            foreach (var c in outcome.Collections) workspaces.LinkCollection(c);
+        }
+        App.Services.GetService<GitViewModel>()?.Reload();
     }
 
     /// <summary>Prompts for git user.name / user.email and writes the values to local config.

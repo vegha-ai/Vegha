@@ -4,6 +4,8 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:icons="using:Vegha.App.Controls.Icons"
+             xmlns:gitc="using:Vegha.App.Controls.Git"
+             xmlns:git="using:Vegha.Integrations.Git"
              mc:Ignorable="d" d:DesignWidth="320" d:DesignHeight="700"
              x:Class="Vegha.App.Controls.Shell.GitPanel"
              x:DataType="vm:GitViewModel">
@@ -119,6 +121,12 @@
                            VerticalAlignment="Center" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
                     <Button Classes="headerAction"
+                            Command="{Binding CancelOperationCommand}"
+                            ToolTip.Tip="Cancel the running Git operation"
+                            IsVisible="{Binding IsBusy}">
+                        <icons:Icon Kind="Stop" Size="13" />
+                    </Button>
+                    <Button Classes="headerAction"
                             Command="{Binding RefreshCommand}"
                             ToolTip.Tip="Refresh"
                             IsVisible="{Binding IsRepoActive}">
@@ -142,24 +150,60 @@
                         <icons:Icon Kind="MoreVertical" Size="14" />
                         <Button.Flyout>
                             <MenuFlyout>
-                                <MenuItem Header="Fetch" Command="{Binding FetchCommand}" />
-                                <MenuItem Header="Pull" Command="{Binding PullCommand}" />
-                                <MenuItem Header="Push" Command="{Binding PushCommand}" />
-                                <MenuItem Header="Sync" Command="{Binding SyncCommand}" />
+                                <MenuItem Header="Fetch" Command="{Binding FetchCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="Refresh" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Pull" Command="{Binding PullCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="CloudDownload" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Push" Command="{Binding PushCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="CloudUpload" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Sync" Command="{Binding SyncCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="Sync" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
                                 <Separator />
-                                <MenuItem Header="Stage All" Command="{Binding StageAllCommand}" />
-                                <MenuItem Header="Unstage All" Command="{Binding UnstageAllCommand}" />
-                                <MenuItem Header="Discard All Changes"
-                                          Click="OnDiscardAll_Click" />
+                                <MenuItem Header="Stage All" Command="{Binding StageAllCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="Plus" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Unstage All" Command="{Binding UnstageAllCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="Minus" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Discard All Changes" Click="OnDiscardAll_Click">
+                                    <MenuItem.Icon><icons:Icon Kind="Discard" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
                                 <Separator />
-                                <MenuItem Header="Stash..." Click="OnStash_Click" />
-                                <MenuItem Header="Pop Latest Stash" Command="{Binding StashPopCommand}" />
+                                <MenuItem Header="Stash..." Click="OnStash_Click">
+                                    <MenuItem.Icon><icons:Icon Kind="Stash" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Pop Latest Stash" Command="{Binding StashPopCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="Upload" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
                                 <Separator />
-                                <MenuItem Header="Amend Last Commit" Command="{Binding CommitAmendCommand}" />
+                                <MenuItem Header="Amend Last Commit" Command="{Binding CommitAmendCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="Pencil" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
                                 <Separator />
-                                <MenuItem Header="Manage Remotes..." Click="OnManageRemotes_Click" />
+                                <MenuItem Header="Manage Remotes..." Click="OnManageRemotes_Click">
+                                    <MenuItem.Icon><icons:Icon Kind="Globe" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Publish to Git..." Command="{Binding PublishCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="Share" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Credentials for this Remote..." Command="{Binding ConfigureCredentialsCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="Vault" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Test Connection..." Command="{Binding OpenDiagnosticsCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="Info" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
                                 <Separator />
-                                <MenuItem Header="Toggle Git Output" Command="{Binding ToggleGitOutputCommand}" />
+                                <MenuItem Header="Show Entire Repository" ToggleType="CheckBox" IsChecked="{Binding ShowEntireRepo}"
+                                          IsVisible="{Binding IsCollectionInSubfolder}">
+                                    <MenuItem.Icon><icons:Icon Kind="Filter" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Toggle Git Output" Command="{Binding ToggleGitOutputCommand}">
+                                    <MenuItem.Icon><icons:Icon Kind="Terminal" Size="14" Foreground="{DynamicResource Text2Brush}" /></MenuItem.Icon>
+                                </MenuItem>
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
@@ -167,23 +211,158 @@
             </Grid>
         </Border>
 
+        <!-- ============== REPOSITORY (read-only) + SCOPE ==============
+             Source Control always follows the active collection: to work in another repo,
+             pick another collection. This line just says where commits go. -->
+        <Border DockPanel.Dock="Top" Padding="10,6"
+                BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,0,0,1"
+                IsVisible="{Binding IsRepoActive}">
+            <StackPanel Spacing="4">
+                <Grid ColumnDefinitions="Auto,*" ToolTip.Tip="{Binding RepoPath}">
+                    <icons:Icon Grid.Column="0" Kind="Git" Size="12" Margin="0,2,7,0"
+                                VerticalAlignment="Top" Foreground="{DynamicResource Text2Brush}" />
+                    <StackPanel Grid.Column="1" Spacing="0">
+                        <TextBlock Text="{Binding RepoName}" FontSize="11.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text0Brush}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding RepoRemoteLabel}" FontSize="10"
+                                   Foreground="{DynamicResource Text3Brush}" TextTrimming="CharacterEllipsis"
+                                   IsVisible="{Binding RepoRemoteLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsCollectionInSubfolder}">
+                    <TextBlock Grid.Column="0" Text="{Binding ScopeLabel}" FontSize="10"
+                               Foreground="{DynamicResource Text2Brush}" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" ToolTip.Tip="{Binding RepoPath}" />
+                    <ToggleButton Grid.Column="1" IsChecked="{Binding ShowEntireRepo}" FontSize="10" Padding="6,1"
+                                  Content="Entire repo" ToolTip.Tip="Show changes outside this collection too" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
         <!-- ============== EMPTY / NON-REPO STATES ============== -->
         <StackPanel DockPanel.Dock="Top" IsVisible="{Binding NoFolderActive}"
-                    Margin="14,40,14,0" Spacing="8" HorizontalAlignment="Center">
-            <TextBlock Text="No workspace open." FontSize="11" FontStyle="Italic"
-                       Foreground="{DynamicResource Text3Brush}"
-                       HorizontalAlignment="Center" />
+                    Margin="16,48,16,0" Spacing="12" MaxWidth="380" HorizontalAlignment="Center">
+            <Border Width="52" Height="52" CornerRadius="26" Background="{DynamicResource Bg3Brush}" HorizontalAlignment="Center">
+                <icons:Icon Kind="Git" Size="22" Foreground="{DynamicResource Text3Brush}" />
+            </Border>
+            <TextBlock Text="No collection open" FontSize="14" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text1Brush}" HorizontalAlignment="Center" />
+            <TextBlock Text="Open a collection to version it, or clone a repository that already has collections."
+                       FontSize="12" Foreground="{DynamicResource Text2Brush}" TextWrapping="Wrap" TextAlignment="Center" />
+            <Button Content="Open from Git…" Click="OnOpenFromGit_Click" HorizontalAlignment="Center"
+                    Background="{DynamicResource AccentBrush}" Foreground="White" Padding="14,6" CornerRadius="4" />
         </StackPanel>
 
-        <StackPanel DockPanel.Dock="Top" IsVisible="{Binding IsNonRepoFolderActive}"
-                    Margin="14,40,14,0" Spacing="10" HorizontalAlignment="Center">
-            <TextBlock Text="This folder is not a Git repository." FontSize="11"
-                       Foreground="{DynamicResource Text2Brush}" TextWrapping="Wrap"
-                       HorizontalAlignment="Center" />
-            <Button Content="git init" Command="{Binding InitCommand}"
-                    Background="{DynamicResource AccentBrush}" Foreground="White"
-                    Padding="14,6" HorizontalAlignment="Center" />
+        <StackPanel DockPanel.Dock="Top" Margin="16,48,16,0" Spacing="12" MaxWidth="380" HorizontalAlignment="Center">
+            <StackPanel.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                    <Binding Path="IsNonRepoFolderActive" />
+                    <Binding Path="!IsGitMissing" />
+                </MultiBinding>
+            </StackPanel.IsVisible>
+            <Border Width="52" Height="52" CornerRadius="26" Background="{DynamicResource Bg3Brush}" HorizontalAlignment="Center">
+                <icons:Icon Kind="Git" Size="22" Foreground="{DynamicResource Text3Brush}" />
+            </Border>
+            <TextBlock Text="Not under version control" FontSize="14" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text1Brush}" HorizontalAlignment="Center" />
+            <TextBlock Text="Publish this workspace or collection to GitHub, Azure DevOps or any Git server to share it and track changes."
+                       FontSize="12" Foreground="{DynamicResource Text2Brush}" TextWrapping="Wrap" TextAlignment="Center" />
+            <Button Content="Publish to Git…" Command="{Binding PublishCommand}" HorizontalAlignment="Center"
+                    Background="{DynamicResource AccentBrush}" Foreground="White" Padding="14,6" CornerRadius="4" />
+            <Button Content="Open from Git…" Click="OnOpenFromGit_Click" HorizontalAlignment="Center"
+                    Background="Transparent" BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                    Foreground="{DynamicResource Text0Brush}" Padding="14,5" CornerRadius="4" />
         </StackPanel>
+
+        <StackPanel DockPanel.Dock="Top" Margin="16,48,16,0" Spacing="12" MaxWidth="380" HorizontalAlignment="Center"
+                    IsVisible="{Binding IsGitMissing}">
+            <Border Width="52" Height="52" CornerRadius="26" Background="{DynamicResource Bg3Brush}" HorizontalAlignment="Center">
+                <icons:Icon Kind="Warning" Size="22" Foreground="{DynamicResource Text3Brush}" />
+            </Border>
+            <TextBlock Text="Git isn't installed" FontSize="14" FontWeight="SemiBold"
+                       Foreground="{DynamicResource Text1Brush}" HorizontalAlignment="Center" />
+            <TextBlock Text="Vegha syncs through Git so your existing sign-in, SSH keys and proxy settings just work. Install Git, or let Vegha download a private copy."
+                       FontSize="12" Foreground="{DynamicResource Text2Brush}" TextWrapping="Wrap" TextAlignment="Center" />
+            <Button Content="Set up Git…" Command="{Binding InstallGitCommand}" HorizontalAlignment="Center"
+                    Background="{DynamicResource AccentBrush}" Foreground="White" Padding="14,6" CornerRadius="4" />
+        </StackPanel>
+
+        <!-- ============== ERROR BANNER (classified, with fixes) ============== -->
+        <Border DockPanel.Dock="Top" Padding="10,8" Margin="8,8,8,0"
+                Background="{DynamicResource StatusErrSoftBrush}"
+                BorderBrush="{DynamicResource StatusErrBrush}" BorderThickness="2,0,0,0"
+                CornerRadius="2" IsVisible="{Binding HasError}">
+            <StackPanel Spacing="4">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0" Text="{Binding LastError.Title}" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource StatusErrBrush}" TextWrapping="Wrap" />
+                    <Button Grid.Column="1" Classes="rowAction" Command="{Binding DismissErrorCommand}" ToolTip.Tip="Dismiss">
+                        <icons:Icon Kind="Close" Size="10" />
+                    </Button>
+                </Grid>
+                <TextBlock Text="{Binding LastError.Explanation}" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <ItemsControl ItemsSource="{Binding LastError.Actions}" Margin="0,2,0,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="git:GitErrorAction">
+                            <Button Content="{Binding Converter={x:Static gitc:GitErrorActionLabelConverter.Instance}}"
+                                    Command="{Binding $parent[UserControl].((vm:GitViewModel)DataContext).ErrorActionCommand}"
+                                    CommandParameter="{Binding}"
+                                    Background="Transparent" BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                                    Foreground="{DynamicResource Text0Brush}" FontSize="11" Padding="8,3"
+                                    Margin="0,0,6,4" CornerRadius="3" Cursor="Hand" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <!-- ============== REBASE / MERGE IN PROGRESS ============== -->
+        <Border DockPanel.Dock="Top" Padding="10,8" Margin="8,8,8,0"
+                Background="{DynamicResource Bg3Brush}"
+                BorderBrush="{DynamicResource StatusWarnBrush}" BorderThickness="2,0,0,0"
+                CornerRadius="2" IsVisible="{Binding HasOperationInProgress}">
+            <StackPanel Spacing="6">
+                <TextBlock Text="{Binding OperationInProgressLabel}" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Text1Brush}" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Content="Continue" Command="{Binding ContinueOperationCommand}" FontSize="11" Padding="10,3"
+                            Background="{DynamicResource AccentBrush}" Foreground="White" CornerRadius="3" />
+                    <Button Content="Skip" Command="{Binding SkipOperationCommand}" FontSize="11" Padding="10,3"
+                            IsVisible="{Binding CanSkipOperation}"
+                            Background="Transparent" BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                            Foreground="{DynamicResource Text0Brush}" CornerRadius="3" />
+                    <Button Content="Abort" Command="{Binding AbortOperationCommand}" FontSize="11" Padding="10,3"
+                            Background="Transparent" BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                            Foreground="{DynamicResource StatusErrBrush}" CornerRadius="3" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- ============== NO REMOTE HINT ============== -->
+        <Border DockPanel.Dock="Top" Padding="10,8" Margin="8,8,8,0"
+                Background="{DynamicResource Bg3Brush}"
+                BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2,0,0,0" CornerRadius="2">
+            <Border.IsVisible>
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                    <Binding Path="IsRepoActive" />
+                    <Binding Path="!HasRemote" />
+                    <Binding Path="!HasError" />
+                </MultiBinding>
+            </Border.IsVisible>
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="This repository has no remote yet." FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource Text1Brush}" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="Publish…" Command="{Binding PublishCommand}"
+                        Background="Transparent" BorderThickness="0" Foreground="{DynamicResource AccentBrush}"
+                        FontSize="11" Padding="6,2" Cursor="Hand" />
+            </Grid>
+        </Border>
 
         <!-- ============== AUTHOR WARNING ============== -->
         <Border DockPanel.Dock="Top" Padding="10,8" Margin="8,8,8,0"

@@ -74,7 +74,30 @@ public sealed record AppSettings(
     bool AutoCheckForUpdates = true,
     /// <summary>"stable" | "beta" — which Velopack feed to query. "beta" falls back to "stable"
     /// until a beta feed is published.</summary>
-    string UpdateChannel = "stable")
+    string UpdateChannel = "stable",
+
+    // ─── Git ───
+    /// <summary>Explicit git executable; null/empty = auto-detect (PATH, standard installs,
+    /// Vegha's on-demand copy).</summary>
+    string? GitExecutablePath = null,
+    /// <summary>"rebase" | "merge" | "ff-only" — how Pull integrates divergent history.</summary>
+    string GitPullMode = "rebase",
+    /// <summary>Default parent folder for "Open from Git" clones; null = ~/Vegha/repos.</summary>
+    string? GitDefaultCloneFolder = null,
+    /// <summary>Route git HTTPS traffic through the Network → Proxy settings.</summary>
+    bool GitUseAppProxy = true,
+    /// <summary>Windows: GCM signs in with the Windows account (WAM) — Entra SSO + MFA.</summary>
+    bool GitUseWindowsBroker = false,
+    /// <summary>Azure Repos: GCM uses OAuth tokens instead of creating PATs.</summary>
+    bool GitAzureReposOAuth = false,
+    /// <summary>Windows: verify TLS with the Windows certificate store (schannel).</summary>
+    bool GitUseOsCertificateStore = true,
+    /// <summary>Windows: use the built-in OpenSSH client (Windows ssh-agent) for SSH remotes.</summary>
+    bool GitPreferWindowsOpenSsh = true,
+    /// <summary>GitHub Enterprise Server hostnames (e.g. github.acme.com).</summary>
+    IReadOnlyList<string>? GitEnterpriseGitHubHosts = null,
+    /// <summary>Scan staged changes for credentials before committing.</summary>
+    bool GitScanSecretsOnCommit = true)
 {
     public static AppSettings Default { get; } = new(
         Theme: "dark",

@@ -1,0 +1,165 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Vegha.App.ViewModels.Git"
+        xmlns:prov="using:Vegha.Integrations.Git.Providers"
+        mc:Ignorable="d" d:DesignWidth="620" d:DesignHeight="600"
+        x:Class="Vegha.App.Controls.Git.PublishRepoDialog"
+        x:DataType="vm:PublishRepoViewModel"
+        Title="Publish to Git"
+        Width="620"
+        SizeToContent="Height"
+        CanResize="False"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner">
+    <Window.Styles>
+        <Style Selector="TextBlock.label">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        </Style>
+        <Style Selector="TextBlock.hint">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+            <Setter Property="Padding" Value="8,6" />
+        </Style>
+        <Style Selector="Button.secondary">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="Button.accent">
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="16,6" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.link">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="20">
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto" Margin="0,16,0,0">
+            <Button Grid.Column="1" Content="Close" Classes="secondary" Click="OnClose_Click" Margin="0,0,8,0" />
+            <Button Grid.Column="2" Content="Publish" Classes="accent" Command="{Binding PublishCommand}"
+                    IsVisible="{Binding !IsDone}" IsEnabled="{Binding !IsWorking}" IsDefault="True" />
+        </Grid>
+
+        <StackPanel Spacing="14">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Publish to a Git remote" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource Text0Brush}" />
+                <TextBlock Classes="hint" Text="Collections are plain files — publishing puts them under version control and pushes them to GitHub, Azure DevOps or any Git server. Local secrets (.secrets/) are never committed." />
+            </StackPanel>
+
+            <!-- Scope -->
+            <StackPanel Spacing="6" IsVisible="{Binding CanPublishWorkspace}">
+                <TextBlock Classes="label" Text="WHAT TO PUBLISH" />
+                <RadioButton GroupName="scope" IsChecked="{Binding PublishWorkspace}">
+                    <TextBlock TextWrapping="Wrap" FontSize="12">
+                        <Run Text="Entire workspace " FontWeight="SemiBold" />
+                        <Run Text="(collections, environments and scripts in one repository — recommended for teams)" Foreground="{DynamicResource Text2Brush}" />
+                    </TextBlock>
+                </RadioButton>
+                <RadioButton GroupName="scope" IsChecked="{Binding !PublishWorkspace}">
+                    <TextBlock TextWrapping="Wrap" FontSize="12">
+                        <Run Text="Only this collection" FontWeight="SemiBold" />
+                    </TextBlock>
+                </RadioButton>
+            </StackPanel>
+            <TextBlock Classes="hint" Text="{Binding ScopeSummary}" />
+
+            <!-- Remote -->
+            <StackPanel Spacing="8">
+                <TextBlock Classes="label" Text="REMOTE" />
+                <StackPanel Orientation="Horizontal" Spacing="16">
+                    <RadioButton GroupName="remote" Content="Use an existing repository URL" IsChecked="{Binding UseExistingUrl}" />
+                    <RadioButton GroupName="remote" Content="Create a new repository" IsChecked="{Binding IsCreateMode, Mode=OneWay}"
+                                 Click="OnCreateMode_Click" />
+                </StackPanel>
+
+                <StackPanel Spacing="3" IsVisible="{Binding UseExistingUrl}">
+                    <TextBox Text="{Binding RemoteUrl}" Watermark="https://github.com/acme/api-collections.git  ·  https://dev.azure.com/org/project/_git/repo" />
+                    <TextBlock Classes="hint" Text="Create an empty repository (no README) on your Git host first, then paste its clone URL." />
+                </StackPanel>
+
+                <StackPanel Spacing="8" IsVisible="{Binding IsCreateMode}">
+                    <Grid ColumnDefinitions="*,8,Auto">
+                        <TextBox Grid.Column="0" Text="{Binding AccountUrl}" Watermark="https://github.com  ·  https://dev.azure.com/contoso" />
+                        <Button Grid.Column="2" Classes="secondary" Content="Load" Command="{Binding LoadOwnersCommand}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,8,*">
+                        <ComboBox Grid.Column="0" ItemsSource="{Binding Owners}" SelectedItem="{Binding SelectedOwner}"
+                                  HorizontalAlignment="Stretch" PlaceholderText="Owner / project">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="prov:GitProviderOwner">
+                                    <TextBlock Text="{Binding Name}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBox Grid.Column="2" Text="{Binding NewRepoName}" Watermark="Repository name" />
+                    </Grid>
+                    <CheckBox IsChecked="{Binding NewRepoPrivate}" Content="Private" FontSize="12" />
+                </StackPanel>
+
+                <Grid ColumnDefinitions="*,8,*,8,2*">
+                    <StackPanel Grid.Column="0" Spacing="3">
+                        <TextBlock Classes="label" Text="REMOTE NAME" />
+                        <TextBox Text="{Binding RemoteName}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Spacing="3" IsVisible="{Binding NeedsInit}">
+                        <TextBlock Classes="label" Text="BRANCH" />
+                        <TextBox Text="{Binding InitialBranch}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="4" Spacing="3">
+                        <TextBlock Classes="label" Text="COMMIT MESSAGE" />
+                        <TextBox Text="{Binding CommitMessage}" />
+                    </StackPanel>
+                </Grid>
+                <Button Classes="link" Content="Configure credentials for this host…" Command="{Binding ConfigureCredentialsCommand}" />
+            </StackPanel>
+
+            <!-- Progress / errors -->
+            <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ProgressText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <TextBlock Grid.Column="0" Text="{Binding ProgressText}" FontFamily="{StaticResource MonoFont}" FontSize="11"
+                               TextWrapping="Wrap" Foreground="{DynamicResource Text1Brush}" />
+                    <Button Grid.Column="1" Classes="link" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsWorking}" />
+                </Grid>
+                <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsWorking}" Height="3" />
+                <Border Background="{DynamicResource StatusErrSoftBrush}" CornerRadius="4" Padding="10,8"
+                        IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding Error}" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource StatusErrBrush}" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Button Classes="accent" Content="Rebase my files onto the remote and push" Command="{Binding RebaseOntoRemoteCommand}"
+                                    IsVisible="{Binding OfferRebaseOntoRemote}" />
+                            <Button Classes="link" Content="Configure credentials…" Command="{Binding ConfigureCredentialsCommand}"
+                                    IsVisible="{Binding !OfferRebaseOntoRemote}" />
+                            <Button Classes="link" Content="Authorize for SSO ↗" Click="OnOpenSso_Click"
+                                    IsVisible="{Binding SsoAuthorizationUrl, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </StackPanel>
+    </DockPanel>
+</Window>

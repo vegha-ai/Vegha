@@ -132,7 +132,8 @@ public partial class AppTopBar : UserControl
         bool IsOpen(CollectionRootViewModel c) =>
             openPaths.Any(p => string.Equals(p, c.SourcePath, StringComparison.OrdinalIgnoreCase));
 
-        var matching = collections.AvailableCollections.Where(c => MatchesFilter(c.Name, filter)).ToList();
+        var matching = collections.AvailableCollections
+            .Where(c => MatchesFilter(c.Name, filter) || MatchesFilter(c.SourcePath, filter)).ToList();
         var open = matching.Where(IsOpen).OrderBy(OpenRank).ToList();     // MRU order
         var others = matching.Where(c => !IsOpen(c)).ToList();            // remaining in this workspace
 
@@ -215,11 +216,31 @@ public partial class AppTopBar : UserControl
             Foreground = isActive
                 ? new SolidColorBrush(Color.Parse("#7C3AED"))
                 : ResolveBrush("Text0Brush", Brushes.Black),
-            VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        Grid.SetColumn(name, 1);
-        grid.Children.Add(name);
+
+        // Folder line under the name — tells same-named collections apart. Smaller, italic,
+        // muted; aligned with the name (the ✓ column keeps the indent); middle-trimmed so the
+        // distinguishing tail ("…\ado\API_Collection") survives the 320px flyout.
+        var folder = new TextBlock
+        {
+            Text = PathDisplay.Compact(collection.SourcePath, (DataContext as MainWindowViewModel)?.Workspaces.ActiveWorkspace?.FolderPath),
+            FontSize = 10.5,
+            FontStyle = FontStyle.Italic,
+            Foreground = ResolveBrush("Text3Brush", Brushes.Gray),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(0, 1, 0, 0),
+            IsVisible = !string.IsNullOrEmpty(collection.SourcePath),
+        };
+
+        var nameStack = new StackPanel
+        {
+            VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
+            Children = { name, folder },
+        };
+        if (!string.IsNullOrEmpty(collection.SourcePath)) ToolTip.SetTip(nameStack, collection.SourcePath);
+        Grid.SetColumn(nameStack, 1);
+        grid.Children.Add(nameStack);
 
         // Trailing "..." opens the per-row action menu. We stop event propagation so the
         // row's click handler doesn't ALSO fire and switch the active collection.
@@ -274,7 +295,8 @@ public partial class AppTopBar : UserControl
 
         var rowButton = new Button { Content = grid };
         rowButton.Classes.Add("envPickerRow");
-        rowButton.Padding = new Thickness(12, 6, 8, 6);
+        // Slightly tighter vertical padding: the folder line adds height.
+        rowButton.Padding = new Thickness(12, 5, 8, 5);
         // Open rows carry a subtle accent-tinted background so the "open" group reads as
         // distinct from the (untinted) "other collections" below it at a glance. The hover
         // style paints over it, so hover feedback still works.

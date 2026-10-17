@@ -2714,7 +2714,39 @@ public partial class RequestEditorViewModel : ObservableObject
         }
     }
 
-    partial void OnMethodChanged(string value) { if (!_loading) IsDirty = true; }
+    partial void OnMethodChanged(string value)
+    {
+        if (!_loading) IsDirty = true;
+        OnPropertyChanged(nameof(BodyNoneTitle));
+        OnPropertyChanged(nameof(BodyNoneSubtitle));
+        OnPropertyChanged(nameof(BodyEmptyTitle));
+        OnPropertyChanged(nameof(BodyEmptySubtitle));
+    }
+
+    /// <summary>Methods that conventionally carry no body — the Body tab's empty states say
+    /// "that's normal" for these instead of implying something is missing.</summary>
+    private bool IsBodylessMethod =>
+        (Method ?? string.Empty).ToUpperInvariant() is "GET" or "HEAD" or "OPTIONS" or "TRACE";
+
+    private string MethodLabel => string.IsNullOrWhiteSpace(Method) ? "This" : Method.ToUpperInvariant();
+
+    /// <summary>Title of the Body tab when the body type is "No Body".</summary>
+    public string BodyNoneTitle => IsBodylessMethod
+        ? $"{MethodLabel} requests don't need a body"
+        : "No body will be sent";
+
+    public string BodyNoneSubtitle => IsBodylessMethod
+        ? "That's expected — pass inputs as query parameters in Params. If your API does expect a body, pick a type from the menu on the right."
+        : "This request has no body. Pick a body type from the menu on the right to add JSON, XML, text or form data.";
+
+    /// <summary>Title of the Body tab when a raw type (JSON / XML / text) is chosen but empty.</summary>
+    public string BodyEmptyTitle => IsBodylessMethod
+        ? $"{MethodLabel} requests usually have no body"
+        : "No body yet";
+
+    public string BodyEmptySubtitle => IsBodylessMethod
+        ? "Leaving this empty is fine — nothing is sent. Type here only if your API expects a body."
+        : "Type or paste the request body here. Switch the format (JSON, XML, text, form data…) from the type menu on the right.";
     partial void OnBodyTypeChanged(string value)
     {
         if (!_loading) IsDirty = true;
