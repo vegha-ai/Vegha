@@ -55,6 +55,8 @@ public static class ImportPipeline
 
     private static ImportResult ImportFolder(string path)
     {
+        if (ThunderClientImporter.LooksLikeGitSyncFolder(path)) return ImportThunderFolder(path);
+
         var hasBru = Directory.EnumerateFiles(path, "*.bru", SearchOption.AllDirectories).Any();
         if (!hasBru)
             return ImportResult.Failure("Folder selected, but no .bru files found.");
@@ -112,6 +114,20 @@ public static class ImportPipeline
 
         if (TryParseJson(content, out var root))
         {
+            // Thunder Client exports (checked first: an environment export also has a
+            // "variables" array, and a collection export a "requests" array).
+            if (ThunderClientImporter.LooksLikeEnvironment(root!.Value))
+            {
+                var env = ThunderClientImporter.ImportEnvironment(content);
+                return new ImportResult(null, env, "Thunder Client environment",
+                    $"\"{env.Name}\" · {env.Variables.Count} variable(s)");
+            }
+            if (ThunderClientImporter.LooksLikeCollection(root.Value))
+            {
+                var col = ThunderClientImporter.ImportCollection(content);
+                return new ImportResult(col, null, ThunderClientImporter.FormatLabel, SummarizeCollection(col));
+            }
+
             // Postman environment.
             if (root!.Value.ValueKind == JsonValueKind.Object &&
                 root.Value.TryGetProperty("values", out var values) &&
@@ -170,7 +186,7 @@ public static class ImportPipeline
         }
 
         return ImportResult.Failure(
-            "Content doesn't match any supported format (Bruno folder, Postman v2.1, Postman env, Insomnia v4/v5, OpenAPI, WSDL, SoapUI, ZIP).");
+            "Content doesn't match any supported format (Bruno folder, Postman v2.1, Postman env, Insomnia v4/v5, Thunder Client, OpenAPI, WSDL, SoapUI, ZIP).");
     }
 
     private static ImportResult ImportZipPayload(byte[] payload, string? hintFilename, PostmanImportOptions? postmanOptions = null)
@@ -197,6 +213,9 @@ public static class ImportPipeline
                 FolderPath: root);
         }
 
+        if (ThunderClientImporter.LooksLikeGitSyncFolder(ResolveSingleChildIfWrapped(tempRoot)))
+            return ImportThunderFolder(ResolveSingleChildIfWrapped(tempRoot));
+
         // Otherwise scan extracted files for a single recognizable importable file.
         foreach (var candidate in EnumerateLikelyImports(tempRoot))
         {
@@ -210,6 +229,16 @@ public static class ImportPipeline
         }
 
         return ImportResult.Failure("ZIP did not contain a recognizable collection (Bruno tree, Postman/Insomnia JSON, OpenAPI, or WSDL).");
+    }
+
+    private static ImportResult ImportThunderFolder(string path)
+    {
+        try
+        {
+            var col = ThunderClientImporter.ImportGitSyncFolder(path);
+            return new ImportResult(col, null, "Thunder Client workspace (thunder-tests)", SummarizeCollection(col));
+        }
+        catch (Exception ex) { return ImportResult.Failure($"Thunder Client import failed: {ex.Message}"); }
     }
 
     private static IEnumerable<string> EnumerateLikelyImports(string root)
@@ -239,6 +268,8 @@ public static class ImportPipeline
     public static ImportResult ScanDirectory(string root, PostmanImportOptions? postmanOptions = null)
     {
         if (!Directory.Exists(root)) return ImportResult.Failure("Directory does not exist.");
+
+        if (ThunderClientImporter.LooksLikeGitSyncFolder(root)) return ImportThunderFolder(root);
 
         // Bruno tree wins.
         if (Directory.EnumerateFiles(root, "*.bru", SearchOption.AllDirectories).Any())

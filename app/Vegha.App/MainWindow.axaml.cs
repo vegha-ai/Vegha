@@ -1160,7 +1160,7 @@ public partial class MainWindow : Window
             {
                 // Otherwise serialize the parsed Collection out as a fresh Bruno tree.
                 dest = ResolveImportFolder(vm.ActiveWorkspaceCollectionsRoot, c.Name, c.Name);
-                Core.Importers.BruCollectionWriter.Write(dest, c);
+                Core.Importers.BruCollectionWriter.Write(dest, c, includeEnvironments: true);
             }
             collections?.LoadFromDirectory(dest);
 
