@@ -80,7 +80,7 @@ public sealed class EnvironmentSecretStore
                 EnsureGitignore(dir);
                 var json = JsonSerializer.SerializeToUtf8Bytes(secretValues, s_json);
                 var key = LocalCipher.GetOrCreateKey(_keyPath);
-                File.WriteAllBytes(path, LocalCipher.Encrypt(json, key));
+                AtomicFile.WriteAllBytes(path, LocalCipher.Encrypt(json, key));
             }
             catch
             {
@@ -106,8 +106,12 @@ public sealed class EnvironmentSecretStore
     private static void EnsureGitignore(string secretsDir)
     {
         var gitignore = Path.Combine(secretsDir, ".gitignore");
-        if (!File.Exists(gitignore))
-            File.WriteAllText(gitignore, "*\n");
+        if (File.Exists(gitignore)) return;
+        // Another process (or store instance) may be writing the same file right now; losing
+        // that race must not abort the secret save itself — the winner's copy is identical.
+        try { AtomicFile.WriteAllText(gitignore, "*\n"); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     private static string Sanitize(string name)

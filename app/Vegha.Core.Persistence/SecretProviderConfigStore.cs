@@ -79,7 +79,7 @@ public sealed class SecretProviderConfigStore
                 var json = JsonSerializer.SerializeToUtf8Bytes(configs, s_json);
                 var key = LocalCipher.GetOrCreateKey(_keyPath);
                 var ciphertext = LocalCipher.Encrypt(json, key);
-                File.WriteAllBytes(_filePath, ciphertext);
+                AtomicFile.WriteAllBytes(_filePath, ciphertext);
             }
             catch
             {

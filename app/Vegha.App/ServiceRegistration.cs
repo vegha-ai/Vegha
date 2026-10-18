@@ -68,7 +68,7 @@ internal static class ServiceRegistration
             var factory = sp.GetRequiredService<IHttpClientFactory>();
             return new OAuth2TokenAcquirer(factory.CreateClient("oauth2"));
         });
-        services.AddSingleton<Vegha.Core.History.HistoryStore>(_ => new Vegha.Core.History.HistoryStore());
+        services.AddSingleton<Vegha.Core.History.HistoryStore>(_ => new Vegha.Core.History.HistoryStore { ClientName = "desktop" });
         services.AddSingleton<Vegha.Core.Persistence.WorkspaceStore>();
         services.AddSingleton<Vegha.Core.Persistence.TabStateStore>(_ => new Vegha.Core.Persistence.TabStateStore());
         services.AddSingleton<Vegha.Core.Persistence.RecentItemsStore>(_ => new Vegha.Core.Persistence.RecentItemsStore());

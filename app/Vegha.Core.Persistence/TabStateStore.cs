@@ -1,5 +1,6 @@
 using Dapper;
 using Microsoft.Data.Sqlite;
+using Vegha.Core.Shared;
 
 namespace Vegha.Core.Persistence;
 
@@ -37,12 +38,7 @@ public sealed class TabStateStore
     {
         DatabasePath = databasePath;
         Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
-        _connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared,
-        }.ToString();
+        _connectionString = SqliteMultiProcess.ConnectionString(databasePath);
         EnsureSchema();
     }
 
@@ -52,16 +48,12 @@ public sealed class TabStateStore
             "Vegha",
             "tabs.db");
 
-    private SqliteConnection OpenConnection()
-    {
-        var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        return conn;
-    }
+    private SqliteConnection OpenConnection() => SqliteMultiProcess.Open(_connectionString);
 
     private void EnsureSchema()
     {
         using var conn = OpenConnection();
+        SqliteMultiProcess.EnableWal(conn);
         conn.Execute("""
             CREATE TABLE IF NOT EXISTS open_tabs (
                 id               TEXT PRIMARY KEY,

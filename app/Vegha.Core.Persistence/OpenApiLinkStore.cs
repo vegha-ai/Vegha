@@ -47,7 +47,7 @@ public sealed class OpenApiLinkStore
         var path = FilePathForCollection(collectionRoot);
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        try { File.WriteAllText(path, JsonSerializer.Serialize(links, s_json)); }
+        try { AtomicFile.WriteAllText(path, JsonSerializer.Serialize(links, s_json)); }
         catch { /* best-effort */ }
     }
 

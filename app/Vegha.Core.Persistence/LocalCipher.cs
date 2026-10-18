@@ -19,19 +19,60 @@ internal static class LocalCipher
     private const int TagBytes = 16;
 
     /// <summary>Reads the 32-byte key at <paramref name="keyPath"/>, generating and
-    /// persisting a fresh random key (with restricted permissions) when absent.</summary>
+    /// persisting a fresh random key (with restricted permissions) when absent.
+    ///
+    /// Several Vegha processes (desktop, CLI, VS Code sidecar) can race to create the key on
+    /// a fresh machine. The fresh key is written to a temp file and moved into place without
+    /// overwrite, so exactly one process wins and the others adopt the winner's key — a
+    /// plain overwrite would orphan everything already encrypted with the loser's key.</summary>
     public static byte[] GetOrCreateKey(string keyPath)
     {
-        if (File.Exists(keyPath))
-        {
-            var existing = File.ReadAllBytes(keyPath);
-            if (existing.Length == KeyBytes) return existing;
-        }
-        var fresh = RandomNumberGenerator.GetBytes(KeyBytes);
+        if (TryReadKey(keyPath) is { } existing) return existing;
+
         Directory.CreateDirectory(Path.GetDirectoryName(keyPath)!);
-        File.WriteAllBytes(keyPath, fresh);
-        TryRestrictPermissions(keyPath);
-        return fresh;
+        var fresh = RandomNumberGenerator.GetBytes(KeyBytes);
+        var temp = keyPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllBytes(temp, fresh);
+            TryRestrictPermissions(temp);
+            if (!File.Exists(keyPath))
+            {
+                try
+                {
+                    File.Move(temp, keyPath, overwrite: false);
+                    return fresh;
+                }
+                catch (IOException) when (File.Exists(keyPath)) { /* another process won */ }
+            }
+
+            // Lost the race (or found a file that wasn't a valid key a moment ago): adopt
+            // what's on disk once it reads as a complete key.
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                if (TryReadKey(keyPath) is { } winner) return winner;
+                Thread.Sleep(25);
+            }
+
+            // Still not a valid key — a corrupt/truncated file. Replace it, as before.
+            File.Move(temp, keyPath, overwrite: true);
+            return fresh;
+        }
+        finally
+        {
+            try { if (File.Exists(temp)) File.Delete(temp); } catch { /* best-effort */ }
+        }
+    }
+
+    private static byte[]? TryReadKey(string keyPath)
+    {
+        try
+        {
+            if (!File.Exists(keyPath)) return null;
+            var bytes = File.ReadAllBytes(keyPath);
+            return bytes.Length == KeyBytes ? bytes : null;
+        }
+        catch (IOException) { return null; }
     }
 
     /// <summary>Best-effort lockdown: 0600 on POSIX. On Windows the default ACLs under

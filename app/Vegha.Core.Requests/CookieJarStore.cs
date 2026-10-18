@@ -1,23 +1,33 @@
-using System.Data;
 using System.Net;
 using Dapper;
 using Microsoft.Data.Sqlite;
+using Vegha.Core.Shared;
 
 namespace Vegha.Core.Requests;
 
 /// <summary>
 /// SQLite-backed cookie jar. Wraps a <see cref="CookieContainer"/> so HttpClient sees the
 /// in-memory jar at native speed; <see cref="LoadAsync"/> rehydrates from disk on startup
-/// and <see cref="PersistAsync"/> writes the full snapshot back. The HttpExecutor calls
+/// and <see cref="PersistAsync"/> writes changes back. The HttpExecutor calls
 /// PersistAsync after each request so users don't lose session cookies on app exit.
 ///
 /// Default path: <c>%LocalAppData%/Vegha/cookies.db</c>. The schema keeps one row per
 /// (domain, path, name) cookie identity — Set-Cookie of the same triple replaces in place.
+///
+/// The desktop app, CLI and VS Code sidecar share the file, so a persist writes only what
+/// changed in this process since its last sync (upserts + deletes) rather than replacing the
+/// table, then pulls in what other processes wrote. A <c>meta.version</c> counter bumped on
+/// every write lets <see cref="RefreshIfChangedAsync"/> skip the reload when nothing moved.
 /// </summary>
 public sealed class CookieJarStore : IDisposable
 {
     private readonly string _connectionString;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+
+    /// <summary>What the database held at this instance's last load/persist, keyed by cookie
+    /// identity. Diffing the live container against it yields this process's own changes.</summary>
+    private Dictionary<CookieKey, StoredCookie> _synced = new();
+    private long _syncedVersion = -1;
 
     public string DatabasePath { get; }
     public CookieContainer Container { get; } = new();
@@ -34,12 +44,7 @@ public sealed class CookieJarStore : IDisposable
     {
         DatabasePath = databasePath;
         Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
-        _connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared,
-        }.ToString();
+        _connectionString = SqliteMultiProcess.ConnectionString(databasePath);
 
         EnsureSchema();
     }
@@ -53,6 +58,7 @@ public sealed class CookieJarStore : IDisposable
     private void EnsureSchema()
     {
         using var conn = OpenConnection();
+        SqliteMultiProcess.EnableWal(conn);
         conn.Execute("""
             CREATE TABLE IF NOT EXISTS cookies (
                 domain      TEXT NOT NULL,
@@ -63,6 +69,10 @@ public sealed class CookieJarStore : IDisposable
                 http_only   INTEGER NOT NULL DEFAULT 0,
                 secure      INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (domain, path, name)
+            );
+            CREATE TABLE IF NOT EXISTS meta (
+                key   TEXT PRIMARY KEY,
+                value INTEGER NOT NULL
             );
             """);
     }
@@ -86,72 +96,167 @@ public sealed class CookieJarStore : IDisposable
         try
         {
             using var conn = OpenConnection();
-            var rows = await conn.QueryAsync<CookieRow>(
-                "SELECT domain, path, name, value, expires_utc AS ExpiresUtc, http_only AS HttpOnly, secure FROM cookies"
-            ).ConfigureAwait(false);
-
-            var now = DateTime.UtcNow;
-            foreach (var r in rows)
-            {
-                if (r.ExpiresUtc.HasValue)
-                {
-                    var expires = DateTimeOffset.FromUnixTimeMilliseconds(r.ExpiresUtc.Value).UtcDateTime;
-                    if (expires <= now) continue;
-                }
-
-                var cookie = new Cookie(r.Name, r.Value, r.Path, r.Domain)
-                {
-                    HttpOnly = r.HttpOnly != 0,
-                    Secure = r.Secure != 0,
-                };
-                if (r.ExpiresUtc.HasValue)
-                    cookie.Expires = DateTimeOffset.FromUnixTimeMilliseconds(r.ExpiresUtc.Value).UtcDateTime;
-
-                try { Container.Add(cookie); }
-                catch { /* malformed cookie — skip rather than fail load */ }
-            }
+            var (rows, version) = await ReadAllAsync(conn, null).ConfigureAwait(false);
+            ApplyToContainer(rows);
+            _synced = rows;
+            _syncedVersion = version;
         }
         finally { _writeLock.Release(); }
     }
 
-    /// <summary>Snapshots the in-memory container to SQLite as a full replacement.</summary>
+    /// <summary>Writes this process's changes since its last sync (new/changed cookies are
+    /// upserted, cookies it removed or that expired are deleted), then merges in whatever
+    /// other processes wrote meanwhile. Cookies another process added are never dropped.</summary>
     public async Task PersistAsync(CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try { await PersistCoreAsync().ConfigureAwait(false); }
+        finally { _writeLock.Release(); }
+    }
+
+    /// <summary>Cheap check (one row read) for writes made by another process since this
+    /// instance last synced; when there are any, merges them into <see cref="Container"/>.
+    /// The HTTP executor calls this before each send so a login in the desktop app is
+    /// visible to the next request from VS Code, and vice versa.</summary>
+    public async Task RefreshIfChangedAsync(CancellationToken ct = default)
     {
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var all = Container.GetAllCookies(); // .NET 6+
-            using var conn = OpenConnection();
-            using var tx = conn.BeginTransaction();
-            await conn.ExecuteAsync("DELETE FROM cookies;", transaction: tx).ConfigureAwait(false);
-            var nowUtc = DateTime.UtcNow;
-            foreach (Cookie c in all)
-            {
-                if (c.Expired) continue;
-                // Past-dated Expires marks our soft-deleted cookies; do not persist them.
-                if (c.Expires != DateTime.MinValue && c.Expires <= nowUtc) continue;
-                long? exp = c.Expires == DateTime.MinValue ? null : new DateTimeOffset(c.Expires, TimeSpan.Zero).ToUnixTimeMilliseconds();
-                await conn.ExecuteAsync(
-                    """
-                    INSERT INTO cookies (domain, path, name, value, expires_utc, http_only, secure)
-                    VALUES (@Domain, @Path, @Name, @Value, @Exp, @HttpOnly, @Secure);
-                    """,
-                    new
-                    {
-                        Domain = c.Domain,
-                        Path = string.IsNullOrEmpty(c.Path) ? "/" : c.Path,
-                        Name = c.Name,
-                        Value = c.Value,
-                        Exp = exp,
-                        HttpOnly = c.HttpOnly ? 1 : 0,
-                        Secure = c.Secure ? 1 : 0,
-                    },
-                    transaction: tx).ConfigureAwait(false);
-            }
-            tx.Commit();
+            long version;
+            using (var conn = OpenConnection())
+                version = await ReadVersionAsync(conn, null).ConfigureAwait(false);
+            if (version == _syncedVersion) return;
+            // Persist (not a bare reload) so unsaved local changes survive the merge.
+            await PersistCoreAsync().ConfigureAwait(false);
         }
         finally { _writeLock.Release(); }
     }
+
+    private async Task PersistCoreAsync()
+    {
+        var live = LiveCookies();
+        var upserts = live.Values
+            .Where(c => !_synced.TryGetValue(c.Key, out var prev) || prev != c)
+            .ToList();
+        var deletes = _synced.Values.Where(c => !live.ContainsKey(c.Key)).ToList();
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        using var conn = OpenConnection();
+        // Non-deferred → BEGIN IMMEDIATE: take the write lock up front so the read-back
+        // below sees exactly the state our writes produced.
+        using var tx = conn.BeginTransaction(deferred: false);
+        foreach (var c in deletes)
+        {
+            await conn.ExecuteAsync(
+                "DELETE FROM cookies WHERE domain = @Domain AND path = @Path AND name = @Name;",
+                new { c.Domain, c.Path, c.Name }, tx).ConfigureAwait(false);
+        }
+        foreach (var c in upserts)
+        {
+            await conn.ExecuteAsync(
+                """
+                INSERT INTO cookies (domain, path, name, value, expires_utc, http_only, secure)
+                VALUES (@Domain, @Path, @Name, @Value, @Exp, @HttpOnly, @Secure)
+                ON CONFLICT (domain, path, name) DO UPDATE SET
+                    value = excluded.value, expires_utc = excluded.expires_utc,
+                    http_only = excluded.http_only, secure = excluded.secure;
+                """,
+                new
+                {
+                    c.Domain,
+                    c.Path,
+                    c.Name,
+                    c.Value,
+                    Exp = c.ExpiresUtc,
+                    HttpOnly = c.HttpOnly ? 1 : 0,
+                    Secure = c.Secure ? 1 : 0,
+                },
+                tx).ConfigureAwait(false);
+        }
+        var pruned = await conn.ExecuteAsync(
+            "DELETE FROM cookies WHERE expires_utc IS NOT NULL AND expires_utc <= @Now;",
+            new { Now = nowMs }, tx).ConfigureAwait(false);
+        if (upserts.Count > 0 || deletes.Count > 0 || pruned > 0)
+        {
+            await conn.ExecuteAsync(
+                "INSERT INTO meta (key, value) VALUES ('version', 1) ON CONFLICT (key) DO UPDATE SET value = value + 1;",
+                transaction: tx).ConfigureAwait(false);
+        }
+        var (rows, version) = await ReadAllAsync(conn, tx).ConfigureAwait(false);
+        tx.Commit();
+
+        ApplyToContainer(rows);
+        _synced = rows;
+        _syncedVersion = version;
+    }
+
+    private static async Task<long> ReadVersionAsync(SqliteConnection conn, SqliteTransaction? tx) =>
+        await conn.ExecuteScalarAsync<long?>(
+            "SELECT value FROM meta WHERE key = 'version';", transaction: tx).ConfigureAwait(false) ?? 0;
+
+    private static async Task<(Dictionary<CookieKey, StoredCookie> Rows, long Version)> ReadAllAsync(
+        SqliteConnection conn, SqliteTransaction? tx)
+    {
+        var rows = await conn.QueryAsync<CookieRow>(
+            "SELECT domain, path, name, value, expires_utc AS ExpiresUtc, http_only AS HttpOnly, secure FROM cookies",
+            transaction: tx).ConfigureAwait(false);
+        var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var map = new Dictionary<CookieKey, StoredCookie>();
+        foreach (var r in rows)
+        {
+            if (r.ExpiresUtc is { } exp && exp <= nowMs) continue;
+            var c = new StoredCookie(r.Domain, NormalizePath(r.Path), r.Name, r.Value, r.ExpiresUtc, r.HttpOnly != 0, r.Secure != 0);
+            map[c.Key] = c;
+        }
+        return (map, await ReadVersionAsync(conn, tx).ConfigureAwait(false));
+    }
+
+    /// <summary>Makes <see cref="Container"/> match <paramref name="rows"/>: cookies absent from
+    /// the database are soft-deleted (past Expires), differing or missing ones are (re)added.
+    /// Cookies already identical are left alone so HttpClient's own entries aren't churned.</summary>
+    private void ApplyToContainer(Dictionary<CookieKey, StoredCookie> rows)
+    {
+        var past = DateTime.UtcNow.AddYears(-1);
+        var live = LiveCookies();
+        foreach (Cookie c in Container.GetAllCookies())
+        {
+            var key = StoredCookie.From(c).Key;
+            if (live.ContainsKey(key) && !rows.ContainsKey(key)) c.Expires = past;
+        }
+        foreach (var row in rows.Values)
+        {
+            if (live.TryGetValue(row.Key, out var current) && current == row) continue;
+            var cookie = new Cookie(row.Name, row.Value, row.Path, row.Domain)
+            {
+                HttpOnly = row.HttpOnly,
+                Secure = row.Secure,
+            };
+            if (row.ExpiresUtc.HasValue)
+                cookie.Expires = DateTimeOffset.FromUnixTimeMilliseconds(row.ExpiresUtc.Value).UtcDateTime;
+
+            try { Container.Add(cookie); }
+            catch { /* malformed cookie — skip rather than fail load */ }
+        }
+    }
+
+    /// <summary>Non-expired cookies currently in the container, keyed by identity.</summary>
+    private Dictionary<CookieKey, StoredCookie> LiveCookies()
+    {
+        var now = DateTime.UtcNow;
+        var map = new Dictionary<CookieKey, StoredCookie>();
+        foreach (Cookie c in Container.GetAllCookies())
+        {
+            if (c.Expired) continue;
+            // Past-dated Expires marks our soft-deleted cookies; they are not live.
+            if (c.Expires != DateTime.MinValue && c.Expires.ToUniversalTime() <= now) continue;
+            var stored = StoredCookie.From(c);
+            map[stored.Key] = stored;
+        }
+        return map;
+    }
+
+    private static string NormalizePath(string? path) => string.IsNullOrEmpty(path) ? "/" : path;
 
     /// <summary>Returns a flat snapshot of every cookie in the in-memory container.
     /// Cookies whose Expires is in the past are filtered out — CookieContainer doesn't
@@ -219,11 +324,25 @@ public sealed class CookieJarStore : IDisposable
 
     public void Dispose() => _writeLock.Dispose();
 
-    private IDbConnection OpenConnection()
+    private SqliteConnection OpenConnection() => SqliteMultiProcess.Open(_connectionString);
+
+    private readonly record struct CookieKey(string Domain, string Path, string Name);
+
+    /// <summary>One cookie as the database stores it. Record equality is the change test.</summary>
+    private sealed record StoredCookie(
+        string Domain, string Path, string Name, string Value, long? ExpiresUtc, bool HttpOnly, bool Secure)
     {
-        var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        return conn;
+        // Domains compare case-insensitively (RFC 6265 §5.1.3); paths and names are exact.
+        public CookieKey Key => new(Domain.ToLowerInvariant(), Path, Name);
+
+        public static StoredCookie From(Cookie c) => new(
+            c.Domain,
+            NormalizePath(c.Path),
+            c.Name,
+            c.Value,
+            c.Expires == DateTime.MinValue ? null : new DateTimeOffset(c.Expires.ToUniversalTime()).ToUnixTimeMilliseconds(),
+            c.HttpOnly,
+            c.Secure);
     }
 
     private sealed class CookieRow
