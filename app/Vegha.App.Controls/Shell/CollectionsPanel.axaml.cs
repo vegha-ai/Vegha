@@ -20,6 +20,11 @@ public partial class CollectionsPanel : UserControl
     /// without a circular reference.</summary>
     public event EventHandler? ImportRequested;
 
+    /// <summary>Raised by a collection's "Export…" menu item (tree right-click or the header
+    /// ⋯ menu) with that collection. The host (MainWindow) opens the Export dialog with it
+    /// pre-selected.</summary>
+    public event EventHandler<CollectionRootViewModel>? ExportRequested;
+
     /// <summary>Raised when the user picks "Open collection" and chooses a folder. The host
     /// (MainWindow) routes this to <c>WorkspacesViewModel.LinkCollection</c> so the path
     /// is persisted in the active workspace and reloads on next launch. The panel can't
@@ -30,9 +35,11 @@ public partial class CollectionsPanel : UserControl
     /// this when the active workspace changes (typically <c>&lt;workspace&gt;/collections/</c>).</summary>
     public string DefaultCreateCollectionLocation { get; set; } = "";
 
-    /// <summary>Custom DragDrop format key — we don't try to interop with the OS clipboard
-    /// (no cross-app drag), just within the panel.</summary>
-    private const string DragFormat = "vegha/collection-node";
+    /// <summary>Custom DragDrop format — we don't try to interop with the OS clipboard
+    /// (no cross-app drag), just within the panel. The payload is only a marker; the dragged
+    /// node itself lives in <see cref="_draggedNode"/> since DataTransfer can't carry objects.</summary>
+    private static readonly DataFormat<string> DragFormat =
+        DataFormat.CreateStringApplicationFormat("vegha.collection-node");
 
     /// <summary>Pixel travel before a press becomes a drag — matches Avalonia's default click slop.</summary>
     private const double DragThreshold = 5.0;
@@ -40,11 +47,43 @@ public partial class CollectionsPanel : UserControl
     private Point _pressPoint;
     private CollectionNodeViewModel? _pressedNode;
     private bool _dragInProgress;
+    private CollectionNodeViewModel? _draggedNode;
+
+    static CollectionsPanel()
+    {
+        // Pressing a row selects it, and TreeView then brings the whole TreeViewItem into view —
+        // for an expanded folder that rect spans every child row. When the folder is taller than
+        // the viewport the ScrollViewer jumps mid-click, the release lands on a different row, no
+        // Tapped fires, and the folder doesn't collapse. Narrow the request to the header row.
+        // A class handler is needed because the ScrollViewer sits between the items and this panel.
+        Control.RequestBringIntoViewEvent.AddClassHandler<TreeViewItem>(OnTreeItemRequestBringIntoView);
+    }
+
+    private static void OnTreeItemRequestBringIntoView(TreeViewItem tvi, RequestBringIntoViewEventArgs e)
+    {
+        if (!ReferenceEquals(e.TargetObject, tvi)) return;
+        if (tvi.FindAncestorOfType<CollectionsPanel>() is null) return;
+        var header = tvi.GetVisualDescendants().OfType<Border>()
+            .FirstOrDefault(b => b.Name == "PART_LayoutRoot");
+        if (header is null || header.Bounds.Height <= 0) return;
+        e.TargetRect = new Rect(0, 0, tvi.Bounds.Width, header.Bounds.Height);
+    }
 
     public CollectionsPanel()
     {
         InitializeComponent();
-        DataContextChanged += OnDataContextChanged;
+
+        // The active-collection menu is shared by the "⋯" button and a right-click on the
+        // collection name row: drop down under the button, but open at the pointer for the
+        // right-click like every other context menu.
+        if (Resources["ActiveCollectionMenu"] is MenuFlyout collectionMenu)
+        {
+            collectionMenu.Opening += (_, _) =>
+                collectionMenu.Placement = ReferenceEquals(collectionMenu.Target, CollectionHeaderRow)
+                    ? PlacementMode.Pointer
+                    : PlacementMode.BottomEdgeAlignedRight;
+        }
+
         AddHandler(InputElement.DoubleTappedEvent, OnTreeItemDoubleTapped);
         // Single-tap toggle for non-leaf rows. Tapped is a synthesized click event that survives
         // TreeViewItem's selection routing; handledEventsToo guarantees we see it even after.
@@ -62,19 +101,6 @@ public partial class CollectionsPanel : UserControl
         DragDrop.SetAllowDrop(this, true);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
-    }
-
-    private CollectionsViewModel? _hookedVm;
-
-    private void OnDataContextChanged(object? sender, EventArgs e)
-    {
-        if (_hookedVm is not null)
-            _hookedVm.NodePropertiesRequested -= OnNodePropertiesRequested;
-        if (DataContext is CollectionsViewModel vm)
-        {
-            _hookedVm = vm;
-            vm.NodePropertiesRequested += OnNodePropertiesRequested;
-        }
     }
 
     // ============================== Header context menu ==============================
@@ -188,27 +214,6 @@ public partial class CollectionsPanel : UserControl
         await CollectionDialogActions.ConfirmAndRemoveAsync(owner, vm, root);
     }
 
-    private async void OnNodePropertiesRequested(object? sender, NodePropertiesRequest req)
-    {
-        if (DataContext is not CollectionsViewModel vm) return;
-        var owner = TopLevel.GetTopLevel(this) as Window;
-
-        NodePropertiesViewModel propsVm;
-        if (req.Root?.Collection is { } collection)
-            propsVm = new NodePropertiesViewModel(NodePropertiesViewModel.Kind.Collection, collection);
-        else if (req.Folder?.Folder is { } folder)
-            propsVm = new NodePropertiesViewModel(NodePropertiesViewModel.Kind.Folder, folder);
-        else return;
-
-        var dlg = new NodePropertiesDialog { DataContext = propsVm };
-        var result = owner is null ? null : await dlg.ShowDialog<bool?>(owner);
-        if (result == true)
-        {
-            var snapshot = propsVm.BuildSnapshot();
-            vm.ApplyNodeSnapshot(req, snapshot);
-        }
-    }
-
     private void OnClearFilter_Click(object? sender, RoutedEventArgs e)
     {
         if (DataContext is CollectionsViewModel vm) vm.Filter = string.Empty;
@@ -269,6 +274,16 @@ public partial class CollectionsPanel : UserControl
     private void ImportCollection_Click(object? sender, RoutedEventArgs e) =>
         ImportRequested?.Invoke(this, EventArgs.Empty);
 
+    private void OnTreeExport_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { Tag: CollectionRootViewModel root }) ExportRequested?.Invoke(this, root);
+    }
+
+    private void OnHeaderExport_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is CollectionsViewModel { ActiveCollection: { } root }) ExportRequested?.Invoke(this, root);
+    }
+
     private void OnTreeItemDoubleTapped(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not CollectionsViewModel vm) return;
@@ -280,9 +295,15 @@ public partial class CollectionsPanel : UserControl
         }
     }
 
-    /// <summary>Single-tap on any non-leaf row toggles its expansion. The chevron is a plain
-    /// Path (no ToggleButton), so every click on a folder row — chevron, name, or surrounding
-    /// area — reaches us and flips <c>IsExpanded</c> exactly once.</summary>
+    /// <summary>Single-tap on a folder (or collection) row. The chevron only toggles expansion;
+    /// a click anywhere else on the row is "open + toggle":
+    /// <list type="bullet">
+    ///   <item>collapsed row → expand it and open (or activate) its Settings tab;</item>
+    ///   <item>expanded row whose Settings tab is already active → collapse it;</item>
+    ///   <item>expanded row whose tab isn't active → just bring the Settings tab forward.</item>
+    /// </list>
+    /// The chevron is a plain Path inside a named Panel (no ToggleButton), so every click on a
+    /// folder row reaches us and is handled exactly once.</summary>
     private void OnTreeItemTapped(object? sender, TappedEventArgs e)
     {
         if (e.Source is not Visual v) return;
@@ -307,9 +328,64 @@ public partial class CollectionsPanel : UserControl
         }
 
         if (node.IsLeaf) return;
-
-        node.IsExpanded = !node.IsExpanded;
         e.Handled = true;
+
+        if (IsOnChevron(v, tvi) || DataContext is not CollectionsViewModel collections)
+        {
+            node.IsExpanded = !node.IsExpanded;
+            return;
+        }
+        ClickNode(collections, node, node.IsExpanded, x => node.IsExpanded = x);
+    }
+
+    /// <summary>"Open + toggle" rule for a folder row: a collapsed row expands and opens its
+    /// Settings tab; an expanded row collapses only when that tab is already active.</summary>
+    private static void ClickNode(CollectionsViewModel vm, CollectionNodeViewModel node,
+        bool isExpanded, Action<bool> setExpanded)
+    {
+        if (!isExpanded)
+        {
+            setExpanded(true);
+            OpenSettings(vm, node);
+        }
+        else if (vm.IsSettingsTabActive?.Invoke(node) == true)
+        {
+            setExpanded(false);
+        }
+        else
+        {
+            OpenSettings(vm, node);
+        }
+    }
+
+    private static void OpenSettings(CollectionsViewModel vm, CollectionNodeViewModel node)
+    {
+        switch (node)
+        {
+            case CollectionFolderViewModel f when vm.OpenFolderSettingsCommand.CanExecute(f):
+                vm.OpenFolderSettingsCommand.Execute(f);
+                break;
+            case CollectionRootViewModel r when vm.OpenCollectionSettingsCommand.CanExecute(r):
+                vm.OpenCollectionSettingsCommand.Execute(r);
+                break;
+        }
+    }
+
+    /// <summary>True when the tap landed on the row's expand/collapse chevron (the
+    /// <c>PART_ExpandCollapseChevron</c> part of the compact TreeViewItem template).</summary>
+    private static bool IsOnChevron(Visual source, TreeViewItem tvi)
+    {
+        for (Visual? cur = source; cur is not null && !ReferenceEquals(cur, tvi); cur = cur.GetVisualParent())
+            if (cur is Control { Name: "PART_ExpandCollapseChevron" }) return true;
+        return false;
+    }
+
+    /// <summary>Collection header above the tree: a click opens the collection's Settings tab.</summary>
+    private void OnCollectionHeaderRow_Tapped(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is not CollectionsViewModel vm || vm.ActiveCollection is not { } root) return;
+        e.Handled = true;
+        OpenSettings(vm, root);
     }
 
     /// <summary>The hover "..." button on each tree row opens the same flyout the row's
@@ -360,9 +436,16 @@ public partial class CollectionsPanel : UserControl
         { _pressedNode = null; return; }
 
         _dragInProgress = true;
-        var data = new DataObject();
-        data.Set(DragFormat, _pressedNode);
-        _ = DragDrop.DoDragDrop(e, data, DragDropEffects.Move);
+        _draggedNode = _pressedNode;
+        var data = new DataTransfer();
+        data.Add(DataTransferItem.Create(DragFormat, "node"));
+        _ = RunDragAsync(e, data);
+    }
+
+    private async Task RunDragAsync(PointerEventArgs e, DataTransfer data)
+    {
+        try { await DragDrop.DoDragDropAsync(e, data, DragDropEffects.Move); }
+        finally { _draggedNode = null; }
     }
 
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -373,7 +456,7 @@ public partial class CollectionsPanel : UserControl
 
     private void OnDragOver(object? sender, DragEventArgs e)
     {
-        if (!e.Data.Contains(DragFormat)) { e.DragEffects = DragDropEffects.None; return; }
+        if (_draggedNode is null || !e.DataTransfer.Contains(DragFormat)) { e.DragEffects = DragDropEffects.None; return; }
         var target = ResolveNodeFromSource(e.Source);
         // Dropping onto the "+ New request" row means "into the folder that owns it".
         if (target is NewRequestPlaceholderViewModel ph) target = ph.Parent;
@@ -389,7 +472,7 @@ public partial class CollectionsPanel : UserControl
     private void OnDrop(object? sender, DragEventArgs e)
     {
         if (DataContext is not CollectionsViewModel vm) return;
-        if (e.Data.Get(DragFormat) is not CollectionNodeViewModel source) return;
+        if (!e.DataTransfer.Contains(DragFormat) || _draggedNode is not { } source) return;
         var target = ResolveNodeFromSource(e.Source);
         if (target is NewRequestPlaceholderViewModel ph) target = ph.Parent;
         if (target is null) return;

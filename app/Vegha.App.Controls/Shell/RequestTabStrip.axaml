@@ -5,6 +5,7 @@
              xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:tabs="using:Vegha.App.ViewModels.Tabs"
              xmlns:icons="using:Vegha.App.Controls.Icons"
+             xmlns:cmn="using:Vegha.App.Controls.Common"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="36"
              x:Class="Vegha.App.Controls.Shell.RequestTabStrip"
              x:DataType="tabs:OpenTabsViewModel">
@@ -52,13 +53,16 @@
                     ToolTip.Tip="Scroll tabs left">
                 <TextBlock Text="‹" FontSize="18" FontWeight="SemiBold" />
             </Button>
+            <!-- Tabs scroller + "+" button. InlineTrailingPanel reserves the "+" first, so it
+                 sits right after the last tab (browser-style) while tabs fit, and stays pinned
+                 just left of the "›" arrow once they overflow instead of scrolling away. -->
+            <cmn:InlineTrailingPanel HorizontalAlignment="Left">
             <!-- Hidden (not Auto) so the bar can't overlap the 36px-tall tab row.
                  Mouse wheel still scrolls; the user can still see overflowed tabs. -->
             <ScrollViewer x:Name="TabsScrollViewer"
                           HorizontalScrollBarVisibility="Hidden"
                           VerticalScrollBarVisibility="Disabled"
                           ScrollChanged="OnTabsScrollChanged">
-                <StackPanel Orientation="Horizontal">
                 <ItemsControl x:Name="TabsItemsControl" ItemsSource="{Binding VisibleTabs}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -164,10 +168,10 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <!-- Inline "+" — sits right after the last tab (browser-style) rather than
-                     docked at the far edge, so opening a new tab is one short mouse travel
-                     from the tab the user just interacted with. Scrolls with the strip;
-                     ScrollNewTabButtonIntoView keeps it reachable when tabs overflow. -->
+            </ScrollViewer>
+                <!-- Inline "+" — sits right after the last tab rather than docked at the far
+                     edge, so opening a new tab is one short mouse travel from the tab the
+                     user just interacted with. -->
                 <Button x:Name="NewTabButton"
                         Click="OnNewTab_Click"
                         ToolTip.Tip="New request (Ctrl+T)"
@@ -180,8 +184,7 @@
                         Cursor="Hand">
                     <TextBlock Text="+" FontSize="16" FontWeight="SemiBold" />
                 </Button>
-                </StackPanel>
-            </ScrollViewer>
+            </cmn:InlineTrailingPanel>
         </DockPanel>
     </Border>
 </UserControl>

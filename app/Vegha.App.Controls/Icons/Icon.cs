@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Shapes;
 using Avalonia.Media;
 
 namespace Vegha.App.Controls.Icons;
@@ -27,36 +28,77 @@ public sealed class Icon : ContentControl
         set => SetValue(SizeProperty, value);
     }
 
+    // Shapes of the current glyph + the brush they were painted with, so a Foreground-only
+    // change (hover, selection, theme switch) recolors in place instead of rebuilding.
+    private Canvas? _canvas;
+    private IBrush? _builtBrush;
+    // Kind changed since the last build. Building is deferred until the icon is in the visual
+    // tree: XAML sets Kind, Size and an inherited Foreground one after another, and building
+    // eagerly re-parsed the geometry for every one of those.
+    private bool _dirty = true;
+
     public Icon()
     {
         Width = 16;
         Height = 16;
-        Refresh();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == KindProperty || change.Property == SizeProperty || change.Property == ForegroundProperty)
-            Refresh();
+        if (change.Property == SizeProperty)
+        {
+            Width = Size;
+            Height = Size;
+        }
+        else if (change.Property == KindProperty)
+        {
+            _dirty = true;
+            if (VisualRoot is not null) Rebuild();
+        }
+        else if (change.Property == ForegroundProperty && !_dirty)
+        {
+            Recolor();
+        }
     }
 
-    private void Refresh()
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        Width = Size;
-        Height = Size;
+        base.OnAttachedToVisualTree(e);
+        if (_dirty) Rebuild();
+        else if (!ReferenceEquals(_builtBrush, Foreground ?? Brushes.White)) Recolor();
+    }
 
-        var canvas = new Canvas { Width = 24, Height = 24, Background = Brushes.Transparent };
-        var brush = Foreground ?? Brushes.White;
-        foreach (var shape in IconLibrary.Build(Kind, brush))
+    private void Rebuild()
+    {
+        _dirty = false;
+        _builtBrush = Foreground ?? Brushes.White;
+        _canvas = new Canvas { Width = 24, Height = 24, Background = Brushes.Transparent };
+        foreach (var shape in IconLibrary.Build(Kind, _builtBrush))
         {
-            canvas.Children.Add(shape);
+            _canvas.Children.Add(shape);
         }
 
         Content = new Viewbox
         {
             Stretch = Stretch.Uniform,
-            Child = canvas,
+            Child = _canvas,
         };
+    }
+
+    /// <summary>Swaps the old foreground for the new one on every shape that was painted with
+    /// it. Shapes with their own fixed colors (e.g. a transparent fill) are left alone, exactly
+    /// as a fresh build would leave them.</summary>
+    private void Recolor()
+    {
+        if (_canvas is null) return;
+        var brush = Foreground ?? Brushes.White;
+        foreach (var child in _canvas.Children)
+        {
+            if (child is not Shape shape) continue;
+            if (ReferenceEquals(shape.Stroke, _builtBrush)) shape.Stroke = brush;
+            if (ReferenceEquals(shape.Fill, _builtBrush)) shape.Fill = brush;
+        }
+        _builtBrush = brush;
     }
 }

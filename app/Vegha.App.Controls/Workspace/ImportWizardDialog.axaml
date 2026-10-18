@@ -449,7 +449,7 @@
                 MinWidth="320">
             <StackPanel Spacing="14" HorizontalAlignment="Center">
                 <!-- Avalonia's indeterminate ProgressBar acts as our spinner. -->
-                <ProgressBar IsIndeterminate="True"
+                <ProgressBar IsIndeterminate="{Binding IsImporting}"
                              Width="240" Height="6"
                              Background="{DynamicResource Bg3Brush}"
                              Foreground="{DynamicResource AccentBrush}" />

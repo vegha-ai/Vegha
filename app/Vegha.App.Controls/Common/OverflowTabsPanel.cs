@@ -22,6 +22,13 @@ public sealed class OverflowTabsPanel : Panel
     /// slot available for tabs.</summary>
     public double NaturalWidth { get; private set; }
 
+    /// <summary>Visible/hidden decision made in measure. Arrange places children from this
+    /// set instead of re-packing: at fractional DPI, layout rounding can hand arrange a
+    /// width a fraction of a pixel narrower than measure saw, and re-packing against it
+    /// evicted the last tab while the presenter still reserved its slot — the chevron
+    /// then appeared after a tab-wide dead gap.</summary>
+    private bool[] _visible = Array.Empty<bool>();
+
     public OverflowTabsPanel()
     {
         // Overflow tabs are arranged just past the right edge; clipping keeps
@@ -33,26 +40,26 @@ public sealed class OverflowTabsPanel : Panel
     {
         double total = 0;
         double maxH = 0;
-        foreach (var child in Children)
+        var count = Children.Count;
+        var widths = new double[count];
+        for (int i = 0; i < count; i++)
         {
+            var child = Children[i];
             child.Measure(new Size(double.PositiveInfinity, availableSize.Height));
-            total += child.DesiredSize.Width;
+            widths[i] = child.DesiredSize.Width;
+            total += widths[i];
             if (child.DesiredSize.Height > maxH) maxH = child.DesiredSize.Height;
         }
         NaturalWidth = total;
+
+        _visible = Pack(widths, availableSize.Width, SelectedIndex());
         // DesiredSize reports the *visible* width so the parent layout can size
         // its own column to the actual rendered tab strip and place the chevron
         // immediately after.
-        if (double.IsInfinity(availableSize.Width)) return new Size(total, maxH);
-        double visible = 0;
-        foreach (var child in Children)
-        {
-            if (visible + child.DesiredSize.Width <= availableSize.Width)
-                visible += child.DesiredSize.Width;
-            else
-                break;
-        }
-        return new Size(visible, maxH);
+        double visibleW = 0;
+        for (int i = 0; i < count; i++)
+            if (_visible[i]) visibleW += widths[i];
+        return new Size(visibleW, maxH);
     }
 
     protected override Size ArrangeOverride(Size finalSize)
@@ -65,55 +72,11 @@ public sealed class OverflowTabsPanel : Panel
         }
 
         var widths = new double[count];
-        double total = 0;
         for (int i = 0; i < count; i++)
-        {
             widths[i] = Children[i].DesiredSize.Width;
-            total += widths[i];
-        }
 
-        // The chevron lives in a sibling Auto-width Grid column outside this
-        // panel, so when it's visible our finalSize is already shrunk to
-        // accommodate it — no additional internal reserve is needed. Packing
-        // simply uses the available width directly.
-        double max = finalSize.Width;
-
-        // Greedy left-to-right packing within the reduced width.
-        var visible = new bool[count];
-        double used = 0;
-        for (int i = 0; i < count; i++)
-        {
-            if (used + widths[i] <= max)
-            {
-                visible[i] = true;
-                used += widths[i];
-            }
-        }
-
-        // Promote the selected TabItem into the visible range — if greedy
-        // packing kicked it into the hidden pool, evict the rightmost visible
-        // items until there's room. Keeps the active tab in view at all widths.
-        int selectedIndex = -1;
-        for (int i = 0; i < count; i++)
-        {
-            if (Children[i] is TabItem ti && ti.IsSelected)
-            {
-                selectedIndex = i;
-                break;
-            }
-        }
-        if (selectedIndex >= 0 && !visible[selectedIndex])
-        {
-            for (int i = count - 1; i >= 0 && used + widths[selectedIndex] > max; i--)
-            {
-                if (visible[i] && i != selectedIndex)
-                {
-                    visible[i] = false;
-                    used -= widths[i];
-                }
-            }
-            visible[selectedIndex] = true;
-        }
+        // Children changed without a measure pass — fall back to packing here.
+        var visible = _visible.Length == count ? _visible : Pack(widths, finalSize.Width, SelectedIndex());
 
         double x = 0;
         var hidden = new List<Control>();
@@ -135,5 +98,51 @@ public sealed class OverflowTabsPanel : Panel
 
         this.FindAncestorOfType<OverflowTabControl>()?.ReportOverflowState(hidden);
         return finalSize;
+    }
+
+    private int SelectedIndex()
+    {
+        for (int i = 0; i < Children.Count; i++)
+            if (Children[i] is TabItem { IsSelected: true }) return i;
+        return -1;
+    }
+
+    /// <summary>Greedy left-to-right packing into <paramref name="max"/>, then promotes the
+    /// selected tab into the visible range — if packing kicked it into the hidden pool,
+    /// evict the rightmost visible items until there's room. Keeps the active tab in view
+    /// at all widths.</summary>
+    private static bool[] Pack(double[] widths, double max, int selectedIndex)
+    {
+        var count = widths.Length;
+        var visible = new bool[count];
+        if (double.IsInfinity(max))
+        {
+            Array.Fill(visible, true);
+            return visible;
+        }
+
+        double used = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (used + widths[i] <= max)
+            {
+                visible[i] = true;
+                used += widths[i];
+            }
+        }
+
+        if (selectedIndex >= 0 && !visible[selectedIndex])
+        {
+            for (int i = count - 1; i >= 0 && used + widths[selectedIndex] > max; i--)
+            {
+                if (visible[i] && i != selectedIndex)
+                {
+                    visible[i] = false;
+                    used -= widths[i];
+                }
+            }
+            visible[selectedIndex] = true;
+        }
+        return visible;
     }
 }

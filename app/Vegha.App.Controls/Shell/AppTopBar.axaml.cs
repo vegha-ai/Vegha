@@ -29,7 +29,7 @@ public partial class AppTopBar : UserControl
         {
             DetachCollectionListeners();
             AttachCollectionListeners();
-            RebuildCollectionPickerList();
+            RebuildCollectionPickerListIfOpen();
         };
         if (CollectionPickerButton?.Flyout is Flyout flyout)
             flyout.Opened += OnCollectionPickerFlyoutOpened;
@@ -97,11 +97,21 @@ public partial class AppTopBar : UserControl
     private void OnCollectionsPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(CollectionsViewModel.ActiveCollection))
-            RebuildCollectionPickerList();
+            RebuildCollectionPickerListIfOpen();
     }
 
     private void OnAvailableCollectionsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) =>
-        RebuildCollectionPickerList();
+        RebuildCollectionPickerListIfOpen();
+
+    /// <summary>Model-change hook: rebuild only while the flyout is showing. The Opened handler
+    /// always rebuilds, so a closed picker loses nothing — and rebuilding it eagerly on every
+    /// AvailableCollections change was O(n²) row construction on the UI thread while a
+    /// workspace's collections loaded one by one (~330 ms of UI-thread time in a startup trace).</summary>
+    private void RebuildCollectionPickerListIfOpen()
+    {
+        if (CollectionPickerButton?.Flyout is Flyout { IsOpen: true })
+            RebuildCollectionPickerList();
+    }
 
     /// <summary>Builds one row per workspace collection in the picker flyout, filtered by the
     /// search box. Each row carries a click-to-activate handler, a "..." menu, and a right-click

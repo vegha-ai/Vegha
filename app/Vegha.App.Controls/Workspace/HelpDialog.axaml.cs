@@ -37,6 +37,7 @@ public partial class HelpDialog : Window
             (K("Ctrl+Enter"),     "Send the active request"),
             (K("Ctrl+Tab"),       $"Next tab    ({K("Ctrl+Shift+Tab")} previous)"),
             (K("Ctrl+W"),         "Close the active tab"),
+            (K("Ctrl+J"),         "Collapse / expand the response pane"),
         }));
 
         BodyHost.Children.Add(BuildShortcutCard("Workspace", new (string, string)[]

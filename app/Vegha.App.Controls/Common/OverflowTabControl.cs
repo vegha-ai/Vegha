@@ -58,12 +58,12 @@ public class OverflowTabControl : TabControl
         Classes.Add("overflowtabs");
 
         // The panel's pack ensures the selected tab stays visible — but it only
-        // re-runs on arrange. Force a re-arrange whenever selection changes so a
+        // re-runs on measure. Force a re-measure whenever selection changes so a
         // programmatic selection (e.g. user picking a tab from the overflow menu)
         // moves the newly-active tab back into the visible strip immediately.
         SelectionChanged += (_, _) =>
         {
-            this.GetVisualDescendants().OfType<OverflowTabsPanel>().FirstOrDefault()?.InvalidateArrange();
+            this.GetVisualDescendants().OfType<OverflowTabsPanel>().FirstOrDefault()?.InvalidateMeasure();
         };
     }
 

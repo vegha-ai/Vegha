@@ -62,6 +62,9 @@
                         <MenuItem x:Name="MenuImport" Header="Import..."
                                   InputGesture="Ctrl+I"
                                   Click="OnMenuImport_Click" />
+                        <MenuItem x:Name="MenuExport" Header="Export..."
+                                  InputGesture="Ctrl+Shift+E"
+                                  Click="OnMenuExport_Click" />
                         <Separator />
                         <MenuItem x:Name="MenuSettings" Header="Settings..."
                                   InputGesture="Ctrl+,"
@@ -216,9 +219,11 @@
             <!-- Main workspace: editor above response, vertically resizable -->
             <Grid Grid.Column="3" Grid.Row="1" x:Name="WorkspaceGrid">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*" MinHeight="200" />
+                    <!-- Proportional split; MainWindow.UpdateResponseRow owns the actual
+                         heights (ratio from layout.json, header-strip-only when compact). -->
+                    <RowDefinition Height="55*" MinHeight="200" />
                     <RowDefinition Height="4" />
-                    <RowDefinition Height="360" MinHeight="160" MaxHeight="640" />
+                    <RowDefinition Height="45*" MinHeight="160" />
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0" Background="{DynamicResource Bg1Brush}">
@@ -264,8 +269,9 @@
                                     <DataTemplate DataType="tabs:CollectionRunTabViewModel">
                                         <ws:CollectionRunTab />
                                     </DataTemplate>
-                                    <DataTemplate DataType="tabs:CollectionSettingsTabViewModel">
-                                        <ws:CollectionSettingsTab />
+                                    <!-- Collection + folder settings share one view. -->
+                                    <DataTemplate DataType="tabs:NodeSettingsTabViewModel">
+                                        <ws:NodeSettingsTab />
                                     </DataTemplate>
                                     <!-- (The workspace editor tab/dialog was retired; workspaces
                                          rename inline in Manage Workspaces, global envs have their
@@ -285,7 +291,8 @@
                               ToolTip.Tip="Drag to resize response pane — double-click to reset"
                               IsVisible="{Binding OpenTabs.IsResponsePaneApplicable}" />
 
-                <ws:ResponseDisplay Grid.Row="2"
+                <ws:ResponseDisplay Grid.Row="2" x:Name="ResponsePane"
+                                    CollapseToggleRequested="OnResponseCollapseToggleRequested"
                                     DataContext="{Binding RequestEditor}"
                                     IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).OpenTabs.IsResponsePaneApplicable}" />
             </Grid>

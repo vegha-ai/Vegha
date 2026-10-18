@@ -62,8 +62,14 @@ public sealed class LayoutSettingsStore
         }
     }
 
-    private static LayoutSettings Clamp(LayoutSettings s) => new(
-        SidebarWidth: Math.Clamp(s.SidebarWidth, 200, 480),
-        RightPanelWidth: Math.Clamp(s.RightPanelWidth, 220, 520),
-        ResponsePaneHeight: Math.Clamp(s.ResponsePaneHeight, 160, 640));
+    // `with` (not `new`) so init-only flags like IsCodegenCollapsed survive the clamp.
+    private static LayoutSettings Clamp(LayoutSettings s) => s with
+    {
+        SidebarWidth = Math.Clamp(s.SidebarWidth, 200, 480),
+        RightPanelWidth = Math.Clamp(s.RightPanelWidth, 220, 520),
+        ResponsePaneHeight = Math.Clamp(s.ResponsePaneHeight, 160, 640),
+        ResponsePaneRatio = double.IsFinite(s.ResponsePaneRatio)
+            ? Math.Clamp(s.ResponsePaneRatio, LayoutSettings.MinResponsePaneRatio, LayoutSettings.MaxResponsePaneRatio)
+            : LayoutSettings.DefaultResponsePaneRatio,
+    };
 }
