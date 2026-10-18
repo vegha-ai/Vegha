@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using AvaloniaEdit;
 using AvaloniaEdit.Editing;
@@ -51,6 +53,17 @@ public partial class ReadOnlyCodeView : UserControl
 
     private TextEditor _editor = null!;
 
+    /// <summary>Document offset under the pointer at the last right-click (the caret for other
+    /// clicks). Read by hosts' context-menu handlers — e.g. the response body's "Capture as
+    /// variable" maps it to a JSON path.</summary>
+    public int ContextOffset { get; private set; }
+
+    /// <summary>The text currently shown (what <see cref="ContextOffset"/> indexes into).</summary>
+    public string DocumentText => _editor.Document.Text;
+
+    /// <summary>The selected text, or empty.</summary>
+    public string SelectedText => _editor.SelectedText;
+
     public ReadOnlyCodeView()
     {
         InitializeComponent();
@@ -79,6 +92,17 @@ public partial class ReadOnlyCodeView : UserControl
         // first layout, so long single-line responses still showed horizontally even
         // though the property read back as `true`).
         _editor.WordWrap = WordWrap;
+
+        // Tunnel so we see the press before AvaloniaEdit's own handlers (which mark it handled).
+        _editor.TextArea.AddHandler(PointerPressedEvent, OnTextAreaPointerPressed, RoutingStrategies.Tunnel);
+    }
+
+    private void OnTextAreaPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        ContextOffset = _editor.CaretOffset;
+        if (!e.GetCurrentPoint(_editor.TextArea).Properties.IsRightButtonPressed) return;
+        if (_editor.GetPositionFromPoint(e.GetPosition(_editor)) is { } pos)
+            ContextOffset = _editor.Document.GetOffset(pos.Location);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

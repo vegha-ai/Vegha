@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:sl="using:Vegha.App.ViewModels.Scriptless"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             mc:Ignorable="d" d:DesignWidth="280" d:DesignHeight="200"
+             x:Class="Vegha.App.Controls.Shell.RuntimeVariablesList"
+             x:DataType="sl:RuntimeVariablesViewModel"
+             x:Name="Root">
+    <!-- Session runtime variables (captures with Runtime scope, linked requests, bru.setVar).
+         Never written to disk; each row says where its value came from. -->
+    <DockPanel>
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="10,8,8,4">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <TextBlock Text="RUNTIME" Classes="sectionHeaderMinor" VerticalAlignment="Center" />
+                <TextBlock Text="this session" FontSize="10" Foreground="{DynamicResource Text3Brush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+            <Button Grid.Column="1" Classes="tertiary" Padding="6,1" FontSize="10"
+                    Content="Clear" IsVisible="{Binding HasRows}"
+                    Command="{Binding ClearCommand}"
+                    ToolTip.Tip="Forget every runtime variable" />
+        </Grid>
+        <TextBlock DockPanel.Dock="Top" IsVisible="{Binding !HasRows}"
+                   Margin="10,0,10,8" FontSize="11" TextWrapping="Wrap"
+                   Foreground="{DynamicResource Text3Brush}"
+                   Text="Nothing captured yet. Right-click a value in a response and choose Capture, or add rows in a request's Tests tab." />
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding Rows}" Margin="0,0,0,6">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="sl:RuntimeVariableRow">
+                        <Border Padding="10,4" Background="Transparent" ToolTip.Tip="{Binding Provenance}">
+                            <Border.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Save to active environment"
+                                              Command="{Binding #Root.((sl:RuntimeVariablesViewModel)DataContext).PromoteCommand}"
+                                              CommandParameter="{Binding}"
+                                              IsVisible="{Binding #Root.((sl:RuntimeVariablesViewModel)DataContext).CanPromote}">
+                                        <MenuItem.Icon><icons:Icon Kind="Save" Size="14" /></MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem Header="Remove"
+                                              Command="{Binding #Root.((sl:RuntimeVariablesViewModel)DataContext).RemoveCommand}"
+                                              CommandParameter="{Binding}">
+                                        <MenuItem.Icon><icons:Icon Kind="Trash" Size="14" /></MenuItem.Icon>
+                                    </MenuItem>
+                                </ContextMenu>
+                            </Border.ContextMenu>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Spacing="1">
+                                    <TextBlock FontFamily="{StaticResource MonoFont}" FontSize="11"
+                                               TextTrimming="CharacterEllipsis">
+                                        <Run Text="{Binding Name}" Foreground="{DynamicResource Text0Brush}" FontWeight="SemiBold" />
+                                        <Run Text=" = " Foreground="{DynamicResource Text3Brush}" />
+                                        <Run Text="{Binding Value}" Foreground="{DynamicResource Text1Brush}" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding Provenance}" FontSize="10"
+                                               Foreground="{DynamicResource Text3Brush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Background="Transparent" BorderThickness="0"
+                                        Padding="4,0" Cursor="Hand" VerticalAlignment="Center"
+                                        Foreground="{DynamicResource Text3Brush}"
+                                        Command="{Binding #Root.((sl:RuntimeVariablesViewModel)DataContext).RemoveCommand}"
+                                        CommandParameter="{Binding}" ToolTip.Tip="Remove">
+                                    <TextBlock Text="✕" FontSize="10" />
+                                </Button>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

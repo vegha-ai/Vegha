@@ -49,6 +49,21 @@ public partial class App : Application
                         .BuildServiceProvider();
                     Program.Trace("build:di-ready");
 
+                    // {{var}} hovers explain where a runtime variable's value came from
+                    // ("captured from Login · res.body.access_token · 2 min ago").
+                    var runtimeVars = Services.GetRequiredService<Vegha.App.ViewModels.Services.RuntimeVariableStore>();
+                    Vegha.App.Controls.Workspace.VariableAwareTextEditor.VariableProvenance =
+                        name => runtimeVars.TryGet(name, out var entry) ? runtimeVars.Describe(entry) : null;
+                    // Runtime variables and remembered responses belong to one workspace session.
+                    var workspaces = Services.GetRequiredService<WorkspacesViewModel>();
+                    var responseCache = Services.GetRequiredService<Vegha.Core.Requests.LastResponseCache>();
+                    workspaces.PropertyChanged += (_, pe) =>
+                    {
+                        if (pe.PropertyName != nameof(WorkspacesViewModel.ActiveWorkspace)) return;
+                        runtimeVars.Clear();
+                        responseCache.Clear();
+                    };
+
                     var main = new MainWindow
                     {
                         DataContext = Services.GetRequiredService<MainWindowViewModel>()

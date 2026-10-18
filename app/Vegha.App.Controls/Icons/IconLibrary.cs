@@ -224,6 +224,13 @@ internal static class IconLibrary
             case IconKind.Play:
                 yield return Stroke("M7 4.5 V19.5 L20 12 L7 4.5 Z", stroke);
                 break;
+            case IconKind.Check:
+                yield return Stroke("M4.5 12.5 L9.5 17.5 L19.5 6.5", stroke);
+                break;
+            case IconKind.Variable:
+                // {x} — braces around an x: "store into a variable".
+                yield return Stroke("M8 4 C 6 4 6 5.5 6 7 V10 C 6 11 5.25 12 4 12 C 5.25 12 6 13 6 14 V17 C 6 18.5 6 20 8 20 M16 4 C 18 4 18 5.5 18 7 V10 C 18 11 18.75 12 20 12 C 18.75 12 18 13 18 14 V17 C 18 18.5 18 20 16 20 M9.75 9.25 L14.25 14.75 M14.25 9.25 L9.75 14.75", stroke);
+                break;
             case IconKind.Pencil:
                 yield return Stroke("M4.5 15.5 L15.5 4.5 A 2.12 2.12 0 0 1 18.5 7.5 L7.5 18.5 L3.5 19.75 L4.5 15.5 Z M13.5 6.5 L16.5 9.5", stroke);
                 break;

@@ -225,6 +225,13 @@ internal static class Program
         var results = new List<RunResult>(items.Count);
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
+        // Linked requests (chain:pre-request) resolve against the collection on disk and share one
+        // response cache, so a "when-stale" login only runs once per CLI invocation.
+        var chainContext = new ChainContext(collection, root);
+        // Variables captured by earlier requests (runtime captures / bru.setVar, plus env and
+        // global captures) flow into later ones — Bruno CLI behavior.
+        var carried = new Dictionary<string, string>(StringComparer.Ordinal);
+
         foreach (var (request, chain) in items)
         {
             var inputs = new RequestPipeline.Inputs(
@@ -232,9 +239,13 @@ internal static class Program
                 FolderChain: chain,
                 Request: request,
                 EnvironmentVariables: envVars,
-                IterationVariables: s_noVars);
+                IterationVariables: carried.Count == 0 ? s_noVars : new Dictionary<string, string>(carried),
+                Chain: chainContext);
 
             var o = await RequestPipeline.ExecuteAsync(inputs, executor, scripting).ConfigureAwait(false);
+            foreach (var (k, v) in o.RuntimeVariableMutations) carried[k] = v;
+            foreach (var (k, v) in o.EnvVarMutations) carried[k] = v;
+            foreach (var (k, v) in o.GlobalVarMutations) carried[k] = v;
 
             var hasTests = o.Tests.Count > 0;
             var errored = o.ErrorMessage is not null;
@@ -280,6 +291,23 @@ internal static class Program
                 if (hasTests)
                     WriteSeg($"  {o.Tests.Count} test{(o.Tests.Count == 1 ? "" : "s")}", ConsoleColor.DarkGray);
                 Console.WriteLine();
+            }
+
+            // Linked requests (chain:pre-request) that ran or were skipped for this request.
+            foreach (var step in o.ChainSteps)
+            {
+                var what = step.Failed ? step.Error
+                    : step.Ran ? $"{step.StatusCode} · {step.ElapsedMilliseconds} ms"
+                      + (step.Captured.Count > 0 ? " → " + string.Join(" ", step.Captured.Keys.Select(k => "{{" + k + "}}")) : "")
+                    : "skipped — " + step.SkipReason;
+                WriteSeg($"       ↳ ran first: {step.Name}  {what}\n",
+                    step.Failed ? ConsoleColor.Red : ConsoleColor.DarkGray);
+            }
+            // Failed assertions / tests: name the check and why, so CI logs are actionable.
+            if (isFailed && hasTests)
+            {
+                foreach (var t in o.Tests.Where(t => !t.Passed))
+                    WriteSeg($"       ✗ {t.Name}: {t.FailureMessage}\n", ConsoleColor.Red);
             }
 
             results.Add(new RunResult(

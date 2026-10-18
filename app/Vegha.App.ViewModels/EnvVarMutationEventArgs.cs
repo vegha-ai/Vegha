@@ -26,6 +26,11 @@ public sealed class EnvVarMutationEventArgs : EventArgs
     /// <summary>Names the script deleted via <c>bru.deleteEnvVar</c>. Never null.</summary>
     public IReadOnlyCollection<string> Removed { get; }
 
+    /// <summary>When true the changes target the active <em>global</em> environment explicitly
+    /// (scriptless captures with Global scope) instead of the usual "active env, else global"
+    /// resolution.</summary>
+    public bool TargetGlobal { get; init; }
+
     /// <summary>True when the script made no environment changes — callers can skip the event.</summary>
     public bool IsEmpty => Updated.Count == 0 && Removed.Count == 0;
 }

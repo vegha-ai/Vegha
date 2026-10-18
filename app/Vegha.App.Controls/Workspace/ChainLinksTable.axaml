@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:sl="using:Vegha.App.ViewModels.Scriptless"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="120"
+             x:Class="Vegha.App.Controls.Workspace.ChainLinksTable"
+             x:Name="Root">
+    <!-- Linked-request rows: [✓] request picker | run when ▾ | argument | ✕. Shared by the
+         request Pre-request tab and folder / collection settings. -->
+    <UserControl.Styles>
+        <StyleInclude Source="avares://Vegha.App.Controls/Workspace/ScriptlessTableStyles.axaml" />
+    </UserControl.Styles>
+    <ItemsControl ItemsSource="{Binding #Root.ItemsSource}">
+        <ItemsControl.ItemContainerTheme>
+            <ControlTheme TargetType="ContentPresenter">
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </ControlTheme>
+        </ItemsControl.ItemContainerTheme>
+        <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="sl:ChainLinkRow">
+                <Grid ColumnDefinitions="32,2.4*,1.4*,1.4*,32" Margin="0,3,0,0">
+                    <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" IsVisible="{Binding !IsBlank}"
+                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <AutoCompleteBox Grid.Column="1" Classes="cell"
+                                     Text="{Binding RequestPath, Mode=TwoWay}"
+                                     ItemsSource="{Binding $parent[ws:ChainLinksTable].RequestPaths}"
+                                     Watermark="Pick a request — e.g. auth/Login.bru"
+                                     FilterMode="Contains"
+                                     MinimumPrefixLength="0"
+                                     MaxDropDownHeight="260" />
+                    <ComboBox Grid.Column="2" Classes="cell"
+                              ItemsSource="{x:Static sl:ScriptlessOptions.ChainModes}"
+                              SelectedItem="{Binding ModeOption}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="sl:ChainModeOption">
+                                <TextBlock Text="{Binding Label}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBox Grid.Column="3" Classes="cell"
+                             Text="{Binding Argument}"
+                             Watermark="{Binding ArgumentHint}"
+                             IsVisible="{Binding TakesArgument}" />
+                    <Button Grid.Column="4" Classes="rowRemove" IsVisible="{Binding !IsBlank}"
+                            Command="{Binding $parent[ws:ChainLinksTable].RemoveCommand}"
+                            CommandParameter="{Binding}" ToolTip.Tip="Remove">
+                        <TextBlock Text="✕" FontSize="11" />
+                    </Button>
+                </Grid>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+</UserControl>

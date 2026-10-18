@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Vegha.Core.Domain;
 using Vegha.Core.Interpolation;
 using Vegha.Core.Scripting;
+using Vegha.Core.Scripting.Testing;
 
 namespace Vegha.Core.Requests;
 
@@ -31,7 +32,10 @@ public static class RequestPipeline
         /// data source. Overlays env, beats composed collection/folder vars in scripts.</summary>
         IReadOnlyDictionary<string, string> IterationVariables,
         /// <summary>Optional workspace-level inheritance layer (vars + scripts).</summary>
-        RequestComposition.WorkspaceContext? Workspace = null);
+        RequestComposition.WorkspaceContext? Workspace = null,
+        /// <summary>Linked-request context. When null, <c>chain:pre-request</c> links are ignored
+        /// (callers without a collection on disk, e.g. ad-hoc sends).</summary>
+        ChainContext? Chain = null);
 
     /// <summary>Per-request outputs surfaced to the runner UI + history.</summary>
     public sealed record Outputs(
@@ -59,6 +63,16 @@ public static class RequestPipeline
         /// the response carries a 4xx/5xx — the runner classifies pass/fail by tests + status.</summary>
         string? ErrorMessage)
     {
+        /// <summary>Scriptless capture outcomes (<c>vars:post-response[:env|:global]</c>).</summary>
+        public IReadOnlyList<CaptureEvaluator.Outcome> Captures { get; init; } = Array.Empty<CaptureEvaluator.Outcome>();
+        /// <summary>Number of leading entries in <see cref="Tests"/> that came from scriptless
+        /// assertions (the rest are JS <c>test()</c> results).</summary>
+        public int AssertionCount { get; init; }
+        /// <summary>Linked requests that ran (or were skipped) before this one.</summary>
+        public IReadOnlyList<ChainStep> ChainSteps { get; init; } = Array.Empty<ChainStep>();
+        /// <summary>Global-environment writes from <c>vars:post-response:global</c> captures and linked requests.</summary>
+        public IReadOnlyDictionary<string, string> GlobalVarMutations { get; init; } = EmptyVars;
+
         public bool TransportError => ErrorMessage is not null;
         public int PassedTests => Tests.Count(t => t.Passed);
         public int FailedTests => Tests.Count(t => !t.Passed);
@@ -78,9 +92,34 @@ public static class RequestPipeline
             inputs.Collection, inputs.FolderChain, inputs.Request,
             inputs.Workspace ?? RequestComposition.WorkspaceContext.Empty);
 
+        // 0. Linked requests (chain:pre-request) — run first; what they capture becomes part of
+        //    this request's variable view (runtime → iteration overlay, env/global → env view).
+        var consoleAll = new List<ConsoleMessage>();
+        IReadOnlyList<ChainStep> chainSteps = Array.Empty<ChainStep>();
+        IReadOnlyDictionary<string, string> chainEnv = EmptyVars;
+        IReadOnlyDictionary<string, string> chainGlobal = EmptyVars;
+        if (inputs.Chain is { } chainCtx && composed.ChainLinks.Count > 0)
+        {
+            var selfCtx = chainCtx.Stack.Count == 0
+                ? chainCtx.Push(chainCtx.PathOf(inputs.Request, inputs.FolderChain))
+                : chainCtx;
+            var chain = await ChainExecutor.RunAsync(composed.ChainLinks, selfCtx,
+                inputs.EnvironmentVariables, inputs.IterationVariables,
+                http, scripting, inputs.Workspace, ct).ConfigureAwait(false);
+            chainSteps = chain.Steps;
+            if (chain.Error is not null)
+                return Failure(inputs, composed, sw.ElapsedMilliseconds, chain.Error, consoleAll) with { ChainSteps = chainSteps };
+            chainEnv = chain.EnvVariables;
+            chainGlobal = chain.GlobalVariables;
+            inputs = inputs with
+            {
+                EnvironmentVariables = Merge(inputs.EnvironmentVariables, chain.EnvVariables, chain.GlobalVariables),
+                IterationVariables = Merge(inputs.IterationVariables, chain.RuntimeVariables),
+            };
+        }
+
         // 1. Pre-request script — may mutate runtime vars consumed downstream.
         var scriptVars = new Dictionary<string, string>();
-        var consoleAll = new List<ConsoleMessage>();
         if (!string.IsNullOrWhiteSpace(composed.PreRequestScript))
         {
             // The composed view already merged env+collection+folder+request vars. We expose
@@ -218,9 +257,20 @@ public static class RequestPipeline
             return Failure(inputs, composed, sw.ElapsedMilliseconds, ex.Message, consoleAll);
         }
 
-        // 7. Post-response script + tests. Combined-run, mirrors editor behavior.
+        // 7. Scriptless captures (vars:post-response[:env|:global]) — before the post-response
+        //    script so scripts and assertions see the captured values (Bruno order).
+        var snapshot = ScriptlessSteps.Snapshot(httpResult, uri.ToString());
+        inputs.Chain?.Cache.Record(inputs.Chain.PathOf(inputs.Request, inputs.FolderChain), snapshot);
+        var captures = ScriptlessSteps.RunCaptures(
+            ScriptlessSteps.CaptureRules(inputs.Request), snapshot, Merge(vars, scriptVars), scripting, ct);
+        foreach (var (k, v) in captures.Runtime) scriptVars[k] = v;
+        var envAfterCaptures = Merge(inputs.EnvironmentVariables, captures.Environment);
+        var globalMutations = Merge(chainGlobal, captures.Global);
+
+        // 8. Post-response script + tests. Combined-run, mirrors editor behavior.
         IReadOnlyList<TestOutcome> tests = Array.Empty<TestOutcome>();
-        IReadOnlyDictionary<string, string> envVarMutations = EmptyVars;
+        IReadOnlyDictionary<string, string> envVarMutations =
+            Merge(chainEnv, EnvVarDelta(inputs.EnvironmentVariables, envAfterCaptures));
         if (!string.IsNullOrWhiteSpace(composed.PostResponseScript) ||
             !string.IsNullOrWhiteSpace(composed.TestsScript))
         {
@@ -236,7 +286,7 @@ public static class RequestPipeline
                 postScript: composed.PostResponseScript,
                 testsScript: composed.TestsScript,
                 response: responseApi,
-                envVars: inputs.EnvironmentVariables,
+                envVars: envAfterCaptures,
                 collectionVars: MergeReadOnly(inputs.IterationVariables, composed.Vars),
                 requestVars: scriptVars,
                 request: null,
@@ -244,11 +294,11 @@ public static class RequestPipeline
 
             consoleAll.AddRange(post.ConsoleMessages);
             tests = post.TestOutcomes;
-            envVarMutations = EnvVarDelta(inputs.EnvironmentVariables, post.EnvVarMutations);
+            envVarMutations = Merge(chainEnv, EnvVarDelta(inputs.EnvironmentVariables, post.EnvVarMutations));
 
             foreach (var (k, v) in post.RuntimeVariables) scriptVars[k] = v;
 
-            if (!post.IsSuccess && tests.Count == 0)
+            if (!post.IsSuccess && tests.Count == 0 && composed.Assertions.Count == 0)
             {
                 return new Outputs(
                     StatusCode: httpResult.StatusCode,
@@ -264,9 +314,21 @@ public static class RequestPipeline
                     RuntimeVariableMutations: scriptVars,
                     ConsoleMessages: consoleAll,
                     EnvVarMutations: envVarMutations,
-                    ErrorMessage: post.ErrorMessage);
+                    ErrorMessage: post.ErrorMessage)
+                {
+                    Captures = captures.Outcomes,
+                    ChainSteps = chainSteps,
+                    GlobalVarMutations = globalMutations,
+                };
             }
         }
+
+        // 9. Scriptless assertions — evaluated against the final variable view; listed ahead of
+        //    the JS test() results.
+        var assertions = ScriptlessSteps.RunAssertions(
+            composed.Assertions, snapshot, Merge(vars, scriptVars), scripting, ct);
+        if (assertions.Count > 0)
+            tests = assertions.Select(a => a.ToTestOutcome()).Concat(tests).ToList();
 
         return new Outputs(
             StatusCode: httpResult.StatusCode,
@@ -282,7 +344,13 @@ public static class RequestPipeline
             RuntimeVariableMutations: scriptVars,
             ConsoleMessages: consoleAll,
             EnvVarMutations: envVarMutations,
-            ErrorMessage: httpResult.ErrorMessage);
+            ErrorMessage: httpResult.ErrorMessage)
+        {
+            Captures = captures.Outcomes,
+            AssertionCount = assertions.Count,
+            ChainSteps = chainSteps,
+            GlobalVarMutations = globalMutations,
+        };
     }
 
     // ----- helpers ----------------------------------------------------------

@@ -323,6 +323,23 @@ public partial class CollectionsViewModel : ObservableObject
 
         try { PushEnvironmentToOpenTabs(); }
         catch (Exception ex) { _logger.LogWarning(ex, "PushEnvironmentToOpenTabs failed"); }
+
+        if (OpenSettingsForEmptyCollection) OpenSettingsIfNoTabs();
+    }
+
+    /// <summary>When set, switching to a collection that has no open tabs opens its Settings
+    /// tab. Off until the host has restored persisted tabs — the startup activation runs
+    /// before restore and would otherwise see every collection as empty.</summary>
+    public bool OpenSettingsForEmptyCollection { get; set; }
+
+    /// <summary>Lands the active collection on its Settings tab when none of its tabs are open,
+    /// instead of leaving an empty editor.</summary>
+    public void OpenSettingsIfNoTabs()
+    {
+        if (ActiveCollection is not { } root || _openTabs is null) return;
+        if (_openTabs.Tabs.Any(t => string.Equals(t.CollectionPath, root.SourcePath, StringComparison.OrdinalIgnoreCase)))
+            return;
+        CollectionSettingsTabRequested?.Invoke(this, root);
     }
 
     /// <summary>True while <see cref="RebuildEnvironments"/> is running. External listeners
@@ -844,13 +861,21 @@ public partial class CollectionsViewModel : ObservableObject
     {
         if (mutations is null || mutations.IsEmpty) return;
 
-        var newVarTarget = ActiveEnvironment ?? ActiveGlobalEnvironment;
+        var newVarTarget = mutations.TargetGlobal
+            ? ActiveGlobalEnvironment
+            : ActiveEnvironment ?? ActiveGlobalEnvironment;
         var changed = false;
 
         foreach (var (name, value) in mutations.Updated)
         {
             if (string.IsNullOrEmpty(name)) continue;
-            if (TrySetExistingVar(ActiveEnvironment, name, value)
+            if (mutations.TargetGlobal)
+            {
+                // Global-scoped captures write the global env only, even when a collection env
+                // defines the same name.
+                if (TrySetExistingVar(ActiveGlobalEnvironment, name, value)) { changed = true; continue; }
+            }
+            else if (TrySetExistingVar(ActiveEnvironment, name, value)
                 || TrySetExistingVar(ActiveGlobalEnvironment, name, value))
             {
                 changed = true;
@@ -1776,13 +1801,6 @@ public partial class CollectionsViewModel : ObservableObject
     public (Folder?, string?) GetFolderForSettings(CollectionFolderViewModel? folder) =>
         (folder?.Folder, folder is null ? null : FindRootOf(folder)?.SourcePath);
 
-    /// <summary>Raised when the user picks Properties on a FOLDER. The host (CollectionsPanel)
-    /// listens, opens the dialog, and on save calls <see cref="ApplyNodeSnapshot"/> to write
-    /// back to disk + reload. Collection-level settings no longer use this — they open a tab
-    /// via <see cref="CollectionSettingsTabRequested"/> so the main window shows the selected
-    /// collection's own info (design ethos), leaving dialogs for parent-scope editing.</summary>
-    public event EventHandler<NodePropertiesRequest>? NodePropertiesRequested;
-
     /// <summary>Raised when the user opens collection-level Settings. The host opens a
     /// Collection Settings workspace tab for the given root (Bruno-style Overview + Headers /
     /// Vars / Auth / Script / Tests / Docs / Presets).</summary>
@@ -1823,49 +1841,66 @@ public partial class CollectionsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Raised when the user opens folder-level Settings. The host opens (or activates)
+    /// a Folder Settings workspace tab for the given folder.</summary>
+    public event EventHandler<CollectionFolderViewModel>? FolderSettingsTabRequested;
+
+    /// <summary>Host-supplied query: is <paramref name="node"/>'s settings tab the active
+    /// workspace tab? The tree's click handler uses it to decide between "open the settings
+    /// tab" and "collapse the row" — the panel can't see the open-tabs VM directly.</summary>
+    public Func<CollectionNodeViewModel, bool>? IsSettingsTabActive { get; set; }
+
     [RelayCommand]
     private void OpenFolderSettings(CollectionFolderViewModel? folder)
     {
         if (folder?.Folder is null) { StatusMessage = "No folder selected."; return; }
-        NodePropertiesRequested?.Invoke(this,
-            new NodePropertiesRequest(null, folder));
+        FolderSettingsTabRequested?.Invoke(this, folder);
     }
 
-    /// <summary>Writes the edited collection or folder back to disk via BruMetaEmitter and
-    /// reloads the affected root so the in-memory tree picks up the change. Called by the
-    /// panel after the Properties dialog is dismissed with Save.</summary>
-    public void ApplyNodeSnapshot(NodePropertiesRequest source, NodeSnapshot snapshot)
+    /// <summary>Writes edited folder settings back to <c>folder.bru</c> and reloads the owning
+    /// root. Like <see cref="ApplyCollectionSettings"/>, it re-resolves the folder by
+    /// <paramref name="folderPath"/> afterwards because the reload swaps every node VM, and
+    /// returns the fresh node so the caller can rehydrate.</summary>
+    public CollectionFolderViewModel? ApplyFolderSettings(string folderPath, NodeSnapshot snapshot)
     {
+        if (snapshot.Kind != NodePropertiesViewModel.Kind.Folder || snapshot.Folder is null)
+            return null;
+        var folder = FindFolderByPath(folderPath);
+        if (folder is null) { StatusMessage = "Folder is no longer open."; return null; }
         try
         {
-            if (snapshot.Kind == NodePropertiesViewModel.Kind.Collection &&
-                source.Root is { Collection: not null } root && snapshot.Collection is not null)
-            {
-                var path = System.IO.Path.Combine(root.SourcePath, "collection.bru");
-                var text = Vegha.Core.Importers.BruMetaEmitter.EmitCollection(snapshot.Collection);
-                File.WriteAllText(path, text);
-                ReloadRootContaining(root);
-                StatusMessage = $"Saved collection properties → {root.Name}.";
-            }
-            else if (snapshot.Kind == NodePropertiesViewModel.Kind.Folder &&
-                source.Folder is not null && snapshot.Folder is not null)
-            {
-                var folderPath = source.Folder.Path;
-                if (string.IsNullOrEmpty(folderPath))
-                { StatusMessage = "Could not resolve folder path."; return; }
-                Directory.CreateDirectory(folderPath);
-                var path = System.IO.Path.Combine(folderPath, "folder.bru");
-                var text = Vegha.Core.Importers.BruMetaEmitter.EmitFolder(snapshot.Folder);
-                File.WriteAllText(path, text);
-                ReloadRootContaining(source.Folder);
-                StatusMessage = $"Saved folder properties → {source.Folder.Name}.";
-            }
+            Directory.CreateDirectory(folderPath);
+            var path = System.IO.Path.Combine(folderPath, "folder.bru");
+            var text = Vegha.Core.Importers.BruMetaEmitter.EmitFolder(snapshot.Folder);
+            File.WriteAllText(path, text);
+            ReloadRootContaining(folder);
+            StatusMessage = $"Saved folder settings → {folder.Name}.";
+            return FindFolderByPath(folderPath);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Save node properties failed");
+            _logger.LogWarning(ex, "Save folder settings failed");
             StatusMessage = $"Save failed: {ex.Message}";
+            return null;
         }
+    }
+
+    /// <summary>The folder node whose <see cref="CollectionNodeViewModel.Path"/> is
+    /// <paramref name="folderPath"/>, searched across every loaded root.</summary>
+    public CollectionFolderViewModel? FindFolderByPath(string folderPath)
+    {
+        if (string.IsNullOrEmpty(folderPath)) return null;
+        CollectionFolderViewModel? Walk(CollectionNodeViewModel n)
+        {
+            if (n is CollectionFolderViewModel f
+                && string.Equals(f.Path, folderPath, StringComparison.OrdinalIgnoreCase)) return f;
+            foreach (var c in n.Children)
+                if (!c.IsLeaf && Walk(c) is { } hit) return hit;
+            return null;
+        }
+        foreach (var root in Roots)
+            if (Walk(root) is { } found) return found;
+        return null;
     }
 
     [RelayCommand]
@@ -2487,6 +2522,7 @@ public partial class CollectionsViewModel : ObservableObject
     /// <summary>Total request count across the collection tree (requests + all nested
     /// folders). Public so the Collection Settings tab's Overview can show it.</summary>
     public static int CountRequestsPublic(Collection c) => CountRequests(c);
+    public static int CountRequestsInFolderPublic(Folder f) => CountRequestsInFolder(f);
 
     private static int CountRequests(Collection c)
     {
@@ -2667,12 +2703,6 @@ public sealed partial class NewRequestPlaceholderViewModel : CollectionNodeViewM
 }
 
 public enum NodePropertiesKind { Collection, Folder }
-
-/// <summary>Carries the source node references the host needs after the Properties dialog
-/// closes — to know which on-disk path to write to + which root to reload.</summary>
-public sealed record NodePropertiesRequest(
-    CollectionRootViewModel? Root,
-    CollectionFolderViewModel? Folder);
 
 /// <summary>Kind of request the user picked in the New Request dialog. Lives in the
 /// ViewModels project so <see cref="CollectionsViewModel.CreateRequestFromDialog"/> can

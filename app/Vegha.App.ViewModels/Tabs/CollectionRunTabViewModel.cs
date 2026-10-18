@@ -257,6 +257,12 @@ public sealed partial class CollectionRunTabViewModel : RequestTabViewModel
     /// through this. Null in headless tests — updates then run inline.</summary>
     private readonly System.Threading.SynchronizationContext? _uiContext = System.Threading.SynchronizationContext.Current;
 
+    /// <summary>Session response cache shared with the editors (linked "when-stale" requests).</summary>
+    public LastResponseCache? ResponseCache { get; set; }
+
+    /// <summary>Supplies the session runtime variables each run starts from.</summary>
+    public Func<IReadOnlyDictionary<string, string>>? RuntimeVariablesProvider { get; set; }
+
     public CollectionRunTabViewModel(
         Collection collection,
         string id,
@@ -453,7 +459,8 @@ public sealed partial class CollectionRunTabViewModel : RequestTabViewModel
 
             var executor = new PipelineRequestExecutor(
                 _http, _scripting, _workspace, _secretRegistry,
-                persistResponses: PersistResponses, turnOffLogs: TurnOffLogs, keepVariableValues: KeepVariableValues);
+                persistResponses: PersistResponses, turnOffLogs: TurnOffLogs, keepVariableValues: KeepVariableValues,
+                responseCache: ResponseCache, initialRuntimeVariables: RuntimeVariablesProvider?.Invoke());
 
             var totalRequestCount = Math.Max(1, orderedNames.Count) * options.EffectiveIterations;
             var completed = 0;
@@ -541,7 +548,8 @@ public sealed partial class CollectionRunTabViewModel : RequestTabViewModel
 
         var executor = new PipelineRequestExecutor(
             _http, _scripting, _workspace, _secretRegistry,
-            persistResponses: false, turnOffLogs: true, keepVariableValues: KeepVariableValues);
+            persistResponses: false, turnOffLogs: true, keepVariableValues: KeepVariableValues,
+            responseCache: ResponseCache, initialRuntimeVariables: RuntimeVariablesProvider?.Invoke());
         var runDelegate = executor.AsDelegate(TargetCollection, EnvironmentVariables ?? new Dictionary<string, string>());
 
         var options = new RunnerOptions(

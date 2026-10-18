@@ -101,11 +101,20 @@ public class RequestEditorDirtyTrackingTests
     }
 
     [Fact]
-    public void PostResponseVariables_Add_TriggersDirty()
+    public void Captures_Add_TriggersDirty()
     {
         var vm = CreateVm();
-        vm.PostResponseVariables.Add(new KvEntry("captured", "res.getBody().id", true));
+        vm.AddCaptureFromResponse("captured", Vegha.Core.Scripting.Testing.ResponseSource.Body, "id");
         vm.IsDirty.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Scriptless_Result_Feedback_Does_Not_TriggerDirty()
+    {
+        var vm = CreateVm();
+        vm.Captures[^1].SetResult(Vegha.App.ViewModels.Scriptless.RowResultKind.Ok, "x");
+        vm.Assertions[^1].PathSuggestions = new[] { "a" };
+        vm.IsDirty.Should().BeFalse();
     }
 
     [Fact]

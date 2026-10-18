@@ -47,6 +47,8 @@ public static class CollectionLoader
             TestsScript = collectionMeta?.TestsScript,
             Docs = collectionMeta?.Docs,
             Presets = collectionMeta?.Presets,
+            Assertions = collectionMeta?.Assertions ?? new List<KvPair>(),
+            ChainLinks = collectionMeta?.ChainLinks ?? new List<KvPair>(),
         };
     }
 
@@ -117,6 +119,8 @@ public static class CollectionLoader
                 PostResponseScript = folderMeta?.PostResponseScript,
                 TestsScript = folderMeta?.TestsScript,
                 Docs = folderMeta?.Docs,
+                Assertions = folderMeta?.Assertions ?? new List<KvPair>(),
+                ChainLinks = folderMeta?.ChainLinks ?? new List<KvPair>(),
             }));
         });
 
@@ -187,7 +191,8 @@ public static class CollectionLoader
         var auth = ReadAuthBlock(doc);
         var presets = ReadPresetsBlock(doc);
 
-        return new NodeMeta(name, auth, headers, vars, preRequest, postResponse, tests, docsText, presets);
+        return new NodeMeta(name, auth, headers, vars, preRequest, postResponse, tests, docsText, presets,
+            ReadKvBlock(doc, "assert"), ReadKvBlock(doc, "chain:pre-request"));
     }
 
     /// <summary>Reads the <c>presets { type: …, url: … }</c> block (collection-level defaults
@@ -272,5 +277,7 @@ public static class CollectionLoader
         string? PostResponseScript,
         string? TestsScript,
         string? Docs,
-        RequestPresets? Presets);
+        RequestPresets? Presets,
+        List<KvPair> Assertions,
+        List<KvPair> ChainLinks);
 }

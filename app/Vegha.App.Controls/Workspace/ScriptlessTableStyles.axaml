@@ -1,0 +1,58 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Shared cell styling for the scriptless tables (captures, assertions, linked requests).
+         Matches KvTableRow's bordered mono cells so every key/value-ish table reads alike. -->
+    <Style Selector="TextBlock.colHeader">
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="LetterSpacing" Value="1" />
+        <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="4,0,0,0" />
+    </Style>
+    <Style Selector="TextBox.cell, AutoCompleteBox.cell">
+        <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Background" Value="{DynamicResource BgInputBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+        <Setter Property="Foreground" Value="{DynamicResource Text0Brush}" />
+        <Setter Property="Padding" Value="6,3" />
+        <Setter Property="Margin" Value="0,0,4,0" />
+    </Style>
+    <Style Selector="TextBox.cell">
+        <Setter Property="CornerRadius" Value="3" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ComboBox.cell">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Height" Value="26" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="Margin" Value="0,0,4,0" />
+    </Style>
+    <Style Selector="TextBlock.result">
+        <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="Margin" Value="4,0" />
+        <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
+    </Style>
+    <Style Selector="TextBlock.result.ok">
+        <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}" />
+    </Style>
+    <Style Selector="TextBlock.result.missing">
+        <Setter Property="Foreground" Value="{DynamicResource StatusWarnBrush}" />
+    </Style>
+    <Style Selector="TextBlock.result.error">
+        <Setter Property="Foreground" Value="{DynamicResource StatusErrBrush}" />
+    </Style>
+    <Style Selector="Button.rowRemove">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Cursor" Value="Hand" />
+    </Style>
+</Styles>

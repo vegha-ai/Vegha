@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Vegha.Core.Exporters</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.OpenApi" />
+    <InternalsVisibleTo Include="Vegha.Tests.Unit.Core.Exporters" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Vegha.Core.Domain\Vegha.Core.Domain.csproj" />
+    <ProjectReference Include="..\Vegha.Core.FileFormat\Vegha.Core.FileFormat.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Importers\Vegha.Core.Importers.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Scripting\Vegha.Core.Scripting.csproj" />
+  </ItemGroup>
+</Project>

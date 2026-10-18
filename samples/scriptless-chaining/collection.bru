@@ -1,0 +1,23 @@
+meta {
+  name: Scriptless Chaining
+}
+
+vars {
+  baseUrl: https://dummyjson.com
+  username: emilys
+  password: emilyspass
+}
+
+assert {
+  res.responseTime: lt 5000
+}
+
+docs {
+  Scriptless request chaining + testing, no JavaScript anywhere.
+  
+  - **auth/Login** captures `token` and `userId` from the response (Tests tab → Set variables from response).
+  - **users/Me** and **users/Carts** link to Login (Pre-request tab → Run first) *only when* `{{token}}` / `{{userId}}` are empty, so you can send them directly.
+  - Every request is checked by the assertions in its Tests tab; the collection adds a response-time budget for all of them.
+  
+  Run it headless: `vegha run samples/scriptless-chaining`.
+}

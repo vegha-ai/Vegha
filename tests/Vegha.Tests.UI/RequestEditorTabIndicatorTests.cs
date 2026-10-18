@@ -79,20 +79,23 @@ public class RequestEditorTabIndicatorTests
     }
 
     [AvaloniaFact]
-    public void VarsTab_TracksBothPreAndPostCollections()
+    public void VarsTab_And_TestsTab_Badges_Ignore_Ghost_Rows()
     {
         // The collections always carry a trailing blank ghost row (type-to-add UX), so the
         // badge count (VarsTotalCount) — not the raw collection Count — is what the tab
         // header binds to, and it must ignore ghost rows.
         var vm = CreateVm();
         vm.Variables.Should().ContainSingle(v => v.IsBlank, "a fresh editor seeds one ghost row");
-        vm.PostResponseVariables.Should().ContainSingle(v => v.IsBlank);
+        vm.Captures.Should().ContainSingle(c => c.IsBlank);
+        vm.Assertions.Should().ContainSingle(a => a.IsBlank);
         vm.VarsTotalCount.Should().Be(0, "ghost rows don't light the badge");
+        vm.ScriptlessCount.Should().Be(0);
 
         vm.Variables.Add(new KvEntry("user", "alice"));
-        vm.PostResponseVariables.Add(new KvEntry("token", "res.getBody().access_token"));
+        vm.AddCaptureFromResponse("token", Vegha.Core.Scripting.Testing.ResponseSource.Body, "access_token");
 
-        vm.VarsTotalCount.Should().Be(2);
+        vm.VarsTotalCount.Should().Be(1);
+        vm.ScriptlessCount.Should().Be(1, "post-response captures badge the Tests tab now");
 
         // The UI path — typing into the ghost row — spawns the next ghost automatically.
         var ghost = vm.Variables[0];
@@ -100,6 +103,6 @@ public class RequestEditorTabIndicatorTests
         vm.Variables.Move(0, vm.Variables.Count - 1);
         ghost.Name = "typed";
         vm.Variables[^1].IsBlank.Should().BeTrue("editing the tail ghost appends a fresh one");
-        vm.VarsTotalCount.Should().Be(3);
+        vm.VarsTotalCount.Should().Be(2);
     }
 }

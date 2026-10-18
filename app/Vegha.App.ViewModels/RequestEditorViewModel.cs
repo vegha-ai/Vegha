@@ -123,6 +123,8 @@ public partial class RequestEditorViewModel : ObservableObject
         _parentCollection = collection;
         _parentFolderChain = folderChain ?? Array.Empty<Vegha.Core.Domain.Folder>();
         RefreshInheritanceHints();
+        // Collection / folder vars now resolve — re-highlight {{var}} tokens.
+        VariablesSnapshotChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // ---- Inheritance hints (drives "Inherited from …" labels + Override buttons) ----
@@ -247,6 +249,8 @@ public partial class RequestEditorViewModel : ObservableObject
                 .Where(v => v.IsActive && !string.IsNullOrEmpty(v.Name))
                 .Select(v => new Vegha.Core.Domain.KvPair(v.Name, v.Value, v.IsActive))
                 .ToList(),
+            Assertions = AssertionPairs(),
+            ChainLinks = ChainLinkPairs(),
         };
 
         var collection = _parentCollection ?? new Vegha.Core.Domain.Collection { Name = string.Empty };
@@ -443,7 +447,7 @@ public partial class RequestEditorViewModel : ObservableObject
     /// <summary>Combined count of pre-request + post-response variables — drives the Vars
     /// tab's single superscript count badge so the user sees one number at a glance.
     /// Excludes the auto-appended trailing ghost rows (they're chrome, not data).</summary>
-    public int VarsTotalCount => Variables.Count(v => !v.IsBlank) + PostResponseVariables.Count(v => !v.IsBlank);
+    public int VarsTotalCount => Variables.Count(v => !v.IsBlank);
 
     /// <summary>Non-blank row counts for the Params / Headers tab badges. Raw
     /// <c>Params.Count</c> would always be ≥1 because of the trailing ghost row.</summary>
@@ -798,11 +802,6 @@ public partial class RequestEditorViewModel : ObservableObject
     /// into the {{var}} interpolation pass. Bound to the Vars tab's "Pre Request" section.
     /// Round-trips through <see cref="RequestItem.PreRequestVars"/>.</summary>
     public ObservableCollection<KvEntry> Variables { get; } = new();
-    /// <summary>Variables assigned AFTER the response — Value strings can be raw or
-    /// JavaScript expressions evaluated against res/req/bru (Bruno parity). Bound to the
-    /// Vars tab's "Post Response" section. Round-trips through
-    /// <see cref="RequestItem.PostResponseVars"/>.</summary>
-    public ObservableCollection<KvEntry> PostResponseVariables { get; } = new();
     public ObservableCollection<HeaderRow> ResponseHeaders { get; } = new();
     public ObservableCollection<ResponseCookieRow> ResponseCookies { get; } = new();
 
@@ -1462,7 +1461,9 @@ public partial class RequestEditorViewModel : ObservableObject
         ILogger<RequestEditorViewModel> logger,
         Vegha.Core.History.HistoryStore? historyStore = null,
         Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null,
-        Services.GraphQLSchemaCache? schemaCache = null)
+        Services.GraphQLSchemaCache? schemaCache = null,
+        Services.RuntimeVariableStore? runtimeStore = null,
+        LastResponseCache? responseCache = null)
     {
         _executor = executor;
         _oauth2 = oauth2;
@@ -1486,8 +1487,6 @@ public partial class RequestEditorViewModel : ObservableObject
             VariablesSnapshotChanged?.Invoke(this, EventArgs.Empty);
             OnPropertyChanged(nameof(VarsTotalCount));
         };
-        PostResponseVariables.CollectionChanged += (_, _) =>
-            OnPropertyChanged(nameof(VarsTotalCount));
         Params.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ParamsCount));
         Headers.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HeadersCount));
 
@@ -1509,7 +1508,6 @@ public partial class RequestEditorViewModel : ObservableObject
         WireDirtyTracking(Params);
         WireDirtyTracking(Headers);
         WireDirtyTracking(Variables);
-        WireDirtyTracking(PostResponseVariables);
         WireDirtyTracking(FormUrlEncodedItems);
         WireDirtyTracking(MultipartItems);
         WireDirtyTracking(OAuth2TokenParameters);
@@ -1527,10 +1525,11 @@ public partial class RequestEditorViewModel : ObservableObject
         KvAutoAppend.Wire(Params, () => new KvEntry(), r => r.IsBlank, () => _loading);
         KvAutoAppend.Wire(Headers, () => new KvEntry(), r => r.IsBlank, () => _loading);
         KvAutoAppend.Wire(Variables, () => new KvEntry(), r => r.IsBlank, () => _loading);
-        KvAutoAppend.Wire(PostResponseVariables, () => new KvEntry(), r => r.IsBlank, () => _loading);
         KvAutoAppend.Wire(FormUrlEncodedItems, () => new KvEntry(), r => r.IsBlank, () => _loading);
         KvAutoAppend.Wire(OAuth2TokenParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank, () => _loading);
         KvAutoAppend.Wire(OAuth2RefreshParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank, () => _loading);
+
+        InitializeScriptless(runtimeStore, responseCache);
     }
 
     /// <summary>Appends the trailing blank row to every auto-append KV table that lost it —
@@ -1541,7 +1540,6 @@ public partial class RequestEditorViewModel : ObservableObject
         KvAutoAppend.EnsureTrailingBlank(Params, () => new KvEntry(), r => r.IsBlank);
         KvAutoAppend.EnsureTrailingBlank(Headers, () => new KvEntry(), r => r.IsBlank);
         KvAutoAppend.EnsureTrailingBlank(Variables, () => new KvEntry(), r => r.IsBlank);
-        KvAutoAppend.EnsureTrailingBlank(PostResponseVariables, () => new KvEntry(), r => r.IsBlank);
         KvAutoAppend.EnsureTrailingBlank(FormUrlEncodedItems, () => new KvEntry(), r => r.IsBlank);
         KvAutoAppend.EnsureTrailingBlank(OAuth2TokenParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank);
         KvAutoAppend.EnsureTrailingBlank(OAuth2RefreshParameters, () => new OAuth2AdditionalParameter(), r => r.IsBlank);
@@ -1789,12 +1787,31 @@ public partial class RequestEditorViewModel : ObservableObject
         // composed view is just this request's own values, which is also the default.
         var composedView = ComposeWithInheritance();
 
+        // Linked requests (chain:pre-request) run first; their captures land in the runtime
+        // store / environment before anything below reads variables.
+        try
+        {
+            var chainError = await RunChainLinksAsync(composedView, cancellationToken).ConfigureAwait(true);
+            if (chainError is not null)
+            {
+                ErrorMessage = chainError;
+                HasResponse = false;
+                return;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            ErrorMessage = "Request canceled.";
+            HasResponse = false;
+            return;
+        }
+
         // Run pre-request script first — it can set vars that subsequent interpolation reads.
         // The composed pre-request script chains collection → folders → request scripts in order.
         IReadOnlyDictionary<string, string> scriptVars = new Dictionary<string, string>();
         if (!string.IsNullOrWhiteSpace(composedView.PreRequestScript))
         {
-            var requestVarsForScript = BuildVariableLookup(Variables);
+            var requestVarsForScript = MergeVariables(_runtimeStore.Snapshot(), BuildVariableLookup(Variables));
             var scriptResult = _scriptHost.RunPreRequest(
                 composedView.PreRequestScript!,
                 EnvironmentVariables,
@@ -1811,11 +1828,16 @@ public partial class RequestEditorViewModel : ObservableObject
             // Persist any bru.setEnvVar / deleteEnvVar the pre-request script performed so the
             // change outlives this request (and reaches sibling tabs), matching Bruno.
             RaiseEnvVarMutations(EnvironmentVariables, scriptResult.EnvVarMutations);
+            // bru.setVar values become session runtime variables (visible to other tabs).
+            var setVars = ScriptRuntimeDelta(requestVarsForScript, scriptResult.RuntimeVariables);
+            if (setVars.Count > 0) _runtimeStore.SetMany(setVars, ScriptOrigin(), _ => "bru.setVar (pre-request)");
         }
 
         // Resolve all template placeholders before executing.
-        // Precedence (last wins): env < composed (collection+folder vars) < script-runtime < request-level.
-        var vars = MergeVariables(EnvironmentVariables, composedView.Vars, scriptVars, BuildVariableLookup(Variables));
+        // Precedence (last wins): env < composed (collection+folder vars) < session runtime
+        // < script-runtime < request-level.
+        var vars = MergeVariables(EnvironmentVariables, composedView.Vars, _runtimeStore.Snapshot(), scriptVars,
+            BuildVariableLookup(Variables));
 
         // Pre-resolve any secret://provider/path#field values against the configured secret
         // managers, so the synchronous interpolation below sees real secret values.
@@ -2191,13 +2213,21 @@ public partial class RequestEditorViewModel : ObservableObject
                 }
             }
 
+            // Scriptless captures run first (Bruno order: vars:post-response before the
+            // post-response script), so the script, tests and assertions all see them.
+            TestResults.Clear();
+            var snapshot = ScriptlessSteps.Snapshot(result, uri.ToString());
+            RememberResponse(snapshot);
+            var captured = RunCaptures(snapshot, vars, sendToken);
+            if (captured.Count > 0) vars = MergeVariables(vars, captured);
+
             // Run post-response script + tests block (if either is present). Inside JintHost,
             // postScript runs FIRST, then tests — so `bru.setVar` / extracted state set by
             // post-response is visible inside `test(…)` assertion blocks.
             // The composed scripts chain workspace → collection → folders → request.
-            TestResults.Clear();
             var hasPost = !string.IsNullOrWhiteSpace(composedView.PostResponseScript);
             var hasTests = !string.IsNullOrWhiteSpace(composedView.TestsScript);
+            var scriptTests = new List<TestResultRow>();
             if (hasPost || hasTests)
             {
                 var resApi = new ResponseApi(
@@ -2212,7 +2242,7 @@ public partial class RequestEditorViewModel : ObservableObject
                     cancellationToken: sendToken);
 
                 foreach (var t in post.TestOutcomes)
-                    TestResults.Add(new TestResultRow(t.Name, t.Passed, t.FailureMessage, t.DurationMs));
+                    scriptTests.Add(new TestResultRow(t.Name, t.Passed, t.FailureMessage, t.DurationMs));
 
                 if (!post.IsSuccess && string.IsNullOrEmpty(ErrorMessage))
                     ErrorMessage = post.ErrorMessage;
@@ -2221,7 +2251,20 @@ public partial class RequestEditorViewModel : ObservableObject
                 // active environment and re-broadcasts. Without this, a token extracted here is
                 // dropped and {{access_token}} resolves as unset on the next request.
                 RaiseEnvVarMutations(EnvironmentVariables, post.EnvVarMutations);
+
+                // bru.setVar values become session runtime variables for the next request.
+                var setVars = ScriptRuntimeDelta(vars, post.RuntimeVariables);
+                if (setVars.Count > 0)
+                {
+                    _runtimeStore.SetMany(setVars, ScriptOrigin(), _ => "bru.setVar (post-response)");
+                    vars = MergeVariables(vars, setVars);
+                }
             }
+
+            // Assertions (request rows + inherited folder / collection rows) lead the results,
+            // followed by the JS test() outcomes.
+            foreach (var a in RunAssertions(composedView, snapshot, vars, sendToken)) TestResults.Add(a);
+            foreach (var t in scriptTests) TestResults.Add(t);
         }
         catch (OperationCanceledException)
         {
@@ -2501,14 +2544,6 @@ public partial class RequestEditorViewModel : ObservableObject
         if (entry is not null) Variables.Remove(entry);
     }
 
-    [RelayCommand]
-    private void AddPostResponseVariable() => PostResponseVariables.Add(new KvEntry());
-
-    [RelayCommand]
-    private void RemovePostResponseVariable(KvEntry? entry)
-    {
-        if (entry is not null) PostResponseVariables.Remove(entry);
-    }
 
     /// <summary>The AvaloniaEdit syntax-highlighting definition name for the current body type.</summary>
     public string? BodySyntaxHighlightingName => SyntaxHighlightForBodyType(BodyType);
@@ -3222,8 +3257,7 @@ public partial class RequestEditorViewModel : ObservableObject
             foreach (var p in item.Params) Params.Add(new KvEntry(p.Name, p.Value, p.Enabled));
             Variables.Clear();
             foreach (var v in item.PreRequestVars) Variables.Add(new KvEntry(v.Name, v.Value, v.Enabled));
-            PostResponseVariables.Clear();
-            foreach (var v in item.PostResponseVars) PostResponseVariables.Add(new KvEntry(v.Name, v.Value, v.Enabled));
+            LoadScriptless(item);
 
             ApplyAuthConfig(item.Auth);
             PreRequestScript = item.PreRequestScript ?? string.Empty;
@@ -3290,7 +3324,11 @@ public partial class RequestEditorViewModel : ObservableObject
             Headers = Headers.Where(h => !h.IsBlank).Select(h => new KvPair(h.Name, h.Value, h.Enabled)).ToList(),
             Params = Params.Where(p => !p.IsBlank).Select(p => new KvPair(p.Name, p.Value, p.Enabled)).ToList(),
             PreRequestVars = Variables.Where(v => !v.IsBlank).Select(v => new KvPair(v.Name, v.Value, v.Enabled)).ToList(),
-            PostResponseVars = PostResponseVariables.Where(v => !v.IsBlank).Select(v => new KvPair(v.Name, v.Value, v.Enabled)).ToList(),
+            PostResponseVars = CapturesFor(Vegha.Core.Scripting.Testing.CaptureScope.Runtime),
+            PostResponseEnvVars = CapturesFor(Vegha.Core.Scripting.Testing.CaptureScope.Environment),
+            PostResponseGlobalVars = CapturesFor(Vegha.Core.Scripting.Testing.CaptureScope.Global),
+            Assertions = AssertionPairs(),
+            ChainLinks = ChainLinkPairs(),
             Body = new BodyConfig
             {
                 Mode = BodyType switch
@@ -3468,10 +3506,18 @@ public partial class RequestEditorViewModel : ObservableObject
         return merged;
     }
 
-    /// <summary>Snapshot of currently-resolvable variables: env (lowest precedence) + request vars (highest).
+    /// <summary>Snapshot of currently-resolvable variables, in Send's precedence order: env <
+    /// inherited (workspace / collection / folder vars) < session runtime < request vars.
     /// Drives URL/body variable highlighting, hover tooltips, and the autocomplete popup.</summary>
     public IReadOnlyDictionary<string, string> ResolveCurrentVariables() =>
-        MergeVariables(EnvironmentVariables, BuildVariableLookup(Variables));
+        MergeVariables(EnvironmentVariables, InheritedVariables(), _runtimeStore.Snapshot(), BuildVariableLookup(Variables));
+
+    /// <summary>Workspace → collection → folder vars for the bound tab (workspace only for drafts).</summary>
+    private IReadOnlyDictionary<string, string> InheritedVariables() =>
+        Vegha.Core.Requests.RequestComposition.InheritedVars(
+            _parentCollection ?? new Vegha.Core.Domain.Collection(),
+            _parentFolderChain,
+            CurrentWorkspaceContext().Variables);
 
     /// <summary>Bindable mirror of <see cref="ResolveCurrentVariables"/> for AXAML controls.
     /// Refreshed via <see cref="VariablesSnapshotChanged"/>; the property notifies on that event
@@ -4099,7 +4145,7 @@ public sealed record ResponseCookieRow(
     }
 }
 
-public sealed record TestResultRow(string Name, bool Passed, string? FailureMessage, double DurationMs);
+public sealed record TestResultRow(string Name, bool Passed, string? FailureMessage, double DurationMs, bool IsAssertion = false);
 
 /// <summary>One console line in the run-output panel.</summary>
 public sealed record ConsoleLineRow(string Level, string Text);

@@ -74,6 +74,11 @@ public partial class MainWindow : Window
                 CreateScratchRequest();
                 e.Handled = true;
             }
+            else if (e.Key == Key.J && primary)
+            {
+                ToggleResponsePane();
+                e.Handled = true;
+            }
             else if (e.Key == Key.Enter && primary)
             {
                 // The Source Control commit box binds Ctrl+Enter to Commit — don't hijack
@@ -96,6 +101,11 @@ public partial class MainWindow : Window
             {
                 e.Handled = true;
                 await OpenImportWizardAsync();
+            }
+            else if (e.Key == Key.E && primaryShift)
+            {
+                e.Handled = true;
+                await OpenExportDialogAsync();
             }
         }, global::Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
@@ -125,6 +135,9 @@ public partial class MainWindow : Window
         // Collections sidebar "+" → Import collection routes through here too so the
         // unified wizard is the single import entry point.
         CollectionsPanelControl.ImportRequested += async (_, _) => await OpenImportWizardAsync();
+        // Collection right-click / header ⋯ → Export… opens the Export dialog with that
+        // collection pre-selected.
+        CollectionsPanelControl.ExportRequested += async (_, root) => await OpenExportDialogAsync(root);
         // Collections sidebar "+" → Open collection. Persist the chosen folder in the
         // active workspace so it survives a restart; without this the collection only
         // shows up until the app closes.
@@ -190,16 +203,30 @@ public partial class MainWindow : Window
         // Collapse the response-pane row when the active tab isn't an HTTP request (workspace
         // editor tabs, env editor tabs — they fill the full area). IsVisible alone leaves a
         // 360px gap because the row keeps its height.
-        var tabsForResponse = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
-        if (tabsForResponse is not null)
+        // The pane also shrinks to its header strip while the active request has no response
+        // yet (or the user folded it), so the editor gets the space.
+        _tabsForResponse = App.Services.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>();
+        if (_tabsForResponse is not null)
         {
-            ApplyResponseRowHeight(tabsForResponse.IsResponsePaneApplicable);
-            tabsForResponse.PropertyChanged += (_, evt) =>
+            _tabsForResponse.PropertyChanged += (_, evt) =>
             {
-                if (evt.PropertyName == nameof(Vegha.App.ViewModels.Tabs.OpenTabsViewModel.IsResponsePaneApplicable))
-                    ApplyResponseRowHeight(tabsForResponse.IsResponsePaneApplicable);
+                if (evt.PropertyName == nameof(Vegha.App.ViewModels.Tabs.OpenTabsViewModel.ActiveTab))
+                    _showEmptyResponse = false;
+                if (evt.PropertyName is nameof(Vegha.App.ViewModels.Tabs.OpenTabsViewModel.IsResponsePaneApplicable)
+                    or nameof(Vegha.App.ViewModels.Tabs.OpenTabsViewModel.ActiveTab))
+                    UpdateResponseRow();
             };
         }
+        if (DataContext is MainWindowViewModel mwvmForResponse)
+        {
+            mwvmForResponse.PropertyChanged += (_, evt) =>
+            {
+                if (evt.PropertyName == nameof(MainWindowViewModel.RequestEditor))
+                    TrackResponseEditor(mwvmForResponse.RequestEditor);
+            };
+            TrackResponseEditor(mwvmForResponse.RequestEditor);
+        }
+        UpdateResponseRow();
 
         // Tab persistence is DB-backed: the full editor state of every open tab (including
         // unsaved/dirty edits and untitled scratch drafts) is snapshotted to tabs.db at
@@ -256,13 +283,28 @@ public partial class MainWindow : Window
                     PersistTabs(tabs, tabStateStore);
                 };
 
-            // Collection Settings — open (or activate) a settings tab for the picked collection.
+            // Collection / Folder Settings — open (or activate) a settings tab for the node.
             if (collectionsForTabs is not null)
+            {
                 collectionsForTabs.CollectionSettingsTabRequested += (_, root) =>
                 {
                     var tab = new Vegha.App.ViewModels.Tabs.CollectionSettingsTabViewModel(collectionsForTabs, root);
-                    tabs.OpenCollectionSettingsTab(tab);
+                    tabs.OpenSettingsTab(tab);
                 };
+                collectionsForTabs.FolderSettingsTabRequested += (_, folder) =>
+                {
+                    var rootPath = collectionsForTabs.FindRootForDirectory(folder.Path)?.SourcePath;
+                    var tab = new Vegha.App.ViewModels.Tabs.FolderSettingsTabViewModel(collectionsForTabs, folder, rootPath);
+                    tabs.OpenSettingsTab(tab);
+                };
+                // Lets the tree's single-click decide between "open settings" and "collapse".
+                collectionsForTabs.IsSettingsTabActive = node => node switch
+                {
+                    Vegha.App.ViewModels.CollectionRootViewModel r => tabs.IsSettingsTabActive(r.SourcePath),
+                    Vegha.App.ViewModels.CollectionFolderViewModel f => tabs.IsSettingsTabActive(f.Path),
+                    _ => false,
+                };
+            }
 
             // A collection removed from the tree → close its settings tab so it doesn't linger.
             // Only genuine removals — NOT a Replace, which is how a settings save reloads the root
@@ -353,6 +395,11 @@ public partial class MainWindow : Window
 
                 await RestoreOpenTabsAsync();
                 collectionsForSkeleton?.PushEnvironmentToOpenTabs();
+                if (collectionsForSkeleton is not null)
+                {
+                    collectionsForSkeleton.OpenSettingsForEmptyCollection = true;
+                    collectionsForSkeleton.OpenSettingsIfNoTabs();
+                }
                 System.Diagnostics.Debug.WriteLine(
                     $"[startup] tabs restored at {Program.StartupClock.ElapsedMilliseconds}ms");
 
@@ -626,6 +673,10 @@ public partial class MainWindow : Window
                 var match = tabs.Tabs.FirstOrDefault(t => string.Equals(t.Id, activeId, StringComparison.OrdinalIgnoreCase));
                 if (match is not null) tabs.ActiveTab = match;
             }
+            // The saved active tab (or the last one restored) can belong to another collection;
+            // never leave an out-of-scope tab active behind the visible strip.
+            if (tabs.ActiveTab is not null && !tabs.VisibleTabs.Contains(tabs.ActiveTab))
+                tabs.ActiveTab = tabs.VisibleTabs.FirstOrDefault();
         }
         finally
         {
@@ -784,6 +835,48 @@ public partial class MainWindow : Window
     private async void OnMenuImport_Click(object? sender, RoutedEventArgs e)
         => await OpenImportWizardAsync();
 
+    private async void OnMenuExport_Click(object? sender, RoutedEventArgs e)
+        => await OpenExportDialogAsync();
+
+    /// <summary>Opens the Export dialog. With <paramref name="preselect"/> (collection
+    /// right-click) only that collection is checked; otherwise (File → Export…) the whole
+    /// active workspace is the default scope. The outcome lands on the status bar.</summary>
+    private async Task OpenExportDialogAsync(CollectionRootViewModel? preselect = null)
+    {
+        var vm = App.Services.GetService<ExportDialogViewModel>();
+        var collections = App.Services.GetService<CollectionsViewModel>();
+        var workspaces = App.Services.GetService<WorkspacesViewModel>();
+        if (vm is null || collections is null) return;
+
+        // Every collection in the workspace (open or not), plus any loaded root that isn't
+        // part of it (opened ad hoc). Loaded roots contribute their in-memory model as a
+        // fallback; the VM re-reads each folder from disk at export time.
+        var active = workspaces?.ActiveWorkspace;
+        var choices = new List<(string Name, string SourcePath, Vegha.Core.Domain.Collection? Collection)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (active is not null && workspaces is not null)
+        {
+            foreach (var r in workspaces.EnumerateWorkspaceCollections(active))
+                if (seen.Add(Path.GetFullPath(r.Path))) choices.Add((r.Name, r.Path, null));
+        }
+        foreach (var root in collections.AvailableCollections)
+        {
+            if (string.IsNullOrEmpty(root.SourcePath) || seen.Add(Path.GetFullPath(root.SourcePath)))
+                choices.Add((root.Name, root.SourcePath, root.Collection));
+        }
+        if (choices.Count == 0)
+        {
+            collections.StatusMessage = "Nothing to export — open or create a collection first.";
+            return;
+        }
+
+        vm.Initialize(choices, active?.Name, active?.FolderPath, preselect?.SourcePath);
+
+        var dlg = new Vegha.App.Controls.Workspace.ExportDialog { DataContext = vm };
+        await dlg.ShowDialog(this);
+        if (!string.IsNullOrEmpty(dlg.ResultMessage)) collections.StatusMessage = dlg.ResultMessage;
+    }
+
     private async void OnMenuSettings_Click(object? sender, RoutedEventArgs e)
         => await OpenSettingsDialogAsync();
 
@@ -891,27 +984,108 @@ public partial class MainWindow : Window
     /// <summary>If any open tabs are dirty, prompt the user before letting the window close.
     /// Cancel keeps the app running; Discard exits without saving; Save iterates dirty tabs and
     /// awaits each editor's SaveCommand, then closes once persistence settles.</summary>
-    /// <summary>Sets the response-pane row height: persisted height when applicable, 0 when
-    /// not (workspace + env editor tabs). Also collapses the splitter row in the same go so
-    /// the workspace area visually claims the full vertical space.</summary>
-    private void ApplyResponseRowHeight(bool applicable)
+    // --- Request / response split ---
+    // The split is proportional (response = _responseRatio of the request + response height)
+    // so it scales with the window. The response row collapses to its header strip
+    // ("compact") while the active request has no response yet — unless the user explicitly
+    // expanded it — or when the user folded it (persisted). Non-HTTP tabs get no row at all.
+
+    private Vegha.App.ViewModels.Tabs.OpenTabsViewModel? _tabsForResponse;
+    private RequestEditorViewModel? _trackedResponseEditor;
+    private double _responseRatio = LayoutSettings.DefaultResponsePaneRatio;
+    private bool _responseCollapsed;
+    /// <summary>User expanded the pane while it was empty — honoured until the tab changes.</summary>
+    private bool _showEmptyResponse;
+
+    private void TrackResponseEditor(RequestEditorViewModel? editor)
     {
-        if (applicable)
+        if (ReferenceEquals(editor, _trackedResponseEditor)) return;
+        if (_trackedResponseEditor is not null)
+            _trackedResponseEditor.PropertyChanged -= OnResponseEditorPropertyChanged;
+        _trackedResponseEditor = editor;
+        if (editor is not null)
+            editor.PropertyChanged += OnResponseEditorPropertyChanged;
+        UpdateResponseRow();
+    }
+
+    private void OnResponseEditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        // Sending is an explicit "show me the response": unfold a folded pane for good, so it
+        // doesn't snap shut again when the request completes (it used to open only while
+        // in flight). The user can fold it again; that choice is persisted as before.
+        if (e.PropertyName == nameof(RequestEditorViewModel.IsSending)
+            && sender is RequestEditorViewModel { IsSending: true }
+            && _responseCollapsed)
         {
-            // Restore the user's last-saved response-pane height (or default).
-            var saved = _layoutStore?.Load().ResponsePaneHeight ?? LayoutSettings.Default.ResponsePaneHeight;
-            WorkspaceGrid.RowDefinitions[2].MinHeight = 160;
-            WorkspaceGrid.RowDefinitions[2].MaxHeight = 640;
-            WorkspaceGrid.RowDefinitions[2].Height = new GridLength(saved, GridUnitType.Pixel);
-            WorkspaceGrid.RowDefinitions[1].Height = new GridLength(4, GridUnitType.Pixel);
+            _responseCollapsed = false;
+            SaveCurrentLayout();
+        }
+
+        if (e.PropertyName is nameof(RequestEditorViewModel.HasResponse)
+            or nameof(RequestEditorViewModel.IsSending)
+            or nameof(RequestEditorViewModel.ErrorMessage)
+            or nameof(RequestEditorViewModel.HasSubscriptionFrames))
+            UpdateResponseRow();
+    }
+
+    /// <summary>Re-derives the request/response row sizes from the active tab kind, the
+    /// editor's response state, the fold flag and the saved ratio.</summary>
+    private void UpdateResponseRow()
+    {
+        var rows = WorkspaceGrid.RowDefinitions;
+        var applicable = _tabsForResponse?.IsResponsePaneApplicable ?? true;
+        if (!applicable)
+        {
+            rows[0].Height = new GridLength(1, GridUnitType.Star);
+            rows[1].Height = new GridLength(0, GridUnitType.Pixel);
+            rows[2].MinHeight = 0;
+            rows[2].Height = new GridLength(0, GridUnitType.Pixel);
+            ResponsePane.IsCompact = false;
+            return;
+        }
+
+        var editor = _trackedResponseEditor;
+        var sending = editor?.IsSending == true;
+        var nothingToShow = editor is not null && !editor.HasResponse && !sending
+            && editor.ErrorMessage is null && !editor.HasSubscriptionFrames;
+        var compact = !sending && (_responseCollapsed || (nothingToShow && !_showEmptyResponse));
+
+        ResponsePane.IsCompact = compact;
+        if (compact)
+        {
+            rows[0].Height = new GridLength(1, GridUnitType.Star);
+            rows[1].Height = new GridLength(0, GridUnitType.Pixel);
+            rows[2].MinHeight = 0;
+            rows[2].Height = GridLength.Auto;
         }
         else
         {
-            WorkspaceGrid.RowDefinitions[2].MinHeight = 0;
-            WorkspaceGrid.RowDefinitions[2].Height = new GridLength(0, GridUnitType.Pixel);
-            WorkspaceGrid.RowDefinitions[1].Height = new GridLength(0, GridUnitType.Pixel);
+            rows[0].Height = new GridLength(1 - _responseRatio, GridUnitType.Star);
+            rows[1].Height = new GridLength(4, GridUnitType.Pixel);
+            rows[2].MinHeight = 160;
+            rows[2].Height = new GridLength(_responseRatio, GridUnitType.Star);
         }
     }
+
+    /// <summary>Header chevron / Ctrl+J. Folding is persisted; expanding an empty pane only
+    /// lasts until the active tab changes (then the "no response yet" shrink applies again).</summary>
+    private void ToggleResponsePane()
+    {
+        if (_tabsForResponse?.IsResponsePaneApplicable == false) return;
+        if (ResponsePane.IsCompact)
+        {
+            _responseCollapsed = false;
+            _showEmptyResponse = true;
+        }
+        else
+        {
+            _responseCollapsed = true;
+        }
+        UpdateResponseRow();
+        SaveCurrentLayout();
+    }
+
+    private void OnResponseCollapseToggleRequested(object? sender, EventArgs e) => ToggleResponsePane();
 
     /// <summary>Mitigates an AvaloniaEdit 11.1 shutdown bug where <c>LineNumberMargin.Render</c>
     /// throws <c>InvalidOperationException</c> on the final compositor commit (a stale
@@ -1475,7 +1649,9 @@ public partial class MainWindow : Window
         // user's last drag-resize value is what's shown.
         MainContentGrid.ColumnDefinitions[5].Width = new GridLength(settings.RightPanelWidth, GridUnitType.Pixel);
         _restoredCodegenWidth = settings.RightPanelWidth;
-        WorkspaceGrid.RowDefinitions[2].Height = new GridLength(settings.ResponsePaneHeight, GridUnitType.Pixel);
+        _responseRatio = settings.ResponsePaneRatio;
+        _responseCollapsed = settings.IsResponseCollapsed;
+        UpdateResponseRow();
         // Apply codegen collapsed state. Defaults to true (closed) so first-launch users
         // see the workspace at full width.
         SetCodePanelCollapsed(settings.IsCodegenCollapsed);
@@ -1492,9 +1668,11 @@ public partial class MainWindow : Window
         _layoutStore.Save(new LayoutSettings(
             SidebarWidth: MainContentGrid.ColumnDefinitions[1].Width.Value,
             RightPanelWidth: rightWidth,
-            ResponsePaneHeight: WorkspaceGrid.RowDefinitions[2].Height.Value)
+            ResponsePaneHeight: LayoutSettings.Default.ResponsePaneHeight)
         {
             IsCodegenCollapsed = _codegenCollapsed,
+            ResponsePaneRatio = _responseRatio,
+            IsResponseCollapsed = _responseCollapsed,
         });
     }
 
@@ -1504,7 +1682,18 @@ public partial class MainWindow : Window
 
     private void OnRightPanelSplitterDragCompleted(object? sender, VectorEventArgs e) => SaveCurrentLayout();
 
-    private void OnResponseSplitterDragCompleted(object? sender, VectorEventArgs e) => SaveCurrentLayout();
+    /// <summary>GridSplitter rewrites the row heights while dragging; read back the resulting
+    /// proportion, then restore our star sizing so the split keeps scaling with the window.</summary>
+    private void OnResponseSplitterDragCompleted(object? sender, VectorEventArgs e)
+    {
+        var rows = WorkspaceGrid.RowDefinitions;
+        var total = rows[0].ActualHeight + rows[2].ActualHeight;
+        if (total > 0)
+            _responseRatio = Math.Clamp(rows[2].ActualHeight / total,
+                LayoutSettings.MinResponsePaneRatio, LayoutSettings.MaxResponsePaneRatio);
+        UpdateResponseRow();
+        SaveCurrentLayout();
+    }
 
     private void OnSidebarSplitterDoubleTapped(object? sender, TappedEventArgs e)
     {
@@ -1522,7 +1711,8 @@ public partial class MainWindow : Window
 
     private void OnResponseSplitterDoubleTapped(object? sender, TappedEventArgs e)
     {
-        WorkspaceGrid.RowDefinitions[2].Height = new GridLength(LayoutSettings.Default.ResponsePaneHeight, GridUnitType.Pixel);
+        _responseRatio = LayoutSettings.DefaultResponsePaneRatio;
+        UpdateResponseRow();
         SaveCurrentLayout();
         e.Handled = true;
     }

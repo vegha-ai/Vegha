@@ -129,7 +129,14 @@ public static class PostmanV2Importer
         var headers = ExtractHeaders(req);
         var body = ExtractBody(req);
         var auth = ExtractAuth(req);
-        var (preScript, tests) = ExtractEventScripts(parentItem, name, options);
+        var (rawPre, rawTests) = ExtractRawEventScripts(parentItem);
+        // With translation on, lift simple captures / checks into scriptless rows first, so
+        // only what genuinely needs JavaScript stays a script.
+        var lifted = options.TranslateScripts
+            ? PostmanScriptlessLifter.Lift(rawTests)
+            : new PostmanScriptlessLifter.Result(rawTests, new(), new(), new(), new());
+        var preScript = TranslateEventScript(rawPre, "pre-request", name, options);
+        var tests = TranslateEventScript(lifted.RemainingScript, "tests", name, options);
 
         return new RequestItem
         {
@@ -144,6 +151,10 @@ public static class PostmanV2Importer
             Auth = auth,
             PreRequestScript = preScript,
             Tests = tests,
+            PostResponseVars = lifted.RuntimeCaptures,
+            PostResponseEnvVars = lifted.EnvCaptures,
+            PostResponseGlobalVars = lifted.GlobalCaptures,
+            Assertions = lifted.Assertions,
         };
     }
 
@@ -378,7 +389,8 @@ public static class PostmanV2Importer
 
     // ---- Events (pre-request, test) ----
 
-    private static (string? Pre, string? Tests) ExtractEventScripts(JsonElement parentItem, string requestName, PostmanImportOptions options)
+    /// <summary>The raw (untranslated) <c>prerequest</c> and <c>test</c> scripts of an item.</summary>
+    private static (string? Pre, string? Tests) ExtractRawEventScripts(JsonElement parentItem)
     {
         if (!parentItem.TryGetProperty("event", out var events) || events.ValueKind != JsonValueKind.Array)
             return (null, null);
@@ -393,19 +405,6 @@ public static class PostmanV2Importer
             var execLines = ExtractExec(script);
             if (string.IsNullOrEmpty(execLines)) continue;
 
-            // When translation is enabled, rewrite pm.* / postman.* calls into bru.* / req.* / res.*
-            // so the script runs in Vegha's Jint sandbox.
-            if (options.TranslateScripts)
-            {
-                var phase = listen == "prerequest" ? "pre-request" : "tests";
-                var outcome = PostmanScriptTranslator.Translate(execLines);
-                execLines = outcome.TranslatedScript;
-                if (outcome.UnhandledTokens.Count > 0 && options.OnDiagnostic is not null)
-                {
-                    options.OnDiagnostic(new TranslationDiagnostic(requestName, phase, outcome.UnhandledTokens));
-                }
-            }
-
             switch (listen)
             {
                 case "prerequest": pre = execLines; break;
@@ -413,6 +412,17 @@ public static class PostmanV2Importer
             }
         }
         return (pre, tests);
+    }
+
+    /// <summary>When translation is enabled, rewrites pm.* / postman.* calls into bru.* / req.* /
+    /// res.* so the script runs in Vegha's Jint sandbox, reporting leftovers.</summary>
+    private static string? TranslateEventScript(string? script, string phase, string requestName, PostmanImportOptions options)
+    {
+        if (string.IsNullOrEmpty(script) || !options.TranslateScripts) return script;
+        var outcome = PostmanScriptTranslator.Translate(script);
+        if (outcome.UnhandledTokens.Count > 0 && options.OnDiagnostic is not null)
+            options.OnDiagnostic(new TranslationDiagnostic(requestName, phase, outcome.UnhandledTokens));
+        return outcome.TranslatedScript;
     }
 
     private static string ExtractExec(JsonElement script)

@@ -1,0 +1,25 @@
+meta {
+  name: Me
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/auth/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq {{userId}}
+  res.body.username: eq {{username}}
+}
+
+chain:pre-request {
+  auth/Login.bru: when-empty token
+}

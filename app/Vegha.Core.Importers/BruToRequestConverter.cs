@@ -46,6 +46,10 @@ public static class BruToRequestConverter
         var pathParams = ToKvPairs(FindDict(doc, "params:path"));
         var preVars = ToKvPairs(FindDict(doc, "vars:pre-request"));
         var postVars = ToKvPairs(FindDict(doc, "vars:post-response"));
+        var postEnvVars = ToKvPairs(FindDict(doc, "vars:post-response:env"));
+        var postGlobalVars = ToKvPairs(FindDict(doc, "vars:post-response:global"));
+        var assertions = ToKvPairs(FindDict(doc, "assert"));
+        var chainLinks = ToKvPairs(FindDict(doc, "chain:pre-request"));
 
         var body = BuildBody(doc, bodyType);
         var auth = BuildAuth(doc, authType);
@@ -72,6 +76,10 @@ public static class BruToRequestConverter
             Auth = auth,
             PreRequestVars = preVars,
             PostResponseVars = postVars,
+            PostResponseEnvVars = postEnvVars,
+            PostResponseGlobalVars = postGlobalVars,
+            Assertions = assertions,
+            ChainLinks = chainLinks,
             PreRequestScript = preScript,
             PostResponseScript = postScript,
             Tests = tests,

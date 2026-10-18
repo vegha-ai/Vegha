@@ -6,6 +6,7 @@
              xmlns:dom="using:Vegha.Core.Domain"
              xmlns:icons="using:Vegha.App.Controls.Icons"
              xmlns:conv="using:Vegha.App.Controls.Converters"
+             xmlns:shell="using:Vegha.App.Controls.Shell"
              mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="700"
              x:Class="Vegha.App.Controls.Shell.EnvironmentsPanel"
              x:DataType="vm:EnvironmentsViewModel">
@@ -53,16 +54,6 @@
         <Style Selector="Border.varRow.ghost Button.del">
             <Setter Property="Opacity" Value="0" />
             <Setter Property="IsHitTestVisible" Value="False" />
-        </Style>
-        <Style Selector="Button.swatch">
-            <Setter Property="Width" Value="28" />
-            <Setter Property="Height" Value="28" />
-            <Setter Property="Margin" Value="3" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="14" />
-            <Setter Property="Cursor" Value="Hand" />
         </Style>
     </UserControl.Styles>
 
@@ -130,6 +121,15 @@
                              Height="24" />
                 </Border>
 
+                <!-- Session runtime variables (captures / linked requests / bru.setVar). -->
+                <Border DockPanel.Dock="Bottom"
+                        IsVisible="{Binding Runtime, Converter={x:Static ObjectConverters.IsNotNull}}"
+                        BorderBrush="{DynamicResource Border0Brush}"
+                        BorderThickness="0,1,0,0"
+                        MaxHeight="240">
+                    <shell:RuntimeVariablesList DataContext="{Binding Runtime}" />
+                </Border>
+
                 <Border DockPanel.Dock="Bottom" Padding="10,6"
                         BorderBrush="{DynamicResource Border0Brush}"
                         BorderThickness="0,1,0,0"
@@ -180,7 +180,7 @@
                                              title — consistent with the collections tree rows. -->
                                         <Grid.ContextFlyout>
                                             <MenuFlyout>
-                                                <MenuItem Header="Rename" InputGesture="F2"
+                                                <MenuItem Header="Edit name &amp; color…" InputGesture="F2"
                                                           Tag="{Binding}" Click="OnRowRename_Click" />
                                                 <MenuItem Header="Duplicate"
                                                           Tag="{Binding}" Click="OnRowCopy_Click" />
@@ -246,7 +246,7 @@
                             Padding="0,0,8,0"
                             Width="22" Height="22"
                             Cursor="Hand"
-                            ToolTip.Tip="Set color">
+                            ToolTip.Tip="Edit name &amp; color">
                         <Ellipse Width="12" Height="12"
                                  Fill="{Binding SelectedEnvironment.Color, Converter={x:Static conv:EnvColorConverter.Instance}, ConverterParameter=#9CA3AF}" />
                     </Button>
@@ -257,7 +257,7 @@
                                VerticalAlignment="Center" />
                     <Button Grid.Column="2"
                             Click="OnRename_Click"
-                            ToolTip.Tip="Rename environment"
+                            ToolTip.Tip="Edit name &amp; color"
                             Background="Transparent" BorderThickness="0"
                             Foreground="{DynamicResource Text2Brush}"
                             Width="28" Height="28" Padding="0"
@@ -416,31 +416,5 @@
             </ScrollViewer>
         </DockPanel>
 
-        <!-- Color picker popup. Anchor is set at runtime to whichever dot was clicked. -->
-        <Popup x:Name="ColorPickerPopup"
-               Placement="RightEdgeAlignedTop"
-               IsLightDismissEnabled="True">
-            <Border Background="{DynamicResource Bg1Brush}"
-                    BorderBrush="{DynamicResource Border1Brush}"
-                    BorderThickness="1"
-                    CornerRadius="4"
-                    Padding="6"
-                    BoxShadow="0 4 12 0 #20000000">
-                <StackPanel Spacing="4">
-                    <WrapPanel x:Name="SwatchPanel" Width="156" />
-                    <Button x:Name="ClearColorBtn"
-                            Click="OnClearColor_Click"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Center"
-                            Background="Transparent"
-                            BorderThickness="0"
-                            Foreground="{DynamicResource Text2Brush}"
-                            Padding="6,4"
-                            FontSize="11">
-                        <TextBlock Text="No color" FontStyle="Italic" />
-                    </Button>
-                </StackPanel>
-            </Border>
-        </Popup>
     </Grid>
 </UserControl>

@@ -1,0 +1,26 @@
+meta {
+  name: Carts
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/carts/user/{{userId}}
+  body: none
+  auth: none
+}
+
+vars:post-response {
+  firstCartId: res.body.carts | first | prop("id") | setIfValue
+  cartCount: res.body.carts | count
+}
+
+assert {
+  res.status: eq 200
+  res.body.carts: isArray
+  "res.body.carts[*].userId | unique | count": lte 1
+}
+
+chain:pre-request {
+  auth/Login.bru: when-empty userId
+}
