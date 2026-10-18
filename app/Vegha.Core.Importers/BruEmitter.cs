@@ -124,9 +124,19 @@ public static class BruEmitter
 
     private static void EmitVerbBlock(StringBuilder sb, RequestItem r)
     {
-        var verb = r.Method.ToLowerInvariant();
+        var verb = r.Kind switch
+        {
+            RequestKind.WebSocket => "ws",
+            RequestKind.Grpc => "grpc",
+            _ => r.Method.ToLowerInvariant(),
+        };
         sb.Append(verb).AppendLine(" {");
         sb.Append("  url: ").AppendLine(r.Url);
+        if (r.Kind == RequestKind.Grpc)
+        {
+            sb.Append("  method: ").AppendLine(r.Grpc?.Method ?? string.Empty);
+            if (!string.IsNullOrEmpty(r.Grpc?.MethodType)) sb.Append("  methodType: ").AppendLine(r.Grpc.MethodType);
+        }
         sb.Append("  body: ").AppendLine(BodyTypeToString(r.Body.Mode));
         sb.Append("  auth: ").AppendLine(AuthTypeToString(r.Auth));
         sb.AppendLine("}");

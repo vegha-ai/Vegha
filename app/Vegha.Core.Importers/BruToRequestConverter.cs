@@ -86,6 +86,7 @@ public static class BruToRequestConverter
             Docs = docs,
             Settings = settings,
             Soap = soap,
+            Grpc = BuildGrpc(doc),
         };
     }
 
@@ -205,8 +206,21 @@ public static class BruToRequestConverter
                 }
                 return (b, b.Name.ToUpperInvariant());
             }
+            // Streaming kinds keep url/body/auth in a ws { } or grpc { } block; their "method"
+            // is the protocol (the gRPC RPC path lives in GrpcConfig).
+            if (string.Equals(b.Name, "ws", StringComparison.OrdinalIgnoreCase)) return (b, "WS");
+            if (string.Equals(b.Name, "grpc", StringComparison.OrdinalIgnoreCase)) return (b, "GRPC");
         }
         return (null, "GET");
+    }
+
+    private static GrpcConfig? BuildGrpc(BruDocument doc)
+    {
+        var block = FindDict(doc, "grpc");
+        if (block is null) return null;
+        string? Read(string key) =>
+            block.Pairs.FirstOrDefault(p => p.Name == key)?.Value is StringValue s && s.Text.Trim().Length > 0 ? s.Text.Trim() : null;
+        return new GrpcConfig { Method = Read("method") ?? string.Empty, MethodType = Read("methodType") };
     }
 
     private static RequestKind ResolveKind(BruDocument doc)
@@ -219,6 +233,11 @@ public static class BruToRequestConverter
         // sniff structural blocks only.
         if (doc.Blocks.Any(b => b.Name == "grpc")) return RequestKind.Grpc;
         if (doc.Blocks.Any(b => b.Name == "ws")) return RequestKind.WebSocket;
+        // Files scaffolded by the desktop app's New Request dialog declare the kind only in
+        // meta.type (with a plain verb block).
+        var metaType = (FindDict(doc, "meta")?.Pairs.FirstOrDefault(p => p.Name == "type")?.Value as StringValue)?.Text.Trim();
+        if (string.Equals(metaType, "grpc", StringComparison.OrdinalIgnoreCase)) return RequestKind.Grpc;
+        if (string.Equals(metaType, "ws", StringComparison.OrdinalIgnoreCase)) return RequestKind.WebSocket;
         if (doc.Blocks.OfType<TextBlock>().Any(b => b.Name == "body:graphql"))
             return RequestKind.GraphQL;
         // A declared graphql body (`body: graphql` in the verb block) also marks the request

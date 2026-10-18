@@ -19,7 +19,7 @@ namespace Vegha.Core.Requests;
 /// resolution, session runtime variables — come in through <see cref="Options"/> and
 /// <see cref="Inputs.RuntimeVariables"/>; without them the pipeline is fully self-contained.
 /// </summary>
-public static class RequestPipeline
+public static partial class RequestPipeline
 {
     /// <summary>Inputs to one pipeline invocation.</summary>
     public sealed record Inputs(
@@ -230,6 +230,14 @@ public static class RequestPipeline
         var resolvedUrl = ComposeUrl(inputs.Request.Url, inputs.Request.Params, inputs.Request.PathParams, vars);
         if (string.IsNullOrEmpty(resolvedUrl))
             return Failure(inputs, composed, sw.ElapsedMilliseconds, "URL is empty.", consoleAll);
+
+        // WebSocket and gRPC requests are sessions, not one request/response.
+        if (inputs.Request.Kind is RequestKind.WebSocket or RequestKind.Grpc)
+        {
+            return Failure(inputs, composed, sw.ElapsedMilliseconds,
+                $"{(inputs.Request.Kind == RequestKind.Grpc ? "gRPC" : "WebSocket")} requests can't run in the collection runner. Open them in the request editor.",
+                consoleAll);
+        }
 
         // GraphQL subscriptions stream over WebSocket — there's no meaningful single
         // request/response for the runner to record. Fail with a pointer to the editor.
