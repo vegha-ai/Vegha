@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.IO;
 using System.Text;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -13,14 +14,52 @@ namespace Vegha.App.Controls.Workspace;
 
 public partial class ResponseDisplay : UserControl
 {
+    /// <summary>Header-strip-only mode: the body (tabs / empty state) is hidden and the host
+    /// shrinks the row to fit. Set by MainWindow while there's no response yet or the user
+    /// folded the pane.</summary>
+    public static readonly StyledProperty<bool> IsCompactProperty =
+        AvaloniaProperty.Register<ResponseDisplay, bool>(nameof(IsCompact));
+
+    public bool IsCompact
+    {
+        get => GetValue(IsCompactProperty);
+        set => SetValue(IsCompactProperty, value);
+    }
+
+    /// <summary>Raised by the header's fold / unfold chevron. The host owns the row sizing.</summary>
+    public event System.EventHandler? CollapseToggleRequested;
+
     public ResponseDisplay()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
 
         // OS-aware Send shortcut on the empty-state chip (⌘↩ on macOS, Ctrl+Enter elsewhere).
+        var sendGesture = System.OperatingSystem.IsMacOS() ? "⌘ ↩" : "Ctrl + Enter";
         if (this.FindControl<TextBlock>("SendShortcutChip") is { } chip)
-            chip.Text = System.OperatingSystem.IsMacOS() ? "⌘ ↩" : "Ctrl + Enter";
+            chip.Text = sendGesture;
+        if (this.FindControl<TextBlock>("CompactSendHint") is { } hint)
+            hint.Text = $"No response yet — {sendGesture} to send";
+        UpdateToggleTip();
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == IsCompactProperty) UpdateToggleTip();
+    }
+
+    private void UpdateToggleTip()
+    {
+        if (this.FindControl<Button>("CollapseToggleButton") is not { } b) return;
+        var gesture = System.OperatingSystem.IsMacOS() ? "⌘J" : "Ctrl+J";
+        ToolTip.SetTip(b, (IsCompact ? "Expand response pane" : "Collapse response pane") + $" ({gesture})");
+    }
+
+    private void OnCollapseToggle_Click(object? sender, RoutedEventArgs e)
+    {
+        CollapseToggleRequested?.Invoke(this, System.EventArgs.Empty);
+        e.Handled = true;
     }
 
     private void OnDataContextChanged(object? sender, System.EventArgs e)

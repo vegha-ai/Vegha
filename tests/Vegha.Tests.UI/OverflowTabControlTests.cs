@@ -534,6 +534,69 @@ public class OverflowTabControlTests
         finally { win.Close(); }
     }
 
+    /// <summary>Screenshot scenario: the strip overflows while Body (with its ~300px trailing
+    /// tools) is selected, then the user switches to Vars — the tools collapse, freeing more
+    /// than enough room, so every tab must come back and the chevron must disappear.</summary>
+    [AvaloniaTheory]
+    [InlineData(1100)]
+    [InlineData(1200)]
+    [InlineData(1300)]
+    public void SwitchingAwayFromBody_FreesTagSpace_NoChevron(int width)
+    {
+        var vm = new Vegha.App.ViewModels.RequestEditorViewModel(
+            new Vegha.Core.Requests.HttpExecutor(new System.Net.Http.HttpClient()),
+            new Vegha.Core.Requests.OAuth2TokenAcquirer(new System.Net.Http.HttpClient()),
+            new Vegha.Core.Scripting.JintHost(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Vegha.App.ViewModels.RequestEditorViewModel>.Instance);
+        vm.BodyType = "xml";
+        vm.BodyContent = "<a/>";
+        vm.TestsScript = "// t";
+        vm.RequestTabIndex = 4; // Body
+        var workspace = new Vegha.App.Controls.Workspace.RequestWorkspace { DataContext = vm };
+        var host = new Border { Width = width, Height = 600, Child = workspace };
+        var win = new Window { Width = 2200, Height = 800, Content = host };
+        win.Show();
+        try
+        {
+            win.UpdateLayout();
+            win.UpdateLayout();
+            var tc = workspace.GetVisualDescendants().OfType<OverflowTabControl>().First();
+            var inner = tc.GetVisualDescendants().OfType<OverflowTabsPanel>().First();
+
+            vm.RequestTabIndex = 3; // Vars — trailing tools collapse
+            for (int i = 0; i < 4; i++) win.UpdateLayout();
+
+            if (inner.NaturalWidth + 40 < width)
+                tc.HasOverflow.Should().BeFalse(
+                    $"natural={inner.NaturalWidth:F0} host={width} hidden=[{string.Join(",", tc.HiddenItems.Select(i => (i as TabItem)?.Header?.ToString() ?? "?"))}]");
+        }
+        finally { win.Close(); }
+    }
+
+    /// <summary>At fractional DPI (125% / 150%) layout rounding can hand the items panel an
+    /// arrange width a fraction of a pixel narrower than the width it reported in measure.
+    /// Arrange used to re-pack against that width with a strict <c>&lt;=</c>, hiding the last
+    /// tab ("Sent") while the presenter still reserved its slot — the chevron then sat after
+    /// a tab-wide dead gap. Arrange must honour the visible set decided in measure.</summary>
+    [AvaloniaFact]
+    public void SubPixelArrangeShortfall_DoesNotHideTab()
+    {
+        var tc = BuildTabControl(11);
+        var (_, win) = Host(tc, 1400);
+        try
+        {
+            tc.HasOverflow.Should().BeFalse();
+            var inner = tc.GetVisualDescendants().OfType<OverflowTabsPanel>().First();
+            var desired = inner.DesiredSize;
+            // Layout rounding snaps arrange sizes to device pixels: one device pixel short
+            // (1px at 100%; 0.67px at 150%) is the worst case a rounding mismatch produces.
+            inner.Arrange(new Rect(0, 0, desired.Width - 1, desired.Height));
+            tc.HiddenItems.Should().BeEmpty("a one-device-pixel rounding shortfall must not evict a tab");
+            tc.HasOverflow.Should().BeFalse();
+        }
+        finally { win.Close(); }
+    }
+
     /// <summary>Sweep across widths to find the borderline where the bug manifests.
     /// At each width, the chevron should only be shown if natural + tag width genuinely
     /// exceeds the available width. The dead space between the last visible tab and

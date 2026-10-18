@@ -41,6 +41,7 @@ public static class DialogChrome
         window.ExtendClientAreaTitleBarHeightHint = TitleBarHeight;
 
         var header = BuildHeader(window);
+        GrowForHeader(window);
 
         // Keep the interface-zoom wrapper (ZoomHost) outermost if it's already there, so the
         // title bar scales with the rest of the dialog.
@@ -54,6 +55,28 @@ public static class DialogChrome
             window.Content = null;
             window.Content = Wrap(header, content);
         }
+    }
+
+    /// <summary>The header is drawn inside the client area, so a dialog with a fixed
+    /// <see cref="Layoutable.Height"/> (sized for its content back when the OS caption sat
+    /// outside it) loses <see cref="TitleBarHeight"/> of room — its body then overflows onto
+    /// its own footer (About dialog: the info card covered the Close button). Grow the window
+    /// by the header so the body keeps exactly the space it was designed for, and shift it up
+    /// by half so a centered dialog stays centered. Size-to-content heights already include
+    /// the header and are left alone.</summary>
+    private static void GrowForHeader(Window window)
+    {
+        if (window.SizeToContent is SizeToContent.Height or SizeToContent.WidthAndHeight) return;
+        if (double.IsNaN(window.Height)) return;
+
+        // The header lives inside the ZoomHost transform, so it occupies its zoomed height.
+        var extra = TitleBarHeight * ZoomHost.CurrentZoom;
+        if (window.MinHeight > 0) window.MinHeight += extra;
+        if (!double.IsInfinity(window.MaxHeight)) window.MaxHeight += extra;
+        window.Height += extra;
+
+        var shift = (int)Math.Round(extra / 2 * window.DesktopScaling);
+        window.Position = window.Position.WithY(Math.Max(0, window.Position.Y - shift));
     }
 
     private static DockPanel Wrap(Control header, Control body)

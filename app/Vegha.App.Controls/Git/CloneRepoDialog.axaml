@@ -166,7 +166,7 @@
                                    TextWrapping="Wrap" Foreground="{DynamicResource Text1Brush}" />
                         <Button Grid.Column="1" Classes="link" Content="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsCloning}" />
                     </Grid>
-                    <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsCloning}" Height="3" />
+                    <ProgressBar IsIndeterminate="{Binding IsCloning}" IsVisible="{Binding IsCloning}" Height="3" />
                     <Border Background="{DynamicResource StatusErrSoftBrush}" CornerRadius="4" Padding="10,8"
                             IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                         <StackPanel Spacing="6">

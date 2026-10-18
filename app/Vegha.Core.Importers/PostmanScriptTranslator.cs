@@ -179,6 +179,122 @@ public static class PostmanScriptTranslator
             R(@"\bpostman\.",      "/* postman.* */ "),
         };
     }
+
+    // ==================== Reverse direction: bru.* → pm.* (Export) ====================
+
+    /// <summary>Translates a Vegha / Bruno script into Postman's <c>pm.*</c> API — the inverse
+    /// of <see cref="Translate"/>, used when exporting a collection to Postman v2.1. Returns
+    /// the translated text plus any <c>bru.</c> / <c>req.</c> / <c>res.</c> tokens the table
+    /// didn't cover (they'll throw in Postman, so the exporter surfaces them as warnings).</summary>
+    public static TranslationOutcome TranslateToPostman(string? script)
+    {
+        if (string.IsNullOrEmpty(script)) return new TranslationOutcome(string.Empty, Array.Empty<string>());
+
+        var text = script!;
+        foreach (var rule in ReverseRules)
+            text = rule.Pattern.Replace(text, rule.Replacement);
+
+        var found = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Match m in BruLeftovers.Matches(text))
+        {
+            if (seen.Add(m.Value)) found.Add(m.Value);
+        }
+        return new TranslationOutcome(text, found);
+    }
+
+    // `(?<![\w.$])` keeps `myres.getBody()` / `foo.test(` from matching.
+    private static readonly Regex BruLeftovers = new(
+        @"(?<![\w.$])(?:bru|req|res)\.[A-Za-z_$][A-Za-z0-9_$.]*",
+        RegexOptions.Compiled);
+
+    private static readonly Rule[] ReverseRules = BuildReverse();
+
+    private static Rule[] BuildReverse()
+    {
+        Rule R(string pattern, string replacement) =>
+            new(new Regex(pattern, RegexOptions.Compiled), replacement);
+        const string B = @"(?<![\w.$])"; // token boundary: not part of a longer member chain
+
+        return new[]
+        {
+            // ----- environment -----
+            R(B + @"bru\.getEnvVar\(",    "pm.environment.get("),
+            R(B + @"bru\.setEnvVar\(",    "pm.environment.set("),
+            R(B + @"bru\.deleteEnvVar\(", "pm.environment.unset("),
+            R(B + @"bru\.hasEnvVar\(",    "pm.environment.has("),
+            R(B + @"bru\.getEnvName\(\)", "pm.environment.name"),
+
+            // ----- runtime variables -----
+            R(B + @"bru\.getVar\(",       "pm.variables.get("),
+            R(B + @"bru\.setVar\(",       "pm.variables.set("),
+            R(B + @"bru\.hasVar\(",       "pm.variables.has("),
+            R(B + @"bru\.deleteVar\(",    "pm.variables.unset("),
+            R(B + @"bru\.interpolate\(",  "pm.variables.replaceIn("),
+
+            // ----- collection variables -----
+            R(B + @"bru\.getCollectionVar\(",    "pm.collectionVariables.get("),
+            R(B + @"bru\.setCollectionVar\(",    "pm.collectionVariables.set("),
+            R(B + @"bru\.hasCollectionVar\(",    "pm.collectionVariables.has("),
+            R(B + @"bru\.deleteCollectionVar\(", "pm.collectionVariables.unset("),
+
+            // ----- globals -----
+            R(B + @"bru\.getGlobalEnvVar\(",     "pm.globals.get("),
+            R(B + @"bru\.setGlobalEnvVar\(",     "pm.globals.set("),
+            R(B + @"bru\.hasGlobalEnvVar\(",     "pm.globals.has("),
+            R(B + @"bru\.deleteGlobalEnvVar\(",  "pm.globals.unset("),
+            R(B + @"bru\.getAllGlobalEnvVars\(", "pm.globals.toObject("),
+
+            // ----- request flow control -----
+            R(B + @"bru\.runner\.stopExecution\(\)", "pm.execution.setNextRequest(null)"),
+            R(B + @"bru\.runner\.skipRequest\(",     "pm.execution.skipRequest("),
+            R(B + @"bru\.runner\.setNextRequest\(",  "pm.execution.setNextRequest("),
+            R(B + @"bru\.setNextRequest\(",          "pm.execution.setNextRequest("),
+
+            // ----- response (specific shapes first) -----
+            R(B + @"expect\(\s*res\.getStatus\(\)\s*\)\.to\.equal\(([^)]*)\)", "pm.response.to.have.status($1)"),
+            R(B + @"expect\(\s*res\.getStatus\(\)\s*\)\.to\.be\.below\(\s*300\s*\)", "pm.response.to.be.ok"),
+            R(B + @"res\.getBodyAsText\(\)",       "pm.response.text()"),
+            R(B + @"res\.getBody\(\)",             "pm.response.json()"),
+            R(B + @"res\.getStatus\(\)",           "pm.response.code"),
+            R(B + @"res\.statusText\b",            "pm.response.status"),
+            R(B + @"res\.getResponseTime\(\)",     "pm.response.responseTime"),
+            R(B + @"res\.getSize\(\)\.total",      "pm.response.responseSize"),
+            R(B + @"res\.getSize\(\)",             "pm.response.size()"),
+            R(B + @"res\.getHeader\(",             "pm.response.headers.get("),
+            R(B + @"res\.hasHeader\(",             "pm.response.headers.has("),
+            R(B + @"res\.getHeaders\(\)",          "pm.response.headers.toObject()"),
+            R(B + @"res\.getStatusText\(\)",       "pm.response.status"),
+            R(B + @"res\.headerList\.",            "pm.response.headers."),
+            // Property shorthands on Vegha's ResponseApi: `body` is the RAW string (scripts
+            // JSON.parse it), so it maps to text(), not json().
+            R(B + @"res\.body\b",                  "pm.response.text()"),
+            R(B + @"res\.status\b",                "pm.response.code"),
+            R(B + @"res\.responseTime\b",          "pm.response.responseTime"),
+
+            // ----- request -----
+            R(B + @"req\.getUrl\(\)",              "pm.request.url.toString()"),
+            R(B + @"req\.getMethod\(\)",           "pm.request.method"),
+            R(B + @"req\.getBody\(\)",             "pm.request.body.raw"),
+            R(B + @"req\.headerList\.",            "pm.request.headers."),
+            R(B + @"req\.getHeader\(",             "pm.request.headers.get("),
+            R(B + @"req\.getHeaders\(\)",          "pm.request.headers"),
+
+            // ----- cookies -----
+            R(B + @"bru\.cookies\.jar\(\)\.getCookie\(",    "pm.cookies.jar().get("),
+            R(B + @"bru\.cookies\.jar\(\)\.setCookie\(",    "pm.cookies.jar().set("),
+            R(B + @"bru\.cookies\.jar\(\)\.deleteCookie\(", "pm.cookies.jar().unset("),
+
+            // ----- sendRequest (Bruno's is synchronous; Postman's takes a callback) -----
+            R(B + @"bru\.sendRequest\(",
+              "/* TODO: bru.sendRequest is synchronous — pm.sendRequest takes a callback (err, res). */ pm.sendRequest("),
+
+            // ----- tests / expect (bare globals in Vegha, namespaced in Postman) -----
+            // `(?<!function\s+)` leaves a user-defined `function test(…)` alone.
+            R(B + @"(?<!function\s+)test\(",   "pm.test("),
+            R(B + @"(?<!function\s+)expect\(", "pm.expect("),
+        };
+    }
 }
 
 /// <summary>Result of translating one script — the translated text plus any unhandled

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Vegha.App.ViewModels;
 
 namespace Vegha.App.Controls.Workspace;
@@ -31,7 +32,7 @@ public partial class SoapWorkspace : UserControl
         if (clipboard is null) return;
 
         string? text;
-        try { text = await clipboard.GetTextAsync(); }
+        try { text = await clipboard.TryGetTextAsync(); }
         catch { return; }
         if (string.IsNullOrWhiteSpace(text)) return;
 

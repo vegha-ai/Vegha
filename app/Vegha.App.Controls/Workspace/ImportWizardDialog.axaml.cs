@@ -84,7 +84,7 @@ public partial class ImportWizardDialog : Window
 
     private void OnDragEnter(object? sender, DragEventArgs e)
     {
-        if (e.Data.Contains(DataFormats.Files))
+        if (e.DataTransfer.Contains(DataFormat.File))
         {
             e.DragEffects = DragDropEffects.Copy;
             FileDropArea.Classes.Add("dragOver");
@@ -104,8 +104,8 @@ public partial class ImportWizardDialog : Window
     {
         FileDropArea.Classes.Remove("dragOver");
         if (DataContext is not ImportWizardViewModel vm) return;
-        if (!e.Data.Contains(DataFormats.Files)) return;
-        var files = e.Data.GetFiles();
+        if (!e.DataTransfer.Contains(DataFormat.File)) return;
+        var files = e.DataTransfer.TryGetFiles();
         if (files is null) return;
         var paths = files
             .Select(f => f.TryGetLocalPath())

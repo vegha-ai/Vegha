@@ -18,7 +18,6 @@ public partial class EnvironmentsPanel : UserControl
     public EnvironmentsPanel()
     {
         InitializeComponent();
-        BuildSwatches();
         DataContextChanged += OnDataContextChanged;
     }
 
@@ -36,29 +35,10 @@ public partial class EnvironmentsPanel : UserControl
         if (_attachedVm is null) return;
         var owner = TopLevel.GetTopLevel(this) as Window;
         if (owner is null) return;
-        var dlg = new RenameDialog("Rename environment", "Environment name", env.Name);
+        var dlg = new EnvironmentEditDialog(env.Name, env.Color);
         var ok = await dlg.ShowDialog<bool>(owner);
         if (!ok || string.IsNullOrWhiteSpace(dlg.ResultName)) return;
-        await _attachedVm.RenameEnvironmentAsync(env, dlg.ResultName.Trim());
-    }
-
-    /// <summary>Populates the color picker popup with one button per <see cref="EnvironmentColorPalette"/>
-    /// swatch. Done once in the constructor — the palette is static so no rebuilds are needed.</summary>
-    private void BuildSwatches()
-    {
-        if (SwatchPanel is null) return;
-        foreach (var swatch in EnvironmentColorPalette.Swatches)
-        {
-            var btn = new Button
-            {
-                Tag = swatch.Hex,
-                Background = new SolidColorBrush(Color.Parse(swatch.Hex)),
-            };
-            btn.Classes.Add("swatch");
-            ToolTip.SetTip(btn, swatch.Name);
-            btn.Click += OnSwatch_Click;
-            SwatchPanel.Children.Add(btn);
-        }
+        await _attachedVm.UpdateDetailsAsync(env, dlg.ResultName, dlg.ResultColor);
     }
 
     // ---- Header (detail pane) actions for the selected env ----
@@ -97,8 +77,8 @@ public partial class EnvironmentsPanel : UserControl
         if (confirmed) vm.DeleteEnvironmentCommand.Execute(env);
     }
 
-    /// <summary>F2 on the environments list renames the selected environment — same flow
-    /// as the detail-pane ✎ button and the row context menu.</summary>
+    /// <summary>F2 on the environments list opens the name/color editor for the selected
+    /// environment — same flow as the detail-pane ✎ button and the row context menu.</summary>
     private void OnEnvListKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key != Key.F2) return;
@@ -122,12 +102,7 @@ public partial class EnvironmentsPanel : UserControl
         if (confirmed) vm.DeleteEnvironmentCommand.Execute(env);
     }
 
-    private void OnSetColor_Click(object? sender, RoutedEventArgs e)
-    {
-        if (sender is not Button b) return;
-        ColorPickerPopup.PlacementTarget = b;
-        ColorPickerPopup.IsOpen = true;
-    }
+    private void OnSetColor_Click(object? sender, RoutedEventArgs e) => OnRename_Click(sender, e);
 
     private void OnRemoveVariable_Click(object? sender, RoutedEventArgs e)
     {
@@ -206,22 +181,6 @@ public partial class EnvironmentsPanel : UserControl
         {
             vm.SearchText = string.Empty;
         }
-    }
-
-    // ---- Color picker handlers ----
-    private async void OnSwatch_Click(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is not EnvironmentsViewModel vm || vm.SelectedEnvironment is not { } env) return;
-        if (sender is not Button b || b.Tag is not string hex) return;
-        ColorPickerPopup.IsOpen = false;
-        await vm.SetColorAsync(env, hex);
-    }
-
-    private async void OnClearColor_Click(object? sender, RoutedEventArgs e)
-    {
-        if (DataContext is not EnvironmentsViewModel vm || vm.SelectedEnvironment is not { } env) return;
-        ColorPickerPopup.IsOpen = false;
-        await vm.SetColorAsync(env, null);
     }
 
     /// <summary>Minimal Yes/No confirmation dialog used by Delete.</summary>

@@ -64,6 +64,37 @@ public class LayoutSettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void ResponseRatioAndFlags_RoundTripAndClamp()
+    {
+        var store = new LayoutSettingsStore();
+        store.Save(LayoutSettings.Default with
+        {
+            ResponsePaneRatio = 0.99,
+            IsResponseCollapsed = true,
+            IsCodegenCollapsed = false,
+        });
+
+        var loaded = store.Load();
+        loaded.ResponsePaneRatio.Should().Be(LayoutSettings.MaxResponsePaneRatio);
+        loaded.IsResponseCollapsed.Should().BeTrue();
+        loaded.IsCodegenCollapsed.Should().BeFalse("the clamp must not reset init-only flags");
+    }
+
+    [Fact]
+    public void LegacyFileWithoutRatio_LoadsDefaultRatio()
+    {
+        var layoutFile = Path.Combine(_userDir, "layout.json");
+        Directory.CreateDirectory(_userDir);
+        File.WriteAllText(layoutFile,
+            """{ "SidebarWidth": 300, "RightPanelWidth": 320, "ResponsePaneHeight": 500 }""");
+
+        var loaded = new LayoutSettingsStore().Load();
+        loaded.SidebarWidth.Should().Be(300);
+        loaded.ResponsePaneRatio.Should().Be(LayoutSettings.DefaultResponsePaneRatio);
+        loaded.IsResponseCollapsed.Should().BeFalse();
+    }
+
+    [Fact]
     public void LoadReturnsDefaultsForCorruptJson()
     {
         var layoutFile = Path.Combine(_userDir, "layout.json");

@@ -1,0 +1,140 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:Vegha.App.ViewModels"
+        xmlns:exp="using:Vegha.Core.Exporters"
+        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="560"
+        x:Class="Vegha.App.Controls.Workspace.ExportDialog"
+        x:DataType="vm:ExportDialogViewModel"
+        Title="Export"
+        Width="560" Height="580"
+        MinWidth="480" MinHeight="460"
+        Background="{DynamicResource Bg1Brush}"
+        FontSize="{DynamicResource AppFontSize}"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+    <DockPanel Margin="20">
+        <!-- Footer: status (left), Cancel/Close + Export (right). -->
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto,Auto" Margin="0,16,0,0">
+            <TextBlock Grid.Column="0" Text="{Binding StatusMessage}"
+                       FontSize="11" Foreground="{DynamicResource Text2Brush}"
+                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0" />
+            <Button Grid.Column="1" x:Name="CancelButton" Content="Cancel" Click="OnCancel_Click"
+                    IsEnabled="{Binding !IsBusy}"
+                    Background="Transparent" Foreground="{DynamicResource Text1Brush}"
+                    BorderThickness="0" Padding="14,6" Margin="0,0,8,0" />
+            <Button Grid.Column="2" x:Name="ExportButton" Content="Export…" Click="OnExport_Click"
+                    IsDefault="True" IsEnabled="{Binding CanExport}"
+                    Background="{DynamicResource AccentBrush}" Foreground="White"
+                    BorderThickness="0" Padding="18,6" CornerRadius="3"
+                    FontWeight="SemiBold" />
+        </Grid>
+
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="16">
+
+                <!-- Scope -->
+                <StackPanel Spacing="6">
+                    <TextBlock Text="What to export" FontWeight="SemiBold" FontSize="12"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <RadioButton GroupName="ExportScope" IsChecked="{Binding IsWorkspaceScope}"
+                                 IsEnabled="{Binding HasWorkspace}"
+                                 Foreground="{DynamicResource Text0Brush}">
+                        <TextBlock>
+                            <Run Text="Entire workspace" />
+                            <Run Text="— all collections, environments and workspace scripts"
+                                 Foreground="{DynamicResource Text2Brush}" />
+                        </TextBlock>
+                    </RadioButton>
+                    <RadioButton GroupName="ExportScope" IsChecked="{Binding IsSelectionScope}"
+                                 Content="Selected collections"
+                                 Foreground="{DynamicResource Text0Brush}" />
+                    <Border Margin="24,0,0,0" MaxHeight="150"
+                            Background="{DynamicResource BgInputBrush}"
+                            BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                            CornerRadius="3" Padding="8,4"
+                            IsEnabled="{Binding IsSelectionScope}">
+                        <ScrollViewer>
+                            <ItemsControl ItemsSource="{Binding Collections}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ExportCollectionChoice">
+                                        <CheckBox IsChecked="{Binding IsSelected}"
+                                                  Content="{Binding Name}"
+                                                  ToolTip.Tip="{Binding SourcePath}"
+                                                  Foreground="{DynamicResource Text0Brush}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+
+                <!-- Format -->
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Format" FontWeight="SemiBold" FontSize="12"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <ComboBox x:Name="FormatBox" ItemsSource="{Binding Formats}"
+                              SelectedItem="{Binding SelectedFormat}"
+                              HorizontalAlignment="Stretch" FontSize="12">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="exp:ExportFormatInfo">
+                                <TextBlock Text="{Binding Label}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Text="{Binding FidelityNote}" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{DynamicResource Text2Brush}" />
+                </StackPanel>
+
+                <!-- Options -->
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Options" FontWeight="SemiBold" FontSize="12"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <!-- Environment options — hidden as a group for formats without envs (OpenAPI). -->
+                    <StackPanel Spacing="6" IsVisible="{Binding SupportsEnvironments}">
+                        <CheckBox IsChecked="{Binding IncludeEnvironments}"
+                                  Content="Include environments"
+                                  Foreground="{DynamicResource Text0Brush}" />
+                        <CheckBox IsChecked="{Binding IncludeSecrets}"
+                                  IsEnabled="{Binding IncludeEnvironments}"
+                                  Content="Include secret values"
+                                  Foreground="{DynamicResource Text0Brush}" />
+                        <TextBlock IsVisible="{Binding IncludeSecrets}"
+                                   Margin="24,0,0,0" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource StatusWarnBrush}"
+                                   Text="Secret values will be written in plain text. Only share this file with people who should have them." />
+                        <TextBlock IsVisible="{Binding !IncludeSecrets}"
+                                   Margin="24,0,0,0" FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource Text3Brush}"
+                                   Text="Secret variables are exported with empty values." />
+                    </StackPanel>
+                    <CheckBox IsChecked="{Binding OpenApiYaml}" IsVisible="{Binding IsOpenApi}"
+                              Content="Write YAML instead of JSON"
+                              Foreground="{DynamicResource Text0Brush}" />
+                </StackPanel>
+
+                <!-- Warnings from the last export (lossy mappings). -->
+                <Border x:Name="WarningsPanel" IsVisible="{Binding HasWarnings}"
+                        Background="{DynamicResource Bg2Brush}"
+                        BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                        CornerRadius="3" Padding="10,8">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Some details couldn't be represented in this format:"
+                                   FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Text1Brush}" />
+                        <ItemsControl ItemsSource="{Binding Warnings}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding StringFormat='• {0}'}" FontSize="11"
+                                               TextWrapping="Wrap" Margin="0,1"
+                                               Foreground="{DynamicResource Text2Brush}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
