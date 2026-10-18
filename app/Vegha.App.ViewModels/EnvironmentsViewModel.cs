@@ -34,6 +34,10 @@ public partial class EnvironmentsViewModel : ObservableObject
     [ObservableProperty]
     private string? _statusMessage;
 
+    /// <summary>Session runtime variables shown under the env list (collection scope only;
+    /// null hides the section). Assigned by the host.</summary>
+    public Scriptless.RuntimeVariablesViewModel? Runtime { get; set; }
+
     /// <summary>Free-text filter applied to <see cref="Filtered"/>. Empty string = show all.
     /// Matching is case-insensitive substring on env Name.</summary>
     [ObservableProperty]
@@ -76,7 +80,7 @@ public partial class EnvironmentsViewModel : ObservableObject
 
     partial void OnSelectedEnvironmentChanged(DomainEnv? value)
     {
-        HydrateVariables();
+        HydrateVariables(force: false);
         // Selecting an env in the master list also activates it for variable substitution
         // — the selected env is the one in use, and this drives the green check-mark
         // indicator on the row that's the current active env.
@@ -84,13 +88,66 @@ public partial class EnvironmentsViewModel : ObservableObject
             ActiveScoped = value;
     }
 
-    private void HydrateVariables()
+    // Unsaved-edit draft. Metadata writes (rename / color) swap the env instance and touch
+    // the env file, and the collection's file watcher then rebuilds the env list a beat
+    // later (Clear + Add) — selection goes null and comes back as a fresh instance. Without
+    // the draft each of those hops re-hydrated the rows from disk and dropped the edits.
+    // The draft follows the env by Id and is only discarded by Save, Reset, or switching to
+    // a different env.
+    private DomainEnv? _rowsEnv;          // env whose rows are on screen; null while none are
+    private List<EnvVarRow>? _draftRows;
+    private string? _draftKey;            // EnvKey of the env the draft belongs to
+
+    private static string EnvKey(DomainEnv env) =>
+        string.IsNullOrEmpty(env.Id) ? "name:" + env.Name : env.Id;
+
+    /// <summary>True when the rows differ from what <paramref name="saved"/> holds on disk.</summary>
+    private bool RowsDifferFrom(DomainEnv saved)
     {
+        var rows = Variables.Where(r => !string.IsNullOrEmpty(r.Name)).ToList();
+        if (rows.Count != saved.Variables.Count) return true;
+        var secrets = new HashSet<string>(saved.SecretVariables, StringComparer.Ordinal);
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var (r, v) = (rows[i], saved.Variables[i]);
+            if (r.Name != v.Name || r.Value != v.Value || r.IsEnabled != v.Enabled
+                || r.IsSecret != secrets.Contains(v.Name))
+                return true;
+        }
+        return false;
+    }
+
+    private void HydrateVariables(bool force = true)
+    {
+        // Capture edits before the rows go away; a later hydrate of the same env restores them.
+        // Only rows actually on screen count — after a hop to null the table is empty and
+        // must not be mistaken for "the user deleted every variable".
+        if (force) _draftRows = null;
+        else if (_rowsEnv is not null && _draftRows is null && RowsDifferFrom(_rowsEnv))
+        {
+            _draftRows = Variables.ToList();
+            _draftKey = EnvKey(_rowsEnv);
+        }
+
+        var next = SelectedEnvironment;
+        if (next is not null && _draftRows is not null && EnvKey(next) != _draftKey)
+            _draftRows = null;
+
         Variables.Clear();
-        if (SelectedEnvironment is null) { IsDirty = false; return; }
-        var secrets = new HashSet<string>(SelectedEnvironment.SecretVariables, StringComparer.Ordinal);
+        _rowsEnv = next;
+        if (next is null) { IsDirty = _draftRows is not null; return; }
+
+        if (_draftRows is not null)
+        {
+            foreach (var r in _draftRows) Variables.Add(r);
+            _draftRows = null;
+            KvAutoAppend.EnsureTrailingBlank(Variables, NewBlankVarRow, r => r.IsBlank);
+            IsDirty = true;
+            return;
+        }
+        var secrets = new HashSet<string>(next.SecretVariables, StringComparer.Ordinal);
         var providers = ProviderNames;
-        foreach (var v in SelectedEnvironment.Variables)
+        foreach (var v in next.Variables)
         {
             Variables.Add(new EnvVarRow
             {
@@ -158,6 +215,7 @@ public partial class EnvironmentsViewModel : ObservableObject
         var previous = SelectedEnvironment;
         var updated = SelectedEnvironment with { Variables = newVars, SecretVariables = newSecrets };
 
+        _rowsEnv = updated; // rows now match disk — nothing to carry as a draft
         await SaveEnvironmentAsync(updated);
         // SaveEnvironmentAsync already swaps via ReplaceEnvironment; pin the new instance as
         // the selection so the editor's binding doesn't drop to null after the list update.
@@ -397,7 +455,7 @@ public partial class EnvironmentsViewModel : ObservableObject
         if (string.IsNullOrEmpty(root)) { StatusMessage = NoRootMessage; return; }
 
         var name = ResolveUniqueName("new-env");
-        var env = new DomainEnv { Id = Guid.NewGuid().ToString("N"), Name = name };
+        var env = new DomainEnv { Id = Guid.NewGuid().ToString("N"), Name = name, Color = RandomColorHex() };
         AddToScopedLists(env);
         if (ActiveScoped is null) ActiveScoped = env;
         // Drive the master/detail to the newly-created env so the user lands directly in
@@ -584,6 +642,8 @@ public partial class EnvironmentsViewModel : ObservableObject
                 var name = ResolveUniqueName(env.Name);
                 if (!string.Equals(name, env.Name, StringComparison.Ordinal))
                     env = env with { Name = name };
+                if (string.IsNullOrWhiteSpace(env.Color))
+                    env = env with { Color = RandomColorHex() };
 
                 AddToScopedLists(env);
                 if (ActiveScoped is null) ActiveScoped = env;
@@ -684,6 +744,44 @@ public partial class EnvironmentsViewModel : ObservableObject
     {
         var updated = env with { Color = string.IsNullOrWhiteSpace(hex) ? null : hex };
         return SaveEnvironmentAsync(updated);
+    }
+
+    /// <summary>Applies the Edit environment dialog's result — rename and/or recolor in one
+    /// step. Only the metadata changes; unsaved variable edits stay in the editor.</summary>
+    public async Task UpdateDetailsAsync(DomainEnv env, string newName, string? hex)
+    {
+        newName = newName.Trim();
+        var color = string.IsNullOrWhiteSpace(hex) ? null : hex;
+        var current = env;
+        if (!string.Equals(env.Color, color, StringComparison.OrdinalIgnoreCase))
+        {
+            await SetColorAsync(env, color);
+            current = All.FirstOrDefault(e => string.Equals(e.Name, env.Name, StringComparison.OrdinalIgnoreCase)) ?? current;
+        }
+        if (newName.Length > 0 && !string.Equals(newName, current.Name, StringComparison.Ordinal))
+            await RenameEnvironmentAsync(current, newName);
+    }
+
+    /// <summary>A random, readable accent for new environments — any hue, with saturation
+    /// and lightness pinned so the dot reads well on both light and dark themes.</summary>
+    public static string RandomColorHex() => HslToHex(Random.Shared.Next(360), 0.70, 0.50);
+
+    public static string HslToHex(double h, double s, double l)
+    {
+        var c = (1 - Math.Abs(2 * l - 1)) * s;
+        var x = c * (1 - Math.Abs(h / 60 % 2 - 1));
+        var m = l - c / 2;
+        var (r, g, b) = (h % 360) switch
+        {
+            < 60 => (c, x, 0d),
+            < 120 => (x, c, 0d),
+            < 180 => (0d, c, x),
+            < 240 => (0d, x, c),
+            < 300 => (x, 0d, c),
+            _ => (c, 0d, x),
+        };
+        static int To255(double v) => (int)Math.Round(Math.Clamp(v, 0, 1) * 255);
+        return $"#{To255(r + m):X2}{To255(g + m):X2}{To255(b + m):X2}";
     }
 
     private string ResolveUniqueName(string proposed)

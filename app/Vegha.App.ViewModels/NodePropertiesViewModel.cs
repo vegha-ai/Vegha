@@ -27,6 +27,16 @@ public partial class NodePropertiesViewModel : ObservableObject
     public ObservableCollection<KvEntry> Variables { get; } = new();
     public ObservableCollection<KvEntry> Headers { get; } = new();
 
+    /// <summary>Scriptless assertions applied to every request in scope (<c>assert { }</c>).</summary>
+    public ObservableCollection<Scriptless.AssertionRow> Assertions { get; } = new();
+
+    /// <summary>Linked requests run before every request in scope (<c>chain:pre-request { }</c>).</summary>
+    public ObservableCollection<Scriptless.ChainLinkRow> ChainLinks { get; } = new();
+
+    /// <summary>Request paths offered by the linked-request picker. Collections fill it from
+    /// themselves; folder hosts assign it from the owning collection.</summary>
+    [ObservableProperty] private IReadOnlyList<string> _linkableRequestPaths = Array.Empty<string>();
+
     [ObservableProperty] private string _preRequestScript = string.Empty;
     [ObservableProperty] private string _postResponseScript = string.Empty;
     [ObservableProperty] private string _testsScript = string.Empty;
@@ -66,6 +76,8 @@ public partial class NodePropertiesViewModel : ObservableObject
         PostResponseScript = collection.PostResponseScript ?? string.Empty;
         TestsScript = collection.TestsScript ?? string.Empty;
         Docs = collection.Docs ?? string.Empty;
+        SeedScriptless(collection.Assertions, collection.ChainLinks);
+        LinkableRequestPaths = LinkablePathsOf(collection);
         ApplyAuth(collection.Auth);
         if (collection.Presets is { } presets)
         {
@@ -83,6 +95,7 @@ public partial class NodePropertiesViewModel : ObservableObject
         PostResponseScript = folder.PostResponseScript ?? string.Empty;
         TestsScript = folder.TestsScript ?? string.Empty;
         Docs = folder.Docs ?? string.Empty;
+        SeedScriptless(folder.Assertions, folder.ChainLinks);
         ApplyAuth(folder.Auth);
     }
 
@@ -94,6 +107,38 @@ public partial class NodePropertiesViewModel : ObservableObject
         // the emitted .bru.
         KvAutoAppend.Wire(Variables, () => new KvEntry(), r => r.IsBlank);
         KvAutoAppend.Wire(Headers, () => new KvEntry(), r => r.IsBlank);
+        KvAutoAppend.Wire(Assertions, () => new Scriptless.AssertionRow(), r => r.IsBlank);
+        KvAutoAppend.Wire(ChainLinks, () => new Scriptless.ChainLinkRow(), r => r.IsBlank);
+    }
+
+    private void SeedScriptless(IList<KvPair> assertions, IList<KvPair> chainLinks)
+    {
+        foreach (var a in assertions) Assertions.Add(Scriptless.AssertionRow.FromStorage(a));
+        foreach (var l in chainLinks) ChainLinks.Add(Scriptless.ChainLinkRow.FromStorage(l));
+        KvAutoAppend.EnsureTrailingBlank(Assertions, () => new Scriptless.AssertionRow(), r => r.IsBlank);
+        KvAutoAppend.EnsureTrailingBlank(ChainLinks, () => new Scriptless.ChainLinkRow(), r => r.IsBlank);
+    }
+
+    /// <summary>Every request path in a collection, for the linked-request picker.</summary>
+    public static IReadOnlyList<string> LinkablePathsOf(Collection collection)
+    {
+        var ctx = new Vegha.Core.Requests.ChainContext(collection, null);
+        return ctx.Enumerate()
+            .Select(x => ctx.PathOf(x.Request, x.FolderChain))
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    [RelayCommand]
+    private void RemoveAssertion(Scriptless.AssertionRow? row)
+    {
+        if (row is not null) Assertions.Remove(row);
+    }
+
+    [RelayCommand]
+    private void RemoveChainLink(Scriptless.ChainLinkRow? row)
+    {
+        if (row is not null) ChainLinks.Remove(row);
     }
 
     /// <summary>Copies domain pairs into rows and seeds the trailing ghost row.</summary>
@@ -150,6 +195,8 @@ public partial class NodePropertiesViewModel : ObservableObject
             .Where(v => !string.IsNullOrEmpty(v.Name))
             .Select(v => new KvPair(v.Name, v.Value, v.Enabled)).ToList();
         var auth = BuildAuthConfig();
+        var assertionList = Assertions.Where(a => !a.IsBlank).Select(a => a.ToKvPair()).ToList();
+        var chainList = ChainLinks.Where(l => !l.IsBlank).Select(l => l.ToKvPair()).ToList();
 
         if (NodeKind == Kind.Collection)
         {
@@ -169,6 +216,8 @@ public partial class NodePropertiesViewModel : ObservableObject
                 Docs = string.IsNullOrEmpty(Docs) ? null : Docs,
                 Auth = auth,
                 Presets = presets.IsEmpty ? null : presets,
+                Assertions = assertionList,
+                ChainLinks = chainList,
             };
             return new NodeSnapshot(NodeKind, collection, null);
         }
@@ -184,6 +233,8 @@ public partial class NodePropertiesViewModel : ObservableObject
                 TestsScript = string.IsNullOrEmpty(TestsScript) ? null : TestsScript,
                 Docs = string.IsNullOrEmpty(Docs) ? null : Docs,
                 Auth = auth,
+                Assertions = assertionList,
+                ChainLinks = chainList,
             };
             return new NodeSnapshot(NodeKind, null, folder);
         }

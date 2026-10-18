@@ -225,6 +225,10 @@ public sealed class RequestFile
     public AuthDto? Auth { get; set; }
     public List<KvDto>? PreRequestVars { get; set; }
     public List<KvDto>? PostResponseVars { get; set; }
+    public List<KvDto>? PostResponseEnvVars { get; set; }
+    public List<KvDto>? PostResponseGlobalVars { get; set; }
+    public List<KvDto>? Assertions { get; set; }
+    public List<KvDto>? ChainLinks { get; set; }
     public string? PreRequestScript { get; set; }
     public string? PostResponseScript { get; set; }
     public string? Tests { get; set; }
@@ -245,6 +249,10 @@ public sealed class RequestFile
         Auth = Auth?.ToDomain(),
         PreRequestVars = (PreRequestVars ?? new()).Select(KvDto.ToDomain).ToList(),
         PostResponseVars = (PostResponseVars ?? new()).Select(KvDto.ToDomain).ToList(),
+        PostResponseEnvVars = (PostResponseEnvVars ?? new()).Select(KvDto.ToDomain).ToList(),
+        PostResponseGlobalVars = (PostResponseGlobalVars ?? new()).Select(KvDto.ToDomain).ToList(),
+        Assertions = (Assertions ?? new()).Select(KvDto.ToDomain).ToList(),
+        ChainLinks = (ChainLinks ?? new()).Select(KvDto.ToDomain).ToList(),
         PreRequestScript = PreRequestScript,
         PostResponseScript = PostResponseScript,
         Tests = Tests,
@@ -266,6 +274,10 @@ public sealed class RequestFile
         Auth = r.Auth is null ? null : AuthDto.FromDomain(r.Auth),
         PreRequestVars = r.PreRequestVars.Count == 0 ? null : r.PreRequestVars.Select(KvDto.FromDomain).ToList(),
         PostResponseVars = r.PostResponseVars.Count == 0 ? null : r.PostResponseVars.Select(KvDto.FromDomain).ToList(),
+        PostResponseEnvVars = r.PostResponseEnvVars.Count == 0 ? null : r.PostResponseEnvVars.Select(KvDto.FromDomain).ToList(),
+        PostResponseGlobalVars = r.PostResponseGlobalVars.Count == 0 ? null : r.PostResponseGlobalVars.Select(KvDto.FromDomain).ToList(),
+        Assertions = r.Assertions.Count == 0 ? null : r.Assertions.Select(KvDto.FromDomain).ToList(),
+        ChainLinks = r.ChainLinks.Count == 0 ? null : r.ChainLinks.Select(KvDto.FromDomain).ToList(),
         PreRequestScript = string.IsNullOrEmpty(r.PreRequestScript) ? null : r.PreRequestScript,
         PostResponseScript = string.IsNullOrEmpty(r.PostResponseScript) ? null : r.PostResponseScript,
         Tests = string.IsNullOrEmpty(r.Tests) ? null : r.Tests,

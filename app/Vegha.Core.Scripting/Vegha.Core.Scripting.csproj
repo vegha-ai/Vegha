@@ -6,6 +6,7 @@
   <ItemGroup>
     <PackageReference Include="Jint" />
     <PackageReference Include="JsonSchema.Net" />
+    <PackageReference Include="JsonPath.Net" />
   </ItemGroup>
 
   <ItemGroup>

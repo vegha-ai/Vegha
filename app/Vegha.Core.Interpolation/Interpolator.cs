@@ -8,11 +8,23 @@ namespace Vegha.Core.Interpolation;
 ///
 /// Mirrors <c>bruno-common/src/interpolate/index.ts</c>. Postman-style dynamic variables
 /// (<c>{{$randomUUID}}</c>, <c>{{$timestamp}}</c>, …) are resolved by
-/// <see cref="DynamicVariableProvider"/> when the placeholder starts with <c>$</c>.
+/// <see cref="DynamicVariableProvider"/> when the placeholder starts with <c>$</c>; Thunder
+/// Client system variables (<c>{{#guid}}</c>, <c>{{#date, 'YYYY-MM-DD'}}</c>, …) by
+/// <see cref="SystemVariableProvider"/> when it starts with <c>#</c>.
+///
+/// A placeholder may pipe its value through filters, Thunder Client style:
+/// <c>{{token | btoa}}</c>, <c>{{name | upper}}</c>, <c>{{@ | hash("SHA256")}}</c> (<c>@</c> is an
+/// empty input). Filters are supplied by <see cref="FilterPipeline"/>; without one (or when a
+/// filter fails) the placeholder is left literal so the problem stays visible.
 /// </summary>
 public static class Interpolator
 {
     private const int MaxDepth = 32;
+
+    /// <summary>Applies a filter pipeline to a resolved value: <c>(value, "btoa | upper", lookup)</c>
+    /// → result, or null when a filter is unknown / fails. Registered by the scripting layer
+    /// (which owns the filter catalog) when it loads.</summary>
+    public static Func<string, string, Func<string, string?>, string?>? FilterPipeline { get; set; }
 
     /// <summary>Resolve placeholders against the supplied flat dictionary. Postman dynamic
     /// variables (<c>{{$randomUUID}}</c> etc.) are resolved automatically.</summary>
@@ -77,7 +89,7 @@ public static class Interpolator
                 }
                 else
                 {
-                    var value = resolver(name);
+                    var value = ResolveName(name, resolver);
                     if (value is null)
                     {
                         // Unknown — leave literal so the user sees the placeholder unchanged.
@@ -100,5 +112,40 @@ public static class Interpolator
             }
         }
         return sb.ToString();
+    }
+
+    /// <summary>One placeholder name → value: <c>#</c> system variables, the caller's resolver,
+    /// and an optional <c>| filter</c> pipeline.</summary>
+    private static string? ResolveName(string name, Func<string, string?> resolver)
+    {
+        var pipe = IndexOfPipe(name);
+        if (pipe > 0 && FilterPipeline is { } pipeline)
+        {
+            var baseName = name[..pipe].Trim();
+            var input = baseName == "@" ? string.Empty : ResolveName(baseName, resolver);
+            if (input is null) return null;
+            return pipeline(input, name[(pipe + 1)..], n => ResolveName(n, resolver));
+        }
+        var value = resolver(name);
+        if (value is null && name.Length > 0 && name[0] == '#' &&
+            SystemVariableProvider.TryResolve(name, out var sys)) return sys;
+        return value;
+    }
+
+    /// <summary>First <c>|</c> outside quotes / parentheses, or -1.</summary>
+    private static int IndexOfPipe(string name)
+    {
+        char quote = '\0';
+        var depth = 0;
+        for (var i = 0; i < name.Length; i++)
+        {
+            var c = name[i];
+            if (quote != '\0') { if (c == quote) quote = '\0'; continue; }
+            if (c is '\'' or '"') quote = c;
+            else if (c == '(') depth++;
+            else if (c == ')') depth--;
+            else if (c == '|' && depth == 0) return i;
+        }
+        return -1;
     }
 }

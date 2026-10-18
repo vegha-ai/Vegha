@@ -117,6 +117,72 @@ public sealed class JintHost
             console.Messages);
     }
 
+    /// <summary>Evaluates a single JavaScript expression against a Bruno-shaped <c>res</c>
+    /// (<c>res.body</c> is the parsed JSON, <c>res.headers</c> a lower-cased object) and a
+    /// read-only <c>bru</c>. This is the fallback for scriptless captures / assertions whose
+    /// expression isn't in the native grammar (e.g. <c>res.body.items.find(i =&gt; i.main).id</c>).
+    /// Throws <see cref="Testing.FilterException"/> with a readable message on failure.</summary>
+    public Testing.ResolvedValue EvaluateResponseExpression(
+        string expression,
+        Testing.ResponseSnapshot response,
+        IReadOnlyDictionary<string, string>? vars = null,
+        CancellationToken cancellationToken = default)
+    {
+        var engine = new Engine(o => o
+            .LimitMemory(_memoryLimit)
+            .TimeoutInterval(_timeout)
+            .LimitRecursion(_recursionLimit)
+            .CancellationToken(cancellationToken));
+        var headers = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (k, v) in response.Headers)
+        {
+            var key = k.ToLowerInvariant();
+            headers[key] = headers.TryGetValue(key, out var prev) ? prev + ", " + v : v;
+        }
+        var runtime = new Dictionary<string, string>(vars ?? new Dictionary<string, string>());
+        engine.SetValue("bru", new BruApi(runtime, vars ?? new Dictionary<string, string>(),
+            new Dictionary<string, string>(), null, null));
+        engine.SetValue("__status", response.Status);
+        engine.SetValue("__statusText", response.StatusText);
+        engine.SetValue("__time", response.ElapsedMilliseconds);
+        engine.SetValue("__bodyText", response.Body);
+        engine.SetValue("__headersJson", System.Text.Json.JsonSerializer.Serialize(headers));
+        try
+        {
+            engine.Execute("""
+                var __b; try { __b = JSON.parse(__bodyText); } catch (e) { __b = __bodyText; }
+                var __h = JSON.parse(__headersJson);
+                var res = {
+                  status: __status, statusText: __statusText, responseTime: __time,
+                  headers: __h, body: __b, text: __bodyText,
+                  getStatus: function () { return __status; },
+                  getStatusText: function () { return __statusText; },
+                  getResponseTime: function () { return __time; },
+                  getBody: function () { return __b; },
+                  getBodyAsText: function () { return __bodyText; },
+                  getHeaders: function () { return __h; },
+                  getHeader: function (n) { return __h[String(n).toLowerCase()]; }
+                };
+                """);
+            engine.Execute(JsPreloads.Source);
+            var json = engine.Evaluate("JSON.stringify((" + expression + "\n))");
+            if (json.IsUndefined()) return Testing.ResolvedValue.Missing;
+            return Testing.ResolvedValue.Of(System.Text.Json.Nodes.JsonNode.Parse(json.AsString()));
+        }
+        catch (JavaScriptException jex)
+        {
+            throw new Testing.FilterException("Expression error: " + jex.Message);
+        }
+        catch (Acornima.ParseErrorException pex)
+        {
+            throw new Testing.FilterException("Expression syntax error: " + pex.Description);
+        }
+        catch (TimeoutException)
+        {
+            throw new Testing.FilterException($"Expression exceeded {_timeout.TotalSeconds:F1}s timeout");
+        }
+    }
+
     private ScriptResult RunInternal(
         string script,
         CancellationToken cancellationToken,

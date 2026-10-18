@@ -1,0 +1,125 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:sl="using:Vegha.App.ViewModels.Scriptless"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="420"
+             x:Class="Vegha.App.Controls.Workspace.ScriptlessTestsPanel"
+             x:DataType="vm:RequestEditorViewModel"
+             x:Name="Root">
+    <!-- No-code Tests tab body: CAPTURE (set variables from the response) and ASSERTIONS
+         tables. Both are plain rows with dropdowns — no syntax to remember — and every row
+         previews its value against the last response as you type. Persisted as
+         vars:post-response[:env|:global] and assert { } blocks in the .bru file. -->
+    <UserControl.Styles>
+        <StyleInclude Source="avares://Vegha.App.Controls/Workspace/ScriptlessTableStyles.axaml" />
+    </UserControl.Styles>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource Bg2Brush}">
+        <StackPanel>
+            <!-- ======================= CAPTURE ======================= -->
+            <Border Padding="12,10,12,6">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="SET VARIABLES FROM RESPONSE" Classes="sectionHeaderMinor" />
+                        <TextBlock Classes="helpText" TextWrapping="Wrap"
+                                   Text="Pick where the value lives — or right-click any value in the response and choose Capture. Use it anywhere as {{name}}. Runtime variables last for this session and are never written to disk." />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" VerticalAlignment="Top" Classes="helpText"
+                               Text="{Binding CapturesCount, StringFormat='{}{0} capture(s)'}"
+                               IsVisible="{Binding CapturesCount}" />
+                </Grid>
+            </Border>
+            <Border Background="{DynamicResource Bg3Brush}"
+                    BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,1">
+                <Grid ColumnDefinitions="32,1*,1.1*,2.2*,1*,1.6*,32" Height="26">
+                    <TextBlock Grid.Column="1" Classes="colHeader" Text="VARIABLE" />
+                    <TextBlock Grid.Column="2" Classes="colHeader" Text="FROM" />
+                    <TextBlock Grid.Column="3" Classes="colHeader" Text="PATH  |  FILTERS" />
+                    <TextBlock Grid.Column="4" Classes="colHeader" Text="SAVE TO" />
+                    <TextBlock Grid.Column="5" Classes="colHeader" Text="VALUE" />
+                </Grid>
+            </Border>
+            <ItemsControl ItemsSource="{Binding Captures}">
+                <ItemsControl.ItemContainerTheme>
+                    <ControlTheme TargetType="ContentPresenter">
+                        <Setter Property="HorizontalAlignment" Value="Stretch" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </ControlTheme>
+                </ItemsControl.ItemContainerTheme>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="sl:CaptureRow">
+                        <Grid ColumnDefinitions="32,1*,1.1*,2.2*,1*,1.6*,32" Margin="0,3,0,0">
+                            <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" IsVisible="{Binding !IsBlank}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Classes="cell" Text="{Binding Name}" Watermark="token" />
+                            <ComboBox Grid.Column="2" Classes="cell"
+                                      ItemsSource="{x:Static sl:ScriptlessOptions.Sources}"
+                                      SelectedItem="{Binding SourceOption}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="sl:SourceOption">
+                                        <TextBlock Text="{Binding Label}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <AutoCompleteBox Grid.Column="3" Classes="cell"
+                                             Text="{Binding PathText, Mode=TwoWay}"
+                                             ItemsSource="{Binding PathSuggestions}"
+                                             Watermark="{Binding PathHint}"
+                                             FilterMode="Contains"
+                                             MinimumPrefixLength="0"
+                                             MaxDropDownHeight="260"
+                                             ToolTip.Tip="Path into the response. Add filters with |  e.g.  items | filter(active=true) | first | prop(&quot;id&quot;)" />
+                            <ComboBox Grid.Column="4" Classes="cell"
+                                      ItemsSource="{x:Static sl:ScriptlessOptions.Scopes}"
+                                      SelectedItem="{Binding ScopeOption}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="sl:ScopeOption">
+                                        <TextBlock Text="{Binding Label}" ToolTip.Tip="{Binding Description}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock Grid.Column="5" Classes="result"
+                                       Classes.ok="{Binding IsOk}"
+                                       Classes.missing="{Binding IsMissing}"
+                                       Classes.error="{Binding IsError}"
+                                       Text="{Binding ResultText}"
+                                       ToolTip.Tip="{Binding ResultText}" />
+                            <Button Grid.Column="6" Classes="rowRemove" IsVisible="{Binding !IsBlank}"
+                                    Command="{Binding #Root.((vm:RequestEditorViewModel)DataContext).RemoveCaptureCommand}"
+                                    CommandParameter="{Binding}" ToolTip.Tip="Remove">
+                                <TextBlock Text="✕" FontSize="11" />
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- ======================= ASSERTIONS ======================= -->
+            <Border Padding="12,18,12,6">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="ASSERTIONS" Classes="sectionHeaderMinor" />
+                        <TextBlock Classes="helpText" TextWrapping="Wrap"
+                                   Text="Checked after every send — results appear in the response's Test Results tab. Expected values can use {{variables}}." />
+                    </StackPanel>
+                    <Button Grid.Column="1" Classes="tertiary" VerticalAlignment="Top"
+                            Command="{Binding GenerateAssertionsFromResponseCommand}"
+                            IsEnabled="{Binding HasResponse}"
+                            ToolTip.Tip="Add assertions for the status, content type, response time and the type of each top-level field of the last response">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <icons:Icon Kind="Plus" Size="12" />
+                            <TextBlock Text="Generate from response" FontSize="11" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+            <ws:AssertionsTable ItemsSource="{Binding Assertions}"
+                                RemoveCommand="{Binding RemoveAssertionCommand}" />
+            <Border Height="12" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

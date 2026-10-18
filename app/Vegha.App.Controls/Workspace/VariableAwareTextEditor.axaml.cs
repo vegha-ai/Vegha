@@ -419,6 +419,9 @@ public partial class VariableAwareTextEditor : UserControl
         grid.Children.Add(oldChild);
         grid.Children.Add(_watermarkBlock);
         grid.Children.Add(_trailingGroup);
+        // Multi-line editors: keep the placeholder on the first text line, right of the
+        // line-number gutter (it used to sit centred over the gutter).
+        _editor.TextArea.TextView.LayoutUpdated += (_, _) => PositionWatermark();
         UpdateWatermark();
         UpdatePasswordChrome();
 
@@ -750,6 +753,27 @@ public partial class VariableAwareTextEditor : UserControl
         if (_watermarkBlock is null) return;
         _watermarkBlock.IsVisible = string.IsNullOrEmpty(_editor.Document.Text);
         _watermarkBlock.Text = Watermark;
+        PositionWatermark();
+    }
+
+    /// <summary>Single-line: vertically centred with a small inset. Multi-line: top-aligned at
+    /// the text view's origin, so it starts where typed text would (after the gutter).</summary>
+    private void PositionWatermark()
+    {
+        if (_watermarkBlock is not { IsVisible: true } wm) return;
+        if (SingleLine)
+        {
+            wm.VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center;
+            wm.Margin = new Thickness(8, 0, 0, 0);
+            return;
+        }
+        wm.VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Top;
+        if (wm.Parent is Visual host
+            && _editor.TextArea.TextView.TranslatePoint(new Point(0, 0), host) is { } origin)
+        {
+            var margin = new Thickness(Math.Max(0, origin.X), Math.Max(0, origin.Y), 0, 0);
+            if (wm.Margin != margin) wm.Margin = margin;
+        }
     }
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
@@ -1059,12 +1083,18 @@ public partial class VariableAwareTextEditor : UserControl
         return vars.TryGetValue(name, out var v) ? v : null;
     }
 
+    /// <summary>App-wide hook describing where a variable's value came from (set at startup to
+    /// read the session runtime-variable store). Null, or a null result, adds nothing.</summary>
+    public static Func<string, string?>? VariableProvenance { get; set; }
+
     private void ShowHoverTip(PointerEventArgs e, string name, string? resolved)
     {
         // Just the value when resolved (the {{name}} is already on screen — repeating it
         // in the tooltip is noise). When unset, show the name + "(unset)" so the user
-        // still knows which placeholder is broken.
+        // still knows which placeholder is broken. Runtime variables add a provenance line.
         var content = resolved is null ? $"{name}  (unset)" : resolved;
+        if (resolved is not null && VariableProvenance?.Invoke(name) is { Length: > 0 } origin)
+            content += "\n" + origin;
         ToolTip.SetTip(_editor, content);
         ToolTip.SetIsOpen(_editor, true);
     }

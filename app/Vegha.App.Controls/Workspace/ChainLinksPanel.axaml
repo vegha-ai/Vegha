@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:Vegha.App.ViewModels"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="160"
+             x:Class="Vegha.App.Controls.Workspace.ChainLinksPanel"
+             x:DataType="vm:RequestEditorViewModel">
+    <!-- Linked requests (chain:pre-request): other requests in the collection that run
+         before this one — e.g. Login when {{token}} is empty. Their captured variables
+         flow into this request. Scriptless request chaining. -->
+    <Border BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,0,0,1"
+            Background="{DynamicResource Bg2Brush}">
+        <StackPanel>
+            <Border Padding="14,8,14,4">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="RUN FIRST (LINKED REQUESTS)" Classes="sectionHeaderMinor" />
+                    <TextBlock Classes="helpText" TextWrapping="Wrap"
+                               Text="Requests from this collection that run before this one — their captured variables are available here. Folder and collection settings can add links for every request inside them." />
+                </StackPanel>
+            </Border>
+            <ScrollViewer MaxHeight="150" HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,6">
+                <ws:ChainLinksTable ItemsSource="{Binding ChainLinks}"
+                                    RequestPaths="{Binding LinkableRequestPaths}"
+                                    RemoveCommand="{Binding RemoveChainLinkCommand}" />
+            </ScrollViewer>
+        </StackPanel>
+    </Border>
+</UserControl>

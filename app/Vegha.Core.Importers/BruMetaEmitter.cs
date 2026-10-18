@@ -20,6 +20,8 @@ public static class BruMetaEmitter
         EmitAuth(sb, c.Auth);
         EmitDictBlock(sb, "headers", c.Headers);
         EmitDictBlock(sb, "vars", c.Variables);
+        EmitDictBlock(sb, "assert", c.Assertions);
+        EmitDictBlock(sb, "chain:pre-request", c.ChainLinks);
         EmitTextBlock(sb, "script:pre-request", c.PreRequestScript);
         EmitTextBlock(sb, "script:post-response", c.PostResponseScript);
         EmitTextBlock(sb, "tests", c.TestsScript);
@@ -36,10 +38,38 @@ public static class BruMetaEmitter
         EmitAuth(sb, f.Auth);
         EmitDictBlock(sb, "headers", f.Headers);
         EmitDictBlock(sb, "vars", f.Variables);
+        EmitDictBlock(sb, "assert", f.Assertions);
+        EmitDictBlock(sb, "chain:pre-request", f.ChainLinks);
         EmitTextBlock(sb, "script:pre-request", f.PreRequestScript);
         EmitTextBlock(sb, "script:post-response", f.PostResponseScript);
         EmitTextBlock(sb, "tests", f.TestsScript);
         EmitTextBlock(sb, "docs", f.Docs);
+        return sb.ToString();
+    }
+
+    /// <summary>Emits a Bruno <c>environments/&lt;name&gt;.bru</c> body: a <c>vars { }</c>
+    /// block plus Bruno's <c>vars:secret [ … ]</c> name list (which <c>EnvironmentLoader</c>
+    /// reads back). With <paramref name="includeSecretValues"/> false, secret variables are
+    /// listed by name only — Bruno keeps their values outside the file, as Vegha does.
+    /// With it true, they're written into <c>vars { }</c> as plain values instead.</summary>
+    public static string EmitEnvironment(Domain.Environment env, bool includeSecretValues)
+    {
+        var sb = new StringBuilder();
+        var secret = new HashSet<string>(env.SecretVariables, StringComparer.Ordinal);
+        var plain = includeSecretValues
+            ? env.Variables
+            : env.Variables.Where(v => !secret.Contains(v.Name)).ToList();
+        EmitDictBlock(sb, "vars", plain);
+        if (!includeSecretValues)
+        {
+            var names = env.Variables.Where(v => secret.Contains(v.Name)).Select(v => v.Name).ToList();
+            if (names.Count > 0)
+            {
+                sb.AppendLine("vars:secret [");
+                sb.AppendLine(string.Join(",\n", names.Select(n => "  " + n)));
+                sb.AppendLine("]");
+            }
+        }
         return sb.ToString();
     }
 

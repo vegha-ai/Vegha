@@ -60,6 +60,8 @@ public enum IconKind
     Info,
     Paste,
     Share,
+    Check,
+    Variable,
 
     // Theme
     Sun,

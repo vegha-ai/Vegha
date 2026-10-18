@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:sl="using:Vegha.App.ViewModels.Scriptless"
+             xmlns:tst="using:Vegha.Core.Scripting.Testing"
+             xmlns:ws="using:Vegha.App.Controls.Workspace"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="200"
+             x:Class="Vegha.App.Controls.Workspace.AssertionsTable"
+             x:Name="Root">
+    <!-- Scriptless assertion rows: [✓] Source ▾ | path | filters | operator ▾ | expected | result | ✕.
+         Shared by the request Tests tab and folder / collection settings. Rows are
+         sl:AssertionRow; the table keeps a blank ghost row at the tail. -->
+    <UserControl.Styles>
+        <StyleInclude Source="avares://Vegha.App.Controls/Workspace/ScriptlessTableStyles.axaml" />
+    </UserControl.Styles>
+    <StackPanel>
+        <Border Background="{DynamicResource Bg3Brush}"
+                BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,1">
+            <Grid ColumnDefinitions="32,1.5*,2*,1.2*,1.4*,1.5*,32" Height="26">
+                <TextBlock Grid.Column="1" Classes="colHeader" Text="CHECK" />
+                <TextBlock Grid.Column="2" Classes="colHeader" Text="PATH  |  FILTERS" />
+                <TextBlock Grid.Column="3" Classes="colHeader" Text="IS" />
+                <TextBlock Grid.Column="4" Classes="colHeader" Text="EXPECTED" />
+                <TextBlock Grid.Column="5" Classes="colHeader" Text="RESULT" />
+            </Grid>
+        </Border>
+        <ItemsControl ItemsSource="{Binding #Root.ItemsSource}">
+            <ItemsControl.ItemContainerTheme>
+                <ControlTheme TargetType="ContentPresenter">
+                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </ControlTheme>
+            </ItemsControl.ItemContainerTheme>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="sl:AssertionRow">
+                    <Grid ColumnDefinitions="32,1.5*,2*,1.2*,1.4*,1.5*,32" Margin="0,3,0,0">
+                        <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" IsVisible="{Binding !IsBlank}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <ComboBox Grid.Column="1" Classes="cell"
+                                  ItemsSource="{x:Static sl:ScriptlessOptions.Sources}"
+                                  SelectedItem="{Binding SourceOption}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="sl:SourceOption">
+                                    <TextBlock Text="{Binding Label}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <AutoCompleteBox Grid.Column="2" Classes="cell"
+                                         Text="{Binding PathText, Mode=TwoWay}"
+                                         ItemsSource="{Binding PathSuggestions}"
+                                         Watermark="{Binding PathHint}"
+                                         FilterMode="Contains"
+                                         MinimumPrefixLength="0"
+                                         MaxDropDownHeight="260"
+                                         ToolTip.Tip="Path into the response. Add filters with |  e.g.  items | filter(active=true) | count" />
+                        <ComboBox Grid.Column="3" Classes="cell"
+                                  ItemsSource="{x:Static sl:ScriptlessOptions.Operators}"
+                                  SelectedItem="{Binding Operator}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="tst:AssertionOperator">
+                                    <TextBlock Text="{Binding Label}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBox Grid.Column="4" Classes="cell"
+                                 Text="{Binding Expected}"
+                                 Watermark="{Binding ExpectedHint}"
+                                 IsVisible="{Binding TakesExpected}" />
+                        <TextBlock Grid.Column="5" Classes="result"
+                                   Classes.ok="{Binding IsOk}"
+                                   Classes.missing="{Binding IsMissing}"
+                                   Classes.error="{Binding IsError}"
+                                   Text="{Binding ResultText}"
+                                   ToolTip.Tip="{Binding ResultText}" />
+                        <Button Grid.Column="6" Classes="rowRemove" IsVisible="{Binding !IsBlank}"
+                                Command="{Binding $parent[ws:AssertionsTable].RemoveCommand}"
+                                CommandParameter="{Binding}" ToolTip.Tip="Remove">
+                            <TextBlock Text="✕" FontSize="11" />
+                        </Button>
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

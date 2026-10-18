@@ -22,6 +22,7 @@ public sealed class PipelineRequestExecutor
     private readonly bool _persistResponses;
     private readonly bool _turnOffLogs;
     private readonly bool _keepVariableValues;
+    private readonly LastResponseCache? _responseCache;
 
     /// <summary>Per-iteration accumulator of runtime vars set by <c>bru.setVar</c> in earlier
     /// requests of that same iteration. Keyed by iteration index so workers don't trample
@@ -35,7 +36,9 @@ public sealed class PipelineRequestExecutor
         Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null,
         bool persistResponses = true,
         bool turnOffLogs = false,
-        bool keepVariableValues = true)
+        bool keepVariableValues = true,
+        LastResponseCache? responseCache = null,
+        IReadOnlyDictionary<string, string>? initialRuntimeVariables = null)
     {
         _http = http;
         _scripting = scripting;
@@ -44,7 +47,13 @@ public sealed class PipelineRequestExecutor
         _persistResponses = persistResponses;
         _turnOffLogs = turnOffLogs;
         _keepVariableValues = keepVariableValues;
+        _responseCache = responseCache;
+        _initialRuntimeVariables = initialRuntimeVariables;
     }
+
+    /// <summary>Session runtime variables at run start — every iteration begins with them
+    /// (Bruno: the runner sees the runtime variables set by earlier manual sends).</summary>
+    private readonly IReadOnlyDictionary<string, string>? _initialRuntimeVariables;
 
     public CollectionRunOrchestrator.RequestExecutor AsDelegate(
         Collection collection,
@@ -55,11 +64,16 @@ public sealed class PipelineRequestExecutor
         var resolvedEnv = _secretRegistry is null
             ? Task.FromResult(environmentVariables)
             : ResolveEnvironmentAsync(environmentVariables);
+        // One chain context per run: linked requests resolve against the collection and share
+        // the session response cache (so a "when-stale" login isn't re-sent per request).
+        var chainContext = new ChainContext(collection, collectionRoot: null, _responseCache);
 
         return async (iterIndex, request, chain, iterVars, ct) =>
         {
             var env = await resolvedEnv.ConfigureAwait(false);
-            var carriedVars = _perIterationRuntimeVars.GetOrAdd(iterIndex, _ => new Dictionary<string, string>());
+            var carriedVars = _perIterationRuntimeVars.GetOrAdd(iterIndex, _ => _initialRuntimeVariables is null
+                ? new Dictionary<string, string>()
+                : new Dictionary<string, string>(_initialRuntimeVariables, StringComparer.Ordinal));
 
             // Layer carried runtime vars on top of the iteration data row so the pipeline
             // sees both as the "iteration overlay" — scripts that read prior bru.setVar
@@ -72,7 +86,8 @@ public sealed class PipelineRequestExecutor
                 Request: request,
                 EnvironmentVariables: env,
                 IterationVariables: overlayVars,
-                Workspace: _workspace);
+                Workspace: _workspace,
+                Chain: chainContext);
 
             var outputs = await RequestPipeline.ExecuteAsync(inputs, _http, _scripting, ct).ConfigureAwait(false);
 
@@ -87,6 +102,8 @@ public sealed class PipelineRequestExecutor
                 // token extracted in request N's post-response resolves via {{token}} in request N+1.
                 // The overlay beats env at compose time, so the fresh value wins over the snapshot.
                 foreach (var (k, v) in outputs.EnvVarMutations)
+                    carriedVars[k] = v;
+                foreach (var (k, v) in outputs.GlobalVarMutations)
                     carriedVars[k] = v;
             }
 

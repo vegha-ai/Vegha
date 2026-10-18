@@ -57,7 +57,10 @@ public class PostmanImportTranslationE2ETests
         req.PreRequestScript.Should().Contain("bru.setEnvVar");
         req.Tests.Should().Contain("test('parsed'");
         req.Tests.Should().Contain("res.getBody()");
-        req.Tests.Should().Contain("expect(res.getStatus()).to.equal(200)");
+        // The single-check status test is lifted into a scriptless assertion row; the
+        // two-statement 'parsed' test stays JavaScript.
+        req.Tests.Should().NotContain("'status'");
+        req.Assertions.Should().Equal(new KvPair("res.status", "eq 200"));
 
         // Compose (no parent layers) and run.
         var composed = RequestComposition.Compose(col, Array.Empty<Folder>(), req);
@@ -73,8 +76,12 @@ public class PostmanImportTranslationE2ETests
             new[] { new KeyValuePair<string, string>("Content-Type", "application/json") });
         var post = host.RunPostResponse(null, composed.TestsScript, resp, new Dictionary<string, string>());
         post.IsSuccess.Should().BeTrue();
-        post.TestOutcomes.Should().HaveCount(2);
-        post.TestOutcomes.Should().AllSatisfy(t => t.Passed.Should().BeTrue());
+        post.TestOutcomes.Should().ContainSingle().Which.Passed.Should().BeTrue();
+
+        var snapshot = new Vegha.Core.Scripting.Testing.ResponseSnapshot(200, "OK", "{\"id\":42}", 5, null);
+        Vegha.Core.Scripting.Testing.AssertionEvaluator
+            .Evaluate(req.Assertions[0].Name, req.Assertions[0].Value, snapshot)
+            .Passed.Should().BeTrue();
     }
 
     [Fact]

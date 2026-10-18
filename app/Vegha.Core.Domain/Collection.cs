@@ -22,6 +22,12 @@ public sealed record Collection
     public string? PostResponseScript { get; init; }
     /// <summary>Tests script that runs after every request. Concatenated with folder + request scripts.</summary>
     public string? TestsScript { get; init; }
+    /// <summary>Scriptless assertions applied to every request in the collection (evaluated
+    /// before the request's own). Same shape as <see cref="RequestItem.Assertions"/>.</summary>
+    public IList<KvPair> Assertions { get; init; } = new List<KvPair>();
+    /// <summary>Linked requests run before every request in the collection (outermost first).
+    /// Same shape as <see cref="RequestItem.ChainLinks"/>.</summary>
+    public IList<KvPair> ChainLinks { get; init; } = new List<KvPair>();
     /// <summary>Markdown docs displayed at the collection level.</summary>
     public string? Docs { get; init; }
     /// <summary>Defaults applied when creating a NEW request in this collection (request type
@@ -81,6 +87,10 @@ public sealed record Folder
     public string? PostResponseScript { get; init; }
     /// <summary>Tests script for every request in this folder.</summary>
     public string? TestsScript { get; init; }
+    /// <summary>Scriptless assertions applied to every request in this folder.</summary>
+    public IList<KvPair> Assertions { get; init; } = new List<KvPair>();
+    /// <summary>Linked requests run before every request in this folder (after the collection's).</summary>
+    public IList<KvPair> ChainLinks { get; init; } = new List<KvPair>();
     /// <summary>Markdown docs displayed at the folder level.</summary>
     public string? Docs { get; init; }
 }
@@ -104,7 +114,22 @@ public sealed record RequestItem
     public BodyConfig Body { get; init; } = new();
     public AuthConfig? Auth { get; init; }
     public IList<KvPair> PreRequestVars { get; init; } = new List<KvPair>();
+    /// <summary>Scriptless captures into session runtime variables (<c>vars:post-response</c>,
+    /// Bruno-compatible). Name = variable, Value = response expression such as
+    /// <c>res.body.access_token</c> or <c>res.headers['x-id'] | lower</c>.</summary>
     public IList<KvPair> PostResponseVars { get; init; } = new List<KvPair>();
+    /// <summary>Captures persisted into the active environment (<c>vars:post-response:env</c>,
+    /// Vegha extension). Same shape as <see cref="PostResponseVars"/>.</summary>
+    public IList<KvPair> PostResponseEnvVars { get; init; } = new List<KvPair>();
+    /// <summary>Captures persisted into the global environment (<c>vars:post-response:global</c>).</summary>
+    public IList<KvPair> PostResponseGlobalVars { get; init; } = new List<KvPair>();
+    /// <summary>Scriptless assertions (Bruno's <c>assert { }</c> block). Name = response
+    /// expression (<c>res.status</c>), Value = operator + operand (<c>eq 200</c>, <c>isNumber</c>).</summary>
+    public IList<KvPair> Assertions { get; init; } = new List<KvPair>();
+    /// <summary>Linked requests run before this one (<c>chain:pre-request { }</c>, Vegha
+    /// extension). Name = collection-relative path of the linked <c>.bru</c> file, Value = run
+    /// condition — see <see cref="ChainLinkSpec"/>.</summary>
+    public IList<KvPair> ChainLinks { get; init; } = new List<KvPair>();
     public string? PreRequestScript { get; init; }
     /// <summary>Post-response script — runs after the response, before tests. Bruno parity
     /// (<c>script:post-response { }</c>). Distinct from <see cref="Tests"/>: post-response is
@@ -300,4 +325,72 @@ public enum AuthType
     AwsV4,
     Ntlm,
     Wsse
+}
+
+/// <summary>When a linked (chained) request runs before the request that depends on it.</summary>
+public enum ChainRunMode
+{
+    /// <summary>Every time.</summary>
+    Always,
+    /// <summary>Only when the variable <see cref="ChainLinkSpec.Argument"/> is unset or empty.</summary>
+    WhenEmpty,
+    /// <summary>Only when the linked request hasn't run this session, or its last response is
+    /// older than <see cref="ChainLinkSpec.MaxAge"/> (Insomnia's "resend when expired").</summary>
+    WhenStale,
+    /// <summary>Only when the condition <see cref="ChainLinkSpec.Argument"/> holds, e.g.
+    /// <c>{{role}} = admin</c> (operators <c>= != &gt; &gt;= &lt; &lt;= *= ^= $=</c>).</summary>
+    When,
+}
+
+/// <summary>The value half of a <c>chain:pre-request</c> entry: <c>always</c>,
+/// <c>when-empty token</c>, <c>when-stale 10m</c> or <c>when {{role}} = admin</c>.</summary>
+public sealed record ChainLinkSpec(ChainRunMode Mode, string Argument)
+{
+    public static ChainLinkSpec Parse(string? value)
+    {
+        var text = (value ?? string.Empty).Trim();
+        var space = text.IndexOf(' ');
+        var head = space < 0 ? text : text[..space];
+        var rest = space < 0 ? string.Empty : text[(space + 1)..].Trim();
+        return head.ToLowerInvariant() switch
+        {
+            "when-empty" => new ChainLinkSpec(ChainRunMode.WhenEmpty, rest),
+            "when-stale" => new ChainLinkSpec(ChainRunMode.WhenStale, rest.Length == 0 ? "10m" : rest),
+            "when" => new ChainLinkSpec(ChainRunMode.When, rest),
+            _ => new ChainLinkSpec(ChainRunMode.Always, string.Empty),
+        };
+    }
+
+    public string ToStorage() => Mode switch
+    {
+        ChainRunMode.WhenEmpty => $"when-empty {Argument}".TrimEnd(),
+        ChainRunMode.WhenStale => $"when-stale {Argument}".TrimEnd(),
+        ChainRunMode.When => $"when {Argument}".TrimEnd(),
+        _ => "always",
+    };
+
+    /// <summary>Max age for <see cref="ChainRunMode.WhenStale"/>: <c>30s</c>, <c>10m</c>, <c>2h</c>
+    /// (bare numbers are minutes). Falls back to 10 minutes when unparseable.</summary>
+    public TimeSpan MaxAge
+    {
+        get
+        {
+            var a = Argument.Trim().ToLowerInvariant();
+            if (a.Length == 0) return TimeSpan.FromMinutes(10);
+            var unit = a[^1];
+            var num = char.IsLetter(unit) ? a[..^1] : a;
+            if (!double.TryParse(num, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var n) || n < 0)
+                return TimeSpan.FromMinutes(10);
+            return unit switch
+            {
+                's' => TimeSpan.FromSeconds(n),
+                'h' => TimeSpan.FromHours(n),
+                'd' => TimeSpan.FromDays(n),
+                _ => TimeSpan.FromMinutes(n),
+            };
+        }
+    }
+
+    public override string ToString() => ToStorage();
 }

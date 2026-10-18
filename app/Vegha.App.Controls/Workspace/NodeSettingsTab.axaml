@@ -7,23 +7,29 @@
              xmlns:ws="using:Vegha.App.Controls.Workspace"
              xmlns:icons="using:Vegha.App.Controls.Icons"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="640"
-             x:Class="Vegha.App.Controls.Workspace.CollectionSettingsTab"
-             x:DataType="tabs:CollectionSettingsTabViewModel">
+             x:Class="Vegha.App.Controls.Workspace.NodeSettingsTab"
+             x:DataType="tabs:NodeSettingsTabViewModel">
     <DockPanel Background="{DynamicResource Bg2Brush}">
-        <!-- Header: collection name + Save -->
+        <!-- Header: collection / folder name + Save. One view serves both kinds; the
+             collection-only bits (environment counts, Presets) are gated on IsCollection. -->
         <Border DockPanel.Dock="Top"
                 Padding="16,12"
                 BorderBrush="{DynamicResource Border0Brush}"
                 BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="Auto,*,Auto">
-                <icons:Icon Grid.Column="0" Kind="Collection" Size="18"
-                            Foreground="{DynamicResource Text1Brush}"
-                            VerticalAlignment="Center" Margin="0,0,10,0" />
+                <Panel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <icons:Icon Kind="Collection" Size="18"
+                                Foreground="{DynamicResource Text1Brush}"
+                                IsVisible="{Binding IsCollection}" />
+                    <icons:Icon Kind="Folder" Size="18"
+                                Foreground="{DynamicResource Text1Brush}"
+                                IsVisible="{Binding !IsCollection}" />
+                </Panel>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                     <TextBlock Text="{Binding Props.Name}"
                                FontSize="15" FontWeight="SemiBold"
                                Foreground="{DynamicResource Text0Brush}" />
-                    <TextBlock Text="Collection settings"
+                    <TextBlock Text="{Binding KindLabel}"
                                FontSize="10" LetterSpacing="1"
                                Foreground="{DynamicResource Text2Brush}" />
                 </StackPanel>
@@ -61,7 +67,7 @@
                                 </StackPanel>
                             </Grid>
 
-                            <Grid ColumnDefinitions="Auto,*">
+                            <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding IsCollection}">
                                 <Border Grid.Column="0" Width="38" Height="38" CornerRadius="9"
                                         Background="#1F10B981" VerticalAlignment="Top">
                                     <icons:Icon Kind="Globe" Size="18"
@@ -72,9 +78,9 @@
                                     <TextBlock Text="Environments" FontSize="12" FontWeight="SemiBold"
                                                Foreground="{DynamicResource Text0Brush}" />
                                     <TextBlock FontSize="11" Foreground="{DynamicResource Text2Brush}">
-                                        <Run Text="{Binding CollectionEnvCount}" />
+                                        <Run Text="{Binding $parent[UserControl].((tabs:CollectionSettingsTabViewModel)DataContext).CollectionEnvCount, FallbackValue=0}" />
                                         <Run Text=" collection · " />
-                                        <Run Text="{Binding GlobalEnvCount}" />
+                                        <Run Text="{Binding $parent[UserControl].((tabs:CollectionSettingsTabViewModel)DataContext).GlobalEnvCount, FallbackValue=0}" />
                                         <Run Text=" global" />
                                     </TextBlock>
                                 </StackPanel>
@@ -93,7 +99,7 @@
                                                Foreground="{DynamicResource Text0Brush}" />
                                     <TextBlock FontSize="11" Foreground="{DynamicResource Text2Brush}">
                                         <Run Text="{Binding RequestCount}" />
-                                        <Run Text=" request(s) in collection" />
+                                        <Run Text="{Binding RequestCountLabel}" />
                                     </TextBlock>
                                 </StackPanel>
                             </Grid>
@@ -141,7 +147,7 @@
                                      BorderThickness="0"
                                      Foreground="{DynamicResource Text0Brush}"
                                      Padding="16,12"
-                                     Watermark="# Document this collection (Markdown)" />
+                                     Watermark="# Document this (Markdown)" />
 
                             <!-- VIEW mode: rendered preview when docs exist, else a placeholder. -->
                             <Panel IsVisible="{Binding !IsDocsEditing}">
@@ -164,7 +170,7 @@
                                                FontSize="13" FontWeight="SemiBold"
                                                Foreground="{DynamicResource Text1Brush}"
                                                HorizontalAlignment="Center" />
-                                    <TextBlock Text="Document this collection's purpose, endpoints, and conventions. Markdown is supported — headings, lists, code blocks, tables, and links."
+                                    <TextBlock Text="Document its purpose, endpoints, and conventions. Markdown is supported — headings, lists, code blocks, tables, and links."
                                                FontSize="11"
                                                Foreground="{DynamicResource Text2Brush}"
                                                TextWrapping="Wrap" TextAlignment="Center"
@@ -224,12 +230,25 @@
 
             <!-- ===================== Script ===================== -->
             <TabItem Header="Script">
+                <DockPanel>
+                <!-- Linked requests for every request in scope (chain:pre-request). Outer
+                     (collection) links run before folder links, which run before the request's own. -->
+                <StackPanel DockPanel.Dock="Top" Margin="0,8,0,0">
+                    <StackPanel Margin="16,4,16,6" Spacing="2">
+                        <TextBlock Text="RUN FIRST (LINKED REQUESTS)" Classes="sectionHeaderMinor" />
+                        <TextBlock Classes="helpText" TextWrapping="Wrap"
+                                   Text="Requests that run before every request in scope — e.g. a Login that only runs when {{token}} is empty. Their captured variables are available to every request." />
+                    </StackPanel>
+                    <ws:ChainLinksTable ItemsSource="{Binding Props.ChainLinks}"
+                                        RequestPaths="{Binding Props.LinkableRequestPaths}"
+                                        RemoveCommand="{Binding Props.RemoveChainLinkCommand}" />
+                </StackPanel>
                 <Grid Margin="16,12" RowDefinitions="Auto,*,8,Auto,*">
                     <TextBlock Grid.Row="0"
                                FontSize="10" FontStyle="Italic"
                                Foreground="{DynamicResource Text3Brush}"
                                TextWrapping="Wrap"
-                               Text="Pre-request — runs before every request in this collection."
+                               Text="Pre-request — runs before every request in scope."
                                Margin="0,0,0,6" />
                     <TextBox Grid.Row="1"
                              Text="{Binding Props.PreRequestScript}"
@@ -254,16 +273,28 @@
                              Foreground="{DynamicResource Text0Brush}"
                              Padding="10,8" />
                 </Grid>
+                </DockPanel>
             </TabItem>
 
             <!-- ===================== Tests ===================== -->
             <TabItem Header="Tests">
+                <DockPanel>
+                <!-- Scriptless assertions applied to every request in scope (assert { }). -->
+                <StackPanel DockPanel.Dock="Top" Margin="0,8,0,0">
+                    <StackPanel Margin="16,4,16,6" Spacing="2">
+                        <TextBlock Text="ASSERTIONS" Classes="sectionHeaderMinor" />
+                        <TextBlock Classes="helpText" TextWrapping="Wrap"
+                                   Text="Checked after every request in scope, before the request's own assertions — e.g. status is less than 500, or response time under 2000 ms." />
+                    </StackPanel>
+                    <ws:AssertionsTable ItemsSource="{Binding Props.Assertions}"
+                                        RemoveCommand="{Binding Props.RemoveAssertionCommand}" />
+                </StackPanel>
                 <DockPanel Margin="16,12">
                     <TextBlock DockPanel.Dock="Top"
                                FontSize="10" FontStyle="Italic"
                                Foreground="{DynamicResource Text3Brush}"
                                TextWrapping="Wrap"
-                               Text="Runs after every request in this collection. Use test('name', fn) and expect(actual)."
+                               Text="JavaScript tests (advanced) — run after every request in scope. Use test('name', fn) and expect(actual)."
                                Margin="0,0,0,6" />
                     <TextBox Text="{Binding Props.TestsScript}"
                              AcceptsReturn="True"
@@ -273,10 +304,11 @@
                              Foreground="{DynamicResource Text0Brush}"
                              Padding="10,8" />
                 </DockPanel>
+                </DockPanel>
             </TabItem>
 
             <!-- ===================== Presets ===================== -->
-            <TabItem Header="Presets">
+            <TabItem Header="Presets" IsVisible="{Binding IsCollection}">
                 <ScrollViewer>
                     <StackPanel Margin="16,12" Spacing="14" MaxWidth="480" HorizontalAlignment="Left">
                         <TextBlock Text="Defaults applied when creating a new request in this collection."

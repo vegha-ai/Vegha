@@ -5,6 +5,7 @@
              xmlns:vm="using:Vegha.App.ViewModels"
              xmlns:ws="using:Vegha.App.Controls.Workspace"
              xmlns:cmn="using:Vegha.App.Controls.Common"
+             xmlns:icons="using:Vegha.App.Controls.Icons"
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="600"
              x:Class="Vegha.App.Controls.Workspace.RequestWorkspace"
              x:DataType="vm:RequestEditorViewModel">
@@ -155,15 +156,12 @@
                              Mode="headers" />
             </TabItem>
 
-            <!-- Vars — request-scoped variables. Two stacked sections (Pre Request +
-                 Post Response) matching Bruno's `vars:pre-request` + `vars:post-response`
-                 blocks. Same KvEditor template as Params / Headers. -->
+            <!-- Vars — request-scoped variables (Bruno's `vars:pre-request`). Post-response
+                 captures (`vars:post-response`) are edited in the Tests tab. -->
             <TabItem>
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" Spacing="2">
                         <TextBlock Text="Vars" VerticalAlignment="Center" />
-                        <!-- Single total count (Pre + Post combined) so the user sees one
-                             number at a glance. -->
                         <TextBlock Text="{Binding VarsTotalCount}"
                                    FontSize="9" FontWeight="SemiBold"
                                    Foreground="{DynamicResource AccentBrush}"
@@ -171,15 +169,16 @@
                                    IsVisible="{Binding VarsTotalCount}" />
                     </StackPanel>
                 </TabItem.Header>
-                <Grid RowDefinitions="Auto,*,Auto,*">
-                    <!-- Pre Request section -->
+                <Grid RowDefinitions="Auto,*">
+                    <!-- Pre Request section. Values captured from the RESPONSE live in the
+                         Tests tab's "Set variables from response" table. -->
                     <Border Grid.Row="0" Padding="12,8,12,4"
                             BorderBrush="{DynamicResource Border0Brush}"
                             BorderThickness="0,0,0,1">
                         <StackPanel Spacing="2">
                             <TextBlock Text="PRE REQUEST" Classes="sectionHeaderMinor" />
-                            <TextBlock Text="Static key/value pairs merged into {{var}} interpolation before the request is sent."
-                                       Classes="helpText" />
+                            <TextBlock Text="Static key/value pairs merged into {{var}} interpolation before the request is sent. To capture values from the response, use the Tests tab."
+                                       Classes="helpText" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
                     <ws:KvEditor Grid.Row="1"
@@ -187,22 +186,6 @@
                                  Variables="{Binding ResolvedVariablesSnapshot}"
                                  AddCommand="{Binding AddVariableCommand}"
                                  RemoveCommand="{Binding RemoveVariableCommand}" />
-
-                    <!-- Post Response section -->
-                    <Border Grid.Row="2" Padding="12,8,12,4"
-                            BorderBrush="{DynamicResource Border0Brush}"
-                            BorderThickness="0,1,0,1">
-                        <StackPanel Spacing="2">
-                            <TextBlock Text="POST RESPONSE" Classes="sectionHeaderMinor" />
-                            <TextBlock Text="Variables captured after the response. Value may be a literal or a JavaScript expression evaluated against res / req / bru."
-                                       Classes="helpText" />
-                        </StackPanel>
-                    </Border>
-                    <ws:KvEditor Grid.Row="3"
-                                 ItemsSource="{Binding PostResponseVariables}"
-                                 Variables="{Binding ResolvedVariablesSnapshot}"
-                                 AddCommand="{Binding AddPostResponseVariableCommand}"
-                                 RemoveCommand="{Binding RemovePostResponseVariableCommand}" />
                 </Grid>
             </TabItem>
 
@@ -225,6 +208,12 @@
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" Spacing="4">
                         <TextBlock Text="Pre-request" />
+                        <TextBlock Text="{Binding ChainLinksCount}"
+                                   FontSize="9" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   VerticalAlignment="Top" Margin="-2,-1,0,0"
+                                   IsVisible="{Binding ChainLinksCount}"
+                                   ToolTip.Tip="Linked requests" />
                         <Ellipse Width="6" Height="6"
                                  Fill="{DynamicResource AccentBrush}"
                                  VerticalAlignment="Top" Margin="0,2,0,0"
@@ -251,6 +240,9 @@
                                     ToolTip.Tip="Run this script in isolation and inspect console + variables" />
                         </Grid>
                     </Border>
+                    <!-- Linked requests (chain:pre-request) — run before this request; their
+                         captured variables flow in. Scriptless request chaining. -->
+                    <ws:ChainLinksPanel DockPanel.Dock="Top" />
                     <Border DockPanel.Dock="Bottom" IsVisible="{Binding #PreScriptEditor.HasError}"
                             Background="{DynamicResource Bg2Brush}"
                             BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,1,0,0"
@@ -328,59 +320,144 @@
                 </DockPanel>
             </TabItem>
 
-            <!-- Tests — runs after post-response. Use test('name', fn) and expect(actual).
-                 Both Jest-style matchers (.toBe / .toEqual / ...) and Chai-style chains
-                 (.to.equal / .to.have.property / .to.have.status / .to.be.true) work. -->
+            <!-- Tests — no-code first: "Set variables from response" + "Assertions" tables
+                 (ScriptlessTestsPanel), with the JavaScript tests editor folded below for
+                 advanced cases. Order at send time: captures → post-response script →
+                 assertions → JS tests. -->
             <TabItem>
                 <TabItem.Header>
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                        <TextBlock Text="Tests" />
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                        <TextBlock Text="Tests" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ScriptlessCount}"
+                                   FontSize="9" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource AccentBrush}"
+                                   VerticalAlignment="Top" Margin="1,-1,0,0"
+                                   IsVisible="{Binding ScriptlessCount}" />
                         <Ellipse Width="6" Height="6"
                                  Fill="{DynamicResource AccentBrush}"
-                                 VerticalAlignment="Top" Margin="0,2,0,0"
+                                 VerticalAlignment="Top" Margin="2,2,0,0"
                                  IsVisible="{Binding TestsScriptHasData}" />
                     </StackPanel>
                 </TabItem.Header>
-                <DockPanel Background="{DynamicResource Bg2Brush}">
-                    <Border DockPanel.Dock="Top" Padding="14,8"
+                <!-- Rows: no-code tables | draggable divider | JavaScript section. The section
+                     row's height is managed in code-behind: Auto (header only) when collapsed,
+                     the remembered dragged height when expanded. -->
+                <Grid x:Name="TestsSplitGrid" RowDefinitions="*,Auto,Auto">
+                    <ws:ScriptlessTestsPanel Grid.Row="0" />
+
+                    <GridSplitter x:Name="TestsScriptSplitter" Grid.Row="1" Classes="row"
+                                  Background="{DynamicResource Border0Brush}"
+                                  IsVisible="{Binding IsTestsScriptExpanded}"
+                                  DoubleTapped="OnTestsScriptSplitterDoubleTapped"
+                                  ToolTip.Tip="Drag to resize the JavaScript tests editor — double-click to reset" />
+
+                    <DockPanel Grid.Row="2">
+
+                    <!-- JavaScript tests: same section-header treatment as "Set variables from
+                         response" / "Assertions" above, collapsed by default unless the request
+                         already has a tests script. The header row toggles it. -->
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource Bg2Brush}"
                             BorderBrush="{DynamicResource Border0Brush}"
-                            BorderThickness="0,0,0,1">
+                            BorderThickness="{Binding IsTestsScriptExpanded, Converter={x:Static ws:TestsHeaderBorderConverter.Instance}}"
+                            Padding="12,8,12,8">
                         <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Spacing="6">
-                                <TextBlock FontSize="10" FontStyle="Italic"
-                                           Foreground="{DynamicResource Text3Brush}"
-                                           TextWrapping="Wrap"
-                                           Text="Runs after Post-response. Use test('name', fn) and expect(actual). Jest matchers: .not, toBe / toEqual / toContain / toHaveLength / toMatch / toBeTruthy / toBeFalsy / toBeGreaterThan(OrEqual) / toBeLessThan(OrEqual) / toBeNull / toBeDefined / toMatchSchema / toThrow. Chai chains: .to.equal / .to.have.property / .to.have.status / .to.be.true / .to.contain. Ctrl+Space for autocomplete." />
-                                <ws:InheritedBanner IsVisible="{Binding IsTestsScriptInherited}"
-                                                    InheritedFrom="{Binding TestsScriptInheritedFrom}"
-                                                    OverrideCommand="{Binding OverrideInheritedTestsScriptCommand}" />
-                            </StackPanel>
+                            <ToggleButton Grid.Column="0"
+                                          Classes="sectionToggle"
+                                          IsChecked="{Binding IsTestsScriptExpanded, Mode=TwoWay}"
+                                          Background="Transparent" BorderThickness="0"
+                                          Padding="4,2" Margin="-4,-2" CornerRadius="4" Cursor="Hand"
+                                          HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch"
+                                          ToolTip.Tip="Show / hide the JavaScript tests editor">
+                                <!-- A section header, not a button: Fluent paints a checked
+                                     ToggleButton accent-blue (illegible here), so every state keeps
+                                     the panel background, with a soft tint on hover. -->
+                                <ToggleButton.Styles>
+                                    <Style Selector="ToggleButton.sectionToggle /template/ ContentPresenter#PART_ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+                                    </Style>
+                                    <Style Selector="ToggleButton.sectionToggle:checked /template/ ContentPresenter#PART_ContentPresenter">
+                                        <Setter Property="Background" Value="Transparent" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+                                    </Style>
+                                    <Style Selector="ToggleButton.sectionToggle:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+                                    </Style>
+                                    <Style Selector="ToggleButton.sectionToggle:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+                                    </Style>
+                                    <Style Selector="ToggleButton.sectionToggle:pressed /template/ ContentPresenter#PART_ContentPresenter">
+                                        <Setter Property="Background" Value="{DynamicResource Bg3Brush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Text1Brush}" />
+                                    </Style>
+                                </ToggleButton.Styles>
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <Panel Width="14" Margin="0,1,6,0" VerticalAlignment="Top">
+                                        <icons:Icon Kind="ChevronRight" Size="12"
+                                                    Foreground="{DynamicResource Text2Brush}"
+                                                    IsVisible="{Binding !IsTestsScriptExpanded}" />
+                                        <icons:Icon Kind="ChevronDown" Size="12"
+                                                    Foreground="{DynamicResource Text2Brush}"
+                                                    IsVisible="{Binding IsTestsScriptExpanded}" />
+                                    </Panel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="JAVASCRIPT TESTS" Classes="sectionHeaderMinor" />
+                                            <TextBlock Text="advanced" FontSize="10"
+                                                       Foreground="{DynamicResource Text3Brush}"
+                                                       VerticalAlignment="Center" />
+                                            <Ellipse Width="6" Height="6"
+                                                     Fill="{DynamicResource AccentBrush}"
+                                                     VerticalAlignment="Center"
+                                                     IsVisible="{Binding TestsScriptHasData}" />
+                                        </StackPanel>
+                                        <TextBlock Classes="helpText" TextWrapping="Wrap"
+                                                   Text="Runs after the assertions above. test('name', () =&gt; expect(res.getStatus()).to.equal(200)) — Jest matchers and Chai chains both work. Ctrl+Space for autocomplete." />
+                                    </StackPanel>
+                                </Grid>
+                            </ToggleButton>
                             <Button Grid.Column="1" Classes="tertiary" Content="▶ Run"
                                     VerticalAlignment="Top" Margin="8,0,0,0"
+                                    IsVisible="{Binding IsTestsScriptExpanded}"
                                     Command="{Binding RunTestsInspectCommand}"
                                     ToolTip.Tip="Run tests against the last response and inspect results" />
                         </Grid>
                     </Border>
-                    <Border DockPanel.Dock="Bottom" IsVisible="{Binding #TestsScriptEditor.HasError}"
-                            Background="{DynamicResource Bg2Brush}"
-                            BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,1,0,0"
-                            Padding="12,4">
-                        <TextBlock Text="{Binding #TestsScriptEditor.ErrorSummary}"
-                                   Foreground="{DynamicResource StatusErrBrush}"
-                                   FontFamily="{StaticResource MonoFont}" FontSize="11" TextWrapping="Wrap" />
-                    </Border>
-                    <ws:VariableAwareTextEditor
-                        x:Name="TestsScriptEditor"
-                        Text="{Binding TestsScript, Mode=TwoWay}"
-                        Variables="{Binding ResolvedVariablesSnapshot}"
-                        SingleLine="False"
-                        ShowLineNumbers="True"
-                        SyntaxHighlightingName="JavaScript"
-                        CompletionMode="Script"
-                        ScriptKind="Tests"
-                        Bordered="False"
-                        Watermark="// tests (JavaScript)&#x0A;// test('status is 200', () => { expect(res.getStatus()).to.equal(200); });" />
-                </DockPanel>
+
+                    <DockPanel IsVisible="{Binding IsTestsScriptExpanded}"
+                               Background="{DynamicResource Bg2Brush}">
+                        <ws:InheritedBanner DockPanel.Dock="Top" Margin="12,0,12,6"
+                                            IsVisible="{Binding IsTestsScriptInherited}"
+                                            InheritedFrom="{Binding TestsScriptInheritedFrom}"
+                                            OverrideCommand="{Binding OverrideInheritedTestsScriptCommand}" />
+                        <Border DockPanel.Dock="Bottom" IsVisible="{Binding #TestsScriptEditor.HasError}"
+                                Background="{DynamicResource Bg2Brush}"
+                                BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,1,0,0"
+                                Padding="12,4">
+                            <TextBlock Text="{Binding #TestsScriptEditor.ErrorSummary}"
+                                       Foreground="{DynamicResource StatusErrBrush}"
+                                       FontFamily="{StaticResource MonoFont}" FontSize="11" TextWrapping="Wrap" />
+                        </Border>
+                        <Border BorderBrush="{DynamicResource Border0Brush}" BorderThickness="0,1,0,0">
+                            <ws:VariableAwareTextEditor
+                                x:Name="TestsScriptEditor"
+                                Text="{Binding TestsScript, Mode=TwoWay}"
+                                Variables="{Binding ResolvedVariablesSnapshot}"
+                                SingleLine="False"
+                                ShowLineNumbers="True"
+                                SyntaxHighlightingName="JavaScript"
+                                CompletionMode="Script"
+                                ScriptKind="Tests"
+                                Bordered="False"
+                                Watermark="// tests (JavaScript)&#x0A;// test('status is 200', () => { expect(res.getStatus()).to.equal(200); });" />
+                        </Border>
+                    </DockPanel>
+                    </DockPanel>
+                </Grid>
             </TabItem>
 
             <!-- Docs — split: editable markdown on the left, rendered preview on the right. -->

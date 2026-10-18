@@ -26,6 +26,10 @@ public static class BruEmitter
         EmitBody(sb, request.Body);
         EmitDictBlock(sb, "vars:pre-request", request.PreRequestVars);
         EmitDictBlock(sb, "vars:post-response", request.PostResponseVars);
+        EmitDictBlock(sb, "vars:post-response:env", request.PostResponseEnvVars);
+        EmitDictBlock(sb, "vars:post-response:global", request.PostResponseGlobalVars);
+        EmitDictBlock(sb, "assert", request.Assertions);
+        EmitDictBlock(sb, "chain:pre-request", request.ChainLinks);
         EmitTextBlock(sb, "script:pre-request", request.PreRequestScript);
         EmitTextBlock(sb, "script:post-response", request.PostResponseScript);
         EmitTextBlock(sb, "tests", request.Tests);

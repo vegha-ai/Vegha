@@ -79,6 +79,12 @@ internal static class ServiceRegistration
         // lights up docs + autocomplete in every tab pointed at it (memory + disk).
         services.AddSingleton<Vegha.App.ViewModels.Services.GraphQLSchemaCache>();
 
+        // Scriptless testing / request chaining session state: runtime variables (captures,
+        // bru.setVar) and each request's last response (linked "when-stale" requests). Shared by
+        // every editor tab and handed to runner tabs.
+        services.AddSingleton<Vegha.App.ViewModels.Services.RuntimeVariableStore>();
+        services.AddSingleton<Vegha.Core.Requests.LastResponseCache>(_ => new Vegha.Core.Requests.LastResponseCache());
+
         // Per-tab editor: transient. The OpenTabsViewModel asks for a fresh editor
         // for every tab the user opens.
         services.AddTransient<RequestEditorViewModel>();
@@ -95,7 +101,11 @@ internal static class ServiceRegistration
             new Vegha.App.ViewModels.Tabs.OpenTabsViewModel(
                 editorFactory: sp.GetRequiredService<Func<RequestEditorViewModel>>(),
                 soapFactory: sp.GetRequiredService<Func<SoapWorkspaceViewModel>>(),
-                logger: sp.GetRequiredService<ILogger<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>>()));
+                logger: sp.GetRequiredService<ILogger<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>>())
+            {
+                ResponseCache = sp.GetRequiredService<Vegha.Core.Requests.LastResponseCache>(),
+                RuntimeVariablesProvider = sp.GetRequiredService<Vegha.App.ViewModels.Services.RuntimeVariableStore>().Snapshot,
+            });
 
         services.AddSingleton<CollectionsViewModel>(sp =>
         {
@@ -164,9 +174,24 @@ internal static class ServiceRegistration
         services.AddSingleton<Vegha.App.ViewModels.Runner.RunnerSidebarViewModel>(sp =>
             new Vegha.App.ViewModels.Runner.RunnerSidebarViewModel(
                 sp.GetRequiredService<CollectionsViewModel>()));
-        services.AddSingleton<EnvironmentsViewModel>();
+        services.AddSingleton<EnvironmentsViewModel>(sp =>
+        {
+            var collections = sp.GetRequiredService<CollectionsViewModel>();
+            return new EnvironmentsViewModel(
+                collections,
+                sp.GetRequiredService<WorkspacesViewModel>(),
+                sp.GetRequiredService<Vegha.Integrations.Secrets.SecretRegistry>(),
+                sp.GetRequiredService<ILogger<EnvironmentsViewModel>>())
+            {
+                Runtime = new Vegha.App.ViewModels.Scriptless.RuntimeVariablesViewModel(
+                    sp.GetRequiredService<Vegha.App.ViewModels.Services.RuntimeVariableStore>(),
+                    (name, value) => collections.ApplyScriptEnvVarMutations(new EnvVarMutationEventArgs(
+                        new Dictionary<string, string> { [name] = value }, Array.Empty<string>()))),
+            };
+        });
         services.AddSingleton<WebSocketViewModel>();
         services.AddTransient<ImportWizardViewModel>();
+        services.AddTransient<ExportDialogViewModel>();
         services.AddSingleton<CodegenViewModel>(sp => new CodegenViewModel(
             sp.GetRequiredService<RequestEditorViewModel>(),
             sp.GetService<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>()));

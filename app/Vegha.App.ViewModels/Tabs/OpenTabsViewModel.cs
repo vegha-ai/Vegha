@@ -577,6 +577,12 @@ public partial class OpenTabsViewModel : ObservableObject
     /// invocation creates a fresh tab (GUID id) so the user can compare two runs side-by-side
     /// without losing prior results. <paramref name="collectionPath"/> stamps the tab so it
     /// stays under that scope when the user navigates.</summary>
+    /// <summary>Session response cache handed to new runner tabs.</summary>
+    public Vegha.Core.Requests.LastResponseCache? ResponseCache { get; set; }
+
+    /// <summary>Session runtime variables handed to new runner tabs.</summary>
+    public Func<IReadOnlyDictionary<string, string>>? RuntimeVariablesProvider { get; set; }
+
     public CollectionRunTabViewModel OpenRunTab(
         Vegha.Core.Domain.Collection collection,
         Vegha.Core.Requests.HttpExecutor http,
@@ -589,30 +595,42 @@ public partial class OpenTabsViewModel : ObservableObject
         var tab = new CollectionRunTabViewModel(collection, id, http, scripting, workspace, secretRegistry)
         {
             CollectionPath = collectionPath,
+            ResponseCache = ResponseCache,
+            RuntimeVariablesProvider = RuntimeVariablesProvider,
         };
         Tabs.Add(tab);
         ActiveTab = tab;
         return tab;
     }
 
-    /// <summary>Opens (or activates) the Collection Settings tab for a collection. One tab per
-    /// collection (keyed by source path); re-opening activates the existing tab.</summary>
-    public CollectionSettingsTabViewModel OpenCollectionSettingsTab(CollectionSettingsTabViewModel tab)
+    /// <summary>Opens (or activates) a Collection / Folder Settings tab. One tab per node (keyed
+    /// by its directory); re-opening activates the existing tab.</summary>
+    public NodeSettingsTabViewModel OpenSettingsTab(NodeSettingsTabViewModel tab)
     {
         var existing = Tabs.FirstOrDefault(t => string.Equals(t.Id, tab.Id, StringComparison.OrdinalIgnoreCase));
-        if (existing is CollectionSettingsTabViewModel cs) { ActiveTab = cs; return cs; }
+        if (existing is NodeSettingsTabViewModel ns) { ActiveTab = ns; return ns; }
         Tabs.Add(tab);
         ActiveTab = tab;
         return tab;
     }
 
-    /// <summary>Closes any Collection Settings tab bound to <paramref name="collectionSourcePath"/>
-    /// — used when the collection is removed/closed so its settings tab doesn't linger.</summary>
+    /// <summary>True when the active tab is the settings tab for the node at
+    /// <paramref name="nodePath"/> (collection root or folder directory).</summary>
+    public bool IsSettingsTabActive(string nodePath) =>
+        ActiveTab is NodeSettingsTabViewModel ns
+        && string.Equals(ns.NodePath, nodePath, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Closes the Collection Settings tab bound to <paramref name="collectionSourcePath"/>
+    /// and every Folder Settings tab inside it — used when the collection is removed/closed so
+    /// its settings tabs don't linger.</summary>
     public void CloseCollectionSettingsTab(string collectionSourcePath)
     {
-        var id = CollectionSettingsTabViewModel.BuildId(collectionSourcePath);
-        var match = Tabs.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
-        if (match is not null) CloseTab(match);
+        var matches = Tabs.OfType<NodeSettingsTabViewModel>()
+            .Where(t => string.Equals(t.NodePath, collectionSourcePath, StringComparison.OrdinalIgnoreCase)
+                     || (t is FolderSettingsTabViewModel
+                         && string.Equals(t.CollectionPath, collectionSourcePath, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        foreach (var match in matches) CloseTab(match);
     }
 
     /// <summary>Opens (or activates) a tab showing a historical request + response. The

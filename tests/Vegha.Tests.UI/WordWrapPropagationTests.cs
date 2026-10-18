@@ -168,7 +168,7 @@ public class WordWrapPropagationTests
     }
 
     [AvaloniaFact]
-    public void VarsTotalCount_TracksBothCollections()
+    public void VarsTotalCount_TracksPreRequestVars()
     {
         var vm = CreateVm();
         vm.VarsTotalCount.Should().Be(0);
@@ -176,10 +176,7 @@ public class WordWrapPropagationTests
         vm.Variables.Add(new KvEntry("a", "1"));
         vm.VarsTotalCount.Should().Be(1, "adding a pre-request var should bump the total");
 
-        vm.PostResponseVariables.Add(new KvEntry("b", "res.getBody().token"));
-        vm.VarsTotalCount.Should().Be(2, "adding a post-response var should also bump the total");
-
         vm.Variables.Clear();
-        vm.VarsTotalCount.Should().Be(1, "removing pre-request rows should drop the total");
+        vm.VarsTotalCount.Should().Be(0, "removing pre-request rows should drop the total");
     }
 }

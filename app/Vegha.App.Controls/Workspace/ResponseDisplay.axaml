@@ -6,6 +6,7 @@
              xmlns:ws="using:Vegha.App.Controls.Workspace"
              xmlns:icons="using:Vegha.App.Controls.Icons"
              xmlns:conv="using:Vegha.App.Controls.Converters"
+             xmlns:req="using:Vegha.Core.Requests"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="360"
              x:Class="Vegha.App.Controls.Workspace.ResponseDisplay"
              x:DataType="vm:RequestEditorViewModel">
@@ -16,19 +17,44 @@
             <Border DockPanel.Dock="Top" Padding="12,8" Height="36"
                     BorderBrush="{DynamicResource Border0Brush}"
                     BorderThickness="0,0,0,1">
-                <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*">
+                <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto">
                     <TextBlock Grid.Column="0" Text="RESPONSE"
                                FontSize="10" FontWeight="SemiBold"
                                Foreground="{DynamicResource Text2Brush}"
                                Margin="0,0,14,0"
                                VerticalAlignment="Center" />
 
-                    <!-- (empty-state hint moved into the response body below) -->
+                    <!-- Compact strip (no response yet, or folded by the user): the body's
+                         designed empty state is hidden, so the send hint moves up here. -->
+                    <TextBlock Grid.Column="1" Grid.ColumnSpan="4"
+                               x:Name="CompactSendHint"
+                               FontSize="11"
+                               Foreground="{DynamicResource Text3Brush}"
+                               VerticalAlignment="Center">
+                        <TextBlock.IsVisible>
+                            <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                <Binding Path="!HasResponse" />
+                                <Binding Path="$parent[ws:ResponseDisplay].IsCompact" />
+                            </MultiBinding>
+                        </TextBlock.IsVisible>
+                    </TextBlock>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"
                                 Margin="0,0,14,0"
                                 IsVisible="{Binding HasResponse}"
+                                Background="Transparent"
+                                ToolTip.Tip="Right-click to add an assertion"
                                 VerticalAlignment="Center">
+                        <StackPanel.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Assert this status code" Click="OnAssertStatus_Click">
+                                    <MenuItem.Icon><icons:Icon Kind="Check" Size="14" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Capture status as variable…" Click="OnCaptureStatus_Click">
+                                    <MenuItem.Icon><icons:Icon Kind="Variable" Size="14" /></MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </StackPanel.ContextMenu>
                         <TextBlock Text="Status:" Foreground="{DynamicResource Text2Brush}" FontSize="11" />
                         <TextBlock FontWeight="SemiBold" FontSize="12"
                                    Foreground="{Binding ResponseStatusCode, Converter={x:Static conv:StatusCategoryToBrushConverter.Instance}}">
@@ -41,7 +67,16 @@
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6"
                                 Margin="0,0,14,0"
                                 IsVisible="{Binding HasResponse}"
+                                Background="Transparent"
+                                ToolTip.Tip="Right-click to add a response-time assertion"
                                 VerticalAlignment="Center">
+                        <StackPanel.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Assert response time stays under 2× this" Click="OnAssertTime_Click">
+                                    <MenuItem.Icon><icons:Icon Kind="Check" Size="14" /></MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </StackPanel.ContextMenu>
                         <TextBlock Text="Time:" Foreground="{DynamicResource Text2Brush}" FontSize="11" />
                         <TextBlock FontWeight="SemiBold" FontSize="12"
                                    Foreground="{DynamicResource Text0Brush}">
@@ -60,8 +95,31 @@
                             <Run Text=" chars" />
                         </TextBlock>
                     </StackPanel>
+
+                    <!-- Fold / unfold the response pane (also Ctrl+J). MainWindow owns the row
+                         sizing; this just asks for the toggle. -->
+                    <Button Grid.Column="6" x:Name="CollapseToggleButton"
+                            Click="OnCollapseToggle_Click"
+                            Background="Transparent" BorderThickness="0"
+                            Width="22" Height="22" Padding="0" CornerRadius="3"
+                            Margin="8,-4,-6,-4"
+                            Cursor="Hand"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center">
+                        <Panel>
+                            <icons:Icon Kind="ChevronUp" Size="14"
+                                        Foreground="{DynamicResource Text2Brush}"
+                                        IsVisible="{Binding $parent[ws:ResponseDisplay].IsCompact}" />
+                            <icons:Icon Kind="ChevronDown" Size="14"
+                                        Foreground="{DynamicResource Text2Brush}"
+                                        IsVisible="{Binding !$parent[ws:ResponseDisplay].IsCompact}" />
+                        </Panel>
+                    </Button>
                 </Grid>
             </Border>
+
+            <!-- Everything below the status line folds away in compact mode. -->
+            <DockPanel IsVisible="{Binding !$parent[ws:ResponseDisplay].IsCompact}">
 
             <!-- Error banner -->
             <Border DockPanel.Dock="Top"
@@ -74,6 +132,58 @@
                            Foreground="{DynamicResource StatusErrBrush}"
                            FontSize="12"
                            TextWrapping="Wrap" />
+            </Border>
+
+            <!-- Linked requests that ran (or were skipped) before this send — the chain
+                 strip. Each chip: name, status / skip reason, and what it captured. -->
+            <Border DockPanel.Dock="Top"
+                    IsVisible="{Binding HasChainSteps}"
+                    Background="{DynamicResource Bg3Brush}"
+                    BorderBrush="{DynamicResource Border0Brush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="12,5">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Left" Text="RAN FIRST" FontSize="10" FontWeight="SemiBold"
+                               LetterSpacing="1" Foreground="{DynamicResource Text2Brush}"
+                               VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <ItemsControl ItemsSource="{Binding ChainSteps}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="req:ChainStep">
+                                <Border Background="{DynamicResource Bg2Brush}" CornerRadius="10"
+                                        BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                                        Padding="8,2" Margin="0,1,6,1"
+                                        ToolTip.Tip="{Binding Path}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource Text0Brush}" VerticalAlignment="Center" />
+                                        <TextBlock FontSize="11" FontFamily="{StaticResource MonoFont}"
+                                                   IsVisible="{Binding Ran}" VerticalAlignment="Center"
+                                                   Foreground="{Binding StatusCode, Converter={x:Static conv:StatusCategoryToBrushConverter.Instance}}">
+                                            <Run Text="{Binding StatusCode}" />
+                                            <Run Text=" · " Foreground="{DynamicResource Text3Brush}" />
+                                            <Run Text="{Binding ElapsedMilliseconds}" Foreground="{DynamicResource Text2Brush}" />
+                                            <Run Text="ms" Foreground="{DynamicResource Text2Brush}" />
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding SkipReason, StringFormat='skipped — {0}'}" FontSize="11"
+                                                   IsVisible="{Binding SkipReason, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                   Foreground="{DynamicResource Text3Brush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Error}" FontSize="11"
+                                                   IsVisible="{Binding Failed}"
+                                                   Foreground="{DynamicResource StatusErrBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Captured.Keys, Converter={x:Static ws:CapturedKeysConverter.Instance}}"
+                                                   FontSize="11" FontFamily="{StaticResource MonoFont}"
+                                                   Foreground="{DynamicResource StatusOkBrush}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
             </Border>
 
             <!-- GraphQL subscription timeline — docked above the response tabs while a
@@ -170,10 +280,31 @@
                              visible visual-line on each click/keystroke, which locks the UI on
                              huge documents even when highlighting is off. -->
                         <ws:ReadOnlyCodeView Grid.Row="1"
+                                             x:Name="BodyCodeView"
                                              IsVisible="{Binding UseRichResponseViewer}"
                                              Text="{Binding DisplayedBody}"
                                              SyntaxHighlightingName="{Binding ResponseSyntaxHighlightingName}"
-                                             WordWrap="{Binding ResponseWordWrap}" />
+                                             WordWrap="{Binding ResponseWordWrap}">
+                            <!-- Point-and-click scriptless testing: right-click any JSON value
+                                 to capture it into a variable or assert on it — no paths to type. -->
+                            <ws:ReadOnlyCodeView.ContextMenu>
+                                <ContextMenu Opening="OnBodyMenu_Opening">
+                                    <MenuItem x:Name="CaptureValueMenuItem" Header="Capture as variable…" Click="OnCaptureValue_Click">
+                                        <MenuItem.Icon><icons:Icon Kind="Variable" Size="14" /></MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem x:Name="AssertValueMenuItem" Header="Assert this value" Click="OnAssertValue_Click">
+                                        <MenuItem.Icon><icons:Icon Kind="Check" Size="14" /></MenuItem.Icon>
+                                    </MenuItem>
+                                    <MenuItem x:Name="CopyPathMenuItem" Header="Copy path" Click="OnCopyPath_Click">
+                                        <MenuItem.Icon><icons:Icon Kind="Code" Size="14" /></MenuItem.Icon>
+                                    </MenuItem>
+                                    <Separator />
+                                    <MenuItem Header="Copy" Click="OnCopySelection_Click">
+                                        <MenuItem.Icon><icons:Icon Kind="Copy" Size="14" /></MenuItem.Icon>
+                                    </MenuItem>
+                                </ContextMenu>
+                            </ws:ReadOnlyCodeView.ContextMenu>
+                        </ws:ReadOnlyCodeView>
 
                         <!-- Canvas-painted viewer for large bodies. Owns multi-line drag selection,
                              Ctrl+A / Ctrl+C clipboard, and per-line JSON/XML token highlighting.
@@ -305,7 +436,18 @@
                                 <DataTemplate x:DataType="vm:HeaderRow">
                                     <Border BorderBrush="{DynamicResource Border0Brush}"
                                             BorderThickness="0,0,0,1"
+                                            Background="Transparent"
                                             Padding="12,6">
+                                        <Border.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="Capture header as variable…" Click="OnCaptureHeader_Click" Tag="{Binding}">
+                                                    <MenuItem.Icon><icons:Icon Kind="Variable" Size="14" /></MenuItem.Icon>
+                                                </MenuItem>
+                                                <MenuItem Header="Assert this header value" Click="OnAssertHeader_Click" Tag="{Binding}">
+                                                    <MenuItem.Icon><icons:Icon Kind="Check" Size="14" /></MenuItem.Icon>
+                                                </MenuItem>
+                                            </ContextMenu>
+                                        </Border.ContextMenu>
                                         <Grid ColumnDefinitions="240,*">
                                             <TextBlock Grid.Column="0"
                                                        Text="{Binding Name}"
@@ -367,6 +509,14 @@
                                                         <TextBlock Text="✗" FontSize="13" FontWeight="Bold"
                                                                    Foreground="{DynamicResource StatusErrBrush}"
                                                                    IsVisible="{Binding !Passed}" />
+                                                        <Border IsVisible="{Binding IsAssertion}"
+                                                                Background="{DynamicResource Bg4Brush}" CornerRadius="3"
+                                                                Padding="4,0" VerticalAlignment="Center"
+                                                                ToolTip.Tip="Scriptless assertion (Tests tab)">
+                                                            <TextBlock Text="ASSERT" FontSize="9" FontWeight="SemiBold"
+                                                                       LetterSpacing="1"
+                                                                       Foreground="{DynamicResource Text2Brush}" />
+                                                        </Border>
                                                         <TextBlock Text="{Binding Name}"
                                                                    FontSize="12"
                                                                    Foreground="{DynamicResource Text0Brush}"
@@ -494,6 +644,24 @@
                 </TabItem>
             </TabControl>
 
+            <!-- Inline confirmation for point-and-click captures / assertions, with Undo. -->
+            <Border x:Name="InlineNotice"
+                    IsVisible="False"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Margin="0,0,16,14" Padding="12,7"
+                    CornerRadius="6"
+                    Background="{DynamicResource Bg4Brush}"
+                    BorderBrush="{DynamicResource Border1Brush}" BorderThickness="1"
+                    BoxShadow="0 4 14 0 #40000000">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <icons:Icon Kind="Check" Size="14" Foreground="{DynamicResource StatusOkBrush}" VerticalAlignment="Center" />
+                    <TextBlock x:Name="InlineNoticeText" FontSize="12" VerticalAlignment="Center"
+                               Foreground="{DynamicResource Text0Brush}" />
+                    <Button x:Name="InlineNoticeUndo" Classes="tertiary" Content="Undo" Padding="8,2"
+                            FontSize="11" Click="OnInlineNoticeUndo_Click" />
+                </StackPanel>
+            </Border>
+
             <!-- Empty state — shown until the first response arrives. -->
             <StackPanel IsVisible="{Binding !HasResponse}"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -533,6 +701,7 @@
                 </Border>
             </StackPanel>
             </Grid>
+            </DockPanel>
         </DockPanel>
 
         <!-- Busy overlay — covers the entire response panel while a request is in flight.
@@ -555,15 +724,19 @@
                      the icon directly fights the Viewbox/Canvas the Icon control builds
                      internally, and Avalonia 11 has no default animator for RenderTransform
                      as a whole — you must give the element a RotateTransform up front and
-                     animate its Angle. -->
+                     animate its Angle. The animation is gated on the "spinning" class (bound to
+                     IsSending): an INFINITE style animation keeps running while the overlay is
+                     hidden, ticking the render loop forever and burning idle CPU (very visible on
+                     GPU-less VDI / Citrix sessions that fall back to software rendering). -->
                 <Border HorizontalAlignment="Center"
                         Width="22" Height="22"
+                        Classes.spinning="{Binding IsSending}"
                         RenderTransformOrigin="50%,50%">
                     <Border.RenderTransform>
                         <RotateTransform Angle="0" />
                     </Border.RenderTransform>
                     <Border.Styles>
-                        <Style Selector="Border">
+                        <Style Selector="Border.spinning">
                             <Style.Animations>
                                 <Animation Duration="0:0:1.2" IterationCount="INFINITE">
                                     <KeyFrame Cue="0%">

@@ -36,7 +36,14 @@ public static class RequestComposition
         string? PreRequestScript,
         string? PostResponseScript,
         string? TestsScript,
-        string? Docs);
+        string? Docs)
+    {
+        /// <summary>Scriptless assertions, collection → folders → request order (all apply).</summary>
+        public IReadOnlyList<KvPair> Assertions { get; init; } = Array.Empty<KvPair>();
+        /// <summary>Linked requests to run first, collection → folders → request order. Enabled
+        /// rows only; a path linked at several levels keeps its first (outermost) occurrence.</summary>
+        public IReadOnlyList<KvPair> ChainLinks { get; init; } = Array.Empty<KvPair>();
+    }
 
     /// <summary>Where each inheritable value originated, so the editor can render
     /// "Inherited from &lt;layer&gt;" hints + Override buttons. Null on a field means
@@ -178,7 +185,20 @@ public static class RequestComposition
             folderChain.Select(f => f.TestsScript),
             request.Tests);
 
-        return new Composed(headers, auth, vars, preScript, postScript, testsScript, request.Docs);
+        return new Composed(headers, auth, vars, preScript, postScript, testsScript, request.Docs)
+        {
+            Assertions = collection.Assertions
+                .Concat(folderChain.SelectMany(f => f.Assertions))
+                .Concat(request.Assertions)
+                .Where(a => a.Enabled && !string.IsNullOrWhiteSpace(a.Name))
+                .ToList(),
+            ChainLinks = collection.ChainLinks
+                .Concat(folderChain.SelectMany(f => f.ChainLinks))
+                .Concat(request.ChainLinks)
+                .Where(l => l.Enabled && !string.IsNullOrWhiteSpace(l.Name))
+                .DistinctBy(l => NormalizeChainPath(l.Name))
+                .ToList(),
+        };
     }
 
     // ---- helpers ----
@@ -229,6 +249,15 @@ public static class RequestComposition
         return auth.Type != AuthType.Inherit;
     }
 
+    /// <summary>The inherited variable layers alone (workspace → collection → folders), last
+    /// wins — what an editor shows for <c>{{var}}</c> highlighting / hovers before the
+    /// request's own vars are layered on.</summary>
+    public static IReadOnlyDictionary<string, string> InheritedVars(
+        Collection collection,
+        IReadOnlyList<Folder> folderChain,
+        IReadOnlyList<KvPair>? workspaceVars) =>
+        MergeVars(collection, folderChain, new RequestItem(), workspaceVars);
+
     private static IReadOnlyDictionary<string, string> MergeVars(
         Collection collection,
         IReadOnlyList<Folder> folderChain,
@@ -268,5 +297,14 @@ public static class RequestComposition
             if (!string.IsNullOrWhiteSpace(f)) parts.Add(f);
         if (!string.IsNullOrWhiteSpace(requestScript)) parts.Add(requestScript);
         return parts.Count == 0 ? null : string.Join("\n\n", parts);
+    }
+
+    /// <summary>Canonical form of a chain-link path (forward slashes, no leading "./" or "/")
+    /// so <c>auth\login.bru</c> and <c>./auth/login.bru</c> dedupe and resolve alike.</summary>
+    public static string NormalizeChainPath(string path)
+    {
+        var p = path.Trim().Replace('\\', '/');
+        while (p.StartsWith("./", StringComparison.Ordinal)) p = p[2..];
+        return p.TrimStart('/');
     }
 }
