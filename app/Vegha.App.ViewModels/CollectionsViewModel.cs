@@ -861,76 +861,10 @@ public partial class CollectionsViewModel : ObservableObject
     {
         if (mutations is null || mutations.IsEmpty) return;
 
-        var newVarTarget = mutations.TargetGlobal
-            ? ActiveGlobalEnvironment
-            : ActiveEnvironment ?? ActiveGlobalEnvironment;
-        var changed = false;
-
-        foreach (var (name, value) in mutations.Updated)
-        {
-            if (string.IsNullOrEmpty(name)) continue;
-            if (mutations.TargetGlobal)
-            {
-                // Global-scoped captures write the global env only, even when a collection env
-                // defines the same name.
-                if (TrySetExistingVar(ActiveGlobalEnvironment, name, value)) { changed = true; continue; }
-            }
-            else if (TrySetExistingVar(ActiveEnvironment, name, value)
-                || TrySetExistingVar(ActiveGlobalEnvironment, name, value))
-            {
-                changed = true;
-                continue;
-            }
-            if (newVarTarget is not null)
-            {
-                newVarTarget.Variables.Add(new KvPair(name, value));
-                changed = true;
-            }
-        }
-
-        foreach (var name in mutations.Removed)
-        {
-            if (string.IsNullOrEmpty(name)) continue;
-            changed |= RemoveVar(ActiveEnvironment, name);
-            changed |= RemoveVar(ActiveGlobalEnvironment, name);
-        }
-
+        var changed = Vegha.Core.Engine.EnvironmentMutations.Apply(
+            ActiveEnvironment, ActiveGlobalEnvironment,
+            mutations.Updated, mutations.Removed, mutations.TargetGlobal);
         if (changed) PushEnvironmentToOpenTabs();
-    }
-
-    /// <summary>Replaces the value of an existing enabled-or-not variable by name (KvPair is
-    /// immutable, so the list entry is swapped, preserving Enabled / Description). Returns false
-    /// when the variable isn't present, letting the caller fall through to the next scope.</summary>
-    private static bool TrySetExistingVar(DomainEnv? env, string name, string value)
-    {
-        if (env is null) return false;
-        var vars = env.Variables;
-        for (var i = 0; i < vars.Count; i++)
-        {
-            if (string.Equals(vars[i].Name, name, StringComparison.Ordinal))
-            {
-                vars[i] = vars[i] with { Value = value };
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// <summary>Removes every entry matching <paramref name="name"/> from an env's variables.</summary>
-    private static bool RemoveVar(DomainEnv? env, string name)
-    {
-        if (env is null) return false;
-        var vars = env.Variables;
-        var removedAny = false;
-        for (var i = vars.Count - 1; i >= 0; i--)
-        {
-            if (string.Equals(vars[i].Name, name, StringComparison.Ordinal))
-            {
-                vars.RemoveAt(i);
-                removedAny = true;
-            }
-        }
-        return removedAny;
     }
 
     /// <summary>Flattens an env's enabled variables into a name→value dict, deduping by

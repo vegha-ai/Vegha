@@ -51,7 +51,7 @@ public partial class App : Application
 
                     // {{var}} hovers explain where a runtime variable's value came from
                     // ("captured from Login · res.body.access_token · 2 min ago").
-                    var runtimeVars = Services.GetRequiredService<Vegha.App.ViewModels.Services.RuntimeVariableStore>();
+                    var runtimeVars = Services.GetRequiredService<Vegha.Core.Engine.RuntimeVariableStore>();
                     Vegha.App.Controls.Workspace.VariableAwareTextEditor.VariableProvenance =
                         name => runtimeVars.TryGet(name, out var entry) ? runtimeVars.Describe(entry) : null;
                     // Runtime variables and remembered responses belong to one workspace session.

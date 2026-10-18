@@ -12,12 +12,12 @@ namespace Vegha.Core.Requests;
 /// the HTTP call, and runs the post-response + tests scripts. Returns everything the caller
 /// needs to render a result without touching any UI types.
 ///
-/// This is the engine that powers the Collection Runner. The editor's <c>SendAsync</c> path
-/// is intentionally NOT refactored to use this yet — keeping them as siblings lets the runner
-/// land without destabilizing the editor's many auth flows. Auth coverage for v1: None /
-/// Inherit / Bearer / Basic / API Key. Auth types that require multi-step token acquisition or
-/// signing (OAuth1, OAuth2, AWS SigV4, Digest, NTLM, WSSE, mTLS) return an error result with
-/// a clear "unsupported in runner" message; the user can still run those via the editor tab.
+/// This is the engine behind the Collection Runner, the CLI and the VS Code sidecar. It covers
+/// every auth type (OAuth2 authorization-code only when the host allows interactive auth —
+/// see <see cref="Options.AllowInteractiveAuth"/>) and every body mode, so a request behaves
+/// the same wherever it runs. Host services — a shared OAuth2 token cache, secret-manager
+/// resolution, session runtime variables — come in through <see cref="Options"/> and
+/// <see cref="Inputs.RuntimeVariables"/>; without them the pipeline is fully self-contained.
 /// </summary>
 public static class RequestPipeline
 {
@@ -35,7 +35,35 @@ public static class RequestPipeline
         RequestComposition.WorkspaceContext? Workspace = null,
         /// <summary>Linked-request context. When null, <c>chain:pre-request</c> links are ignored
         /// (callers without a collection on disk, e.g. ad-hoc sends).</summary>
-        ChainContext? Chain = null);
+        ChainContext? Chain = null,
+        /// <summary>Session runtime variables (<c>bru.setVar</c> values from earlier sends).
+        /// Beat collection/folder vars, lose to script-set and request-level vars. What this
+        /// send sets is reported in <see cref="Outputs.RuntimeVariablesSet"/>.</summary>
+        IReadOnlyDictionary<string, string>? RuntimeVariables = null);
+
+    /// <summary>Host services for a pipeline run. Every member is optional; the defaults give
+    /// the self-contained behavior headless callers (runner, CLI) rely on.</summary>
+    public sealed record Options
+    {
+        public static readonly Options Default = new();
+
+        /// <summary>Token acquirer whose cache should span the host's sends. Null uses a
+        /// process-wide acquirer private to the pipeline.</summary>
+        public OAuth2TokenAcquirer? OAuth2 { get; init; }
+
+        /// <summary>When true, OAuth2 <c>authorization_code</c> opens the browser (through the
+        /// acquirer's <see cref="OAuth2TokenAcquirer.BrowserLauncher"/>) and waits for the
+        /// redirect. Headless hosts leave it false and get a clear error instead.</summary>
+        public bool AllowInteractiveAuth { get; init; }
+
+        /// <summary>Resolves <c>secret://</c> references in the merged variable bag before
+        /// interpolation (typically <c>SecretRegistry.ResolveSecretsAsync</c>).</summary>
+        public Func<IReadOnlyDictionary<string, string>, CancellationToken, Task<IReadOnlyDictionary<string, string>>>? ResolveSecrets { get; init; }
+
+        /// <summary>Directory relative multipart-file and binary-body paths resolve against
+        /// (the collection root). Null sends relative paths as-is.</summary>
+        public string? BasePath { get; init; }
+    }
 
     /// <summary>Per-request outputs surfaced to the runner UI + history.</summary>
     public sealed record Outputs(
@@ -72,6 +100,21 @@ public static class RequestPipeline
         public IReadOnlyList<ChainStep> ChainSteps { get; init; } = Array.Empty<ChainStep>();
         /// <summary>Global-environment writes from <c>vars:post-response:global</c> captures and linked requests.</summary>
         public IReadOnlyDictionary<string, string> GlobalVarMutations { get; init; } = EmptyVars;
+        /// <summary>Environment variables a script removed with <c>bru.deleteEnvVar</c>.</summary>
+        public IReadOnlyList<string> EnvVarDeletions { get; init; } = Array.Empty<string>();
+        /// <summary>Runtime variables this send set or changed (<c>bru.setVar</c>, runtime
+        /// captures) relative to <see cref="Inputs.RuntimeVariables"/> + request vars — what
+        /// a host keeps for later sends. Unlike <see cref="RuntimeVariableMutations"/> it
+        /// excludes values that were merely passed in; includes what linked requests captured.</summary>
+        public IReadOnlyDictionary<string, string> RuntimeVariablesSet { get; init; } = EmptyVars;
+        /// <summary><c>{{name}}</c> placeholders still present in the sent URL, headers or
+        /// body — sent as literal text, almost always a missing variable.</summary>
+        public IReadOnlyList<string> UnresolvedVariables { get; init; } = Array.Empty<string>();
+        /// <summary>The raw executor result (timing, body bytes, content type, sent request
+        /// text). Null when the request never went out.</summary>
+        public HttpExecutionResult? Response { get; init; }
+        /// <summary>The OAuth2 token acquisition result, for hosts that display the token.</summary>
+        public OAuth2TokenResult? OAuth2Token { get; init; }
 
         public bool TransportError => ErrorMessage is not null;
         public int PassedTests => Tests.Count(t => t.Passed);
@@ -85,12 +128,15 @@ public static class RequestPipeline
         Inputs inputs,
         HttpExecutor http,
         JintHost scripting,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Options? options = null)
     {
+        options ??= Options.Default;
         var sw = Stopwatch.StartNew();
         var composed = RequestComposition.Compose(
             inputs.Collection, inputs.FolderChain, inputs.Request,
             inputs.Workspace ?? RequestComposition.WorkspaceContext.Empty);
+        var runtimeIn = inputs.RuntimeVariables ?? EmptyVars;
 
         // 0. Linked requests (chain:pre-request) — run first; what they capture becomes part of
         //    this request's variable view (runtime → iteration overlay, env/global → env view).
@@ -98,25 +144,34 @@ public static class RequestPipeline
         IReadOnlyList<ChainStep> chainSteps = Array.Empty<ChainStep>();
         IReadOnlyDictionary<string, string> chainEnv = EmptyVars;
         IReadOnlyDictionary<string, string> chainGlobal = EmptyVars;
+        IReadOnlyDictionary<string, string> chainRuntime = EmptyVars;
         if (inputs.Chain is { } chainCtx && composed.ChainLinks.Count > 0)
         {
             var selfCtx = chainCtx.Stack.Count == 0
                 ? chainCtx.Push(chainCtx.PathOf(inputs.Request, inputs.FolderChain))
                 : chainCtx;
             var chain = await ChainExecutor.RunAsync(composed.ChainLinks, selfCtx,
-                inputs.EnvironmentVariables, inputs.IterationVariables,
-                http, scripting, inputs.Workspace, ct).ConfigureAwait(false);
+                inputs.EnvironmentVariables, Merge(inputs.IterationVariables, runtimeIn),
+                http, scripting, inputs.Workspace, ct, options).ConfigureAwait(false);
             chainSteps = chain.Steps;
             if (chain.Error is not null)
                 return Failure(inputs, composed, sw.ElapsedMilliseconds, chain.Error, consoleAll) with { ChainSteps = chainSteps };
             chainEnv = chain.EnvVariables;
             chainGlobal = chain.GlobalVariables;
+            chainRuntime = chain.RuntimeVariables;
             inputs = inputs with
             {
                 EnvironmentVariables = Merge(inputs.EnvironmentVariables, chain.EnvVariables, chain.GlobalVariables),
                 IterationVariables = Merge(inputs.IterationVariables, chain.RuntimeVariables),
             };
         }
+
+        // The environment as scripts and captures leave it. Starts as the run snapshot; each
+        // stage replaces it with the stage's resulting bag (setEnvVar applied, deleteEnvVar
+        // removed), so the final diff against the snapshot yields both kinds of change.
+        IReadOnlyDictionary<string, string> env = inputs.EnvironmentVariables;
+        var collectionView = MergeReadOnly(inputs.IterationVariables, composed.Vars);
+        var requestVars = ToDict(inputs.Request.PreRequestVars);
 
         // 1. Pre-request script — may mutate runtime vars consumed downstream.
         var scriptVars = new Dictionary<string, string>();
@@ -125,12 +180,12 @@ public static class RequestPipeline
             // The composed view already merged env+collection+folder+request vars. We expose
             // iteration vars as a separate "collection vars" bag so scripts see them as a
             // higher-priority overlay than env without colliding with the request-vars layer
-            // that holds bru.setVar() output.
+            // that holds bru.setVar() output. Session runtime vars sit under request vars there.
             var pre = scripting.RunPreRequest(
                 composed.PreRequestScript!,
-                envVars: inputs.EnvironmentVariables,
-                collectionVars: MergeReadOnly(inputs.IterationVariables, composed.Vars),
-                requestVars: ToDict(inputs.Request.PreRequestVars),
+                envVars: env,
+                collectionVars: collectionView,
+                requestVars: Merge(runtimeIn, requestVars),
                 request: null,
                 cancellationToken: ct);
 
@@ -141,16 +196,35 @@ public static class RequestPipeline
                     pre.ErrorMessage ?? "Pre-request script failed", consoleAll);
             }
             foreach (var (k, v) in pre.RuntimeVariables) scriptVars[k] = v;
+            env = pre.EnvVarMutations;
         }
 
         // 2. Build the effective variable bag the rest of the pipeline reads. Precedence
-        //    (last-wins): env < iterationData < composed (collection ⊕ folders) < scriptRuntime < requestLevel.
-        var vars = Merge(
-            inputs.EnvironmentVariables,
+        //    (last-wins): env < iterationData < composed (collection ⊕ folders) < session runtime
+        //    < scriptRuntime < requestLevel.
+        IReadOnlyDictionary<string, string> vars = Merge(
+            env,
             inputs.IterationVariables,
             composed.Vars,
+            runtimeIn,
             scriptVars,
-            ToDict(inputs.Request.PreRequestVars));
+            requestVars);
+
+        // Pre-resolve secret://provider/path#field values so the synchronous interpolation
+        // below sees real secret values. Scripts above saw the references, never the secrets.
+        if (options.ResolveSecrets is { } resolveSecrets)
+        {
+            try { vars = await resolveSecrets(vars, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return Failure(inputs, composed, sw.ElapsedMilliseconds, "Canceled.", consoleAll);
+            }
+            catch (Exception ex)
+            {
+                return Failure(inputs, composed, sw.ElapsedMilliseconds,
+                    $"Failed to resolve secrets: {ex.Message}", consoleAll);
+            }
+        }
 
         // 3. Resolve URL with interpolation + query params.
         var resolvedUrl = ComposeUrl(inputs.Request.Url, inputs.Request.Params, vars);
@@ -169,23 +243,22 @@ public static class RequestPipeline
                 consoleAll);
         }
 
-        // 4. Resolve auth. Pipeline v1 supports None/Inherit/Bearer/Basic/ApiKey natively,
-        //    plus OAuth2 via headless grants (client_credentials, password) resolved to a
-        //    Bearer/ApiKey auth before the send. Anything else is surfaced as an error so
-        //    the user knows to run via the editor tab.
-        var authToApply = composed.Auth ?? inputs.Request.Auth;
-        if (authToApply is { Type: AuthType.OAuth2 })
+        // 4. Resolve auth. OAuth2 is turned into a Bearer/ApiKey auth by acquiring a token
+        //    first; static auths become headers / query params here; the signing auths
+        //    (SigV4, OAuth1, WSSE) are applied in step 5c once the request is final.
+        var configuredAuth = composed.Auth ?? inputs.Request.Auth;
+        var authToApply = configuredAuth;
+        OAuth2TokenResult? oauth2Token = null;
+        if (configuredAuth is { Type: AuthType.OAuth2 })
         {
-            var (oauthAuth, oauthError) = await PipelineOAuth2
-                .ResolveAsync(authToApply, vars, ct).ConfigureAwait(false);
-            if (oauthError is not null)
-                return Failure(inputs, composed, sw.ElapsedMilliseconds, oauthError, consoleAll);
-            authToApply = oauthAuth;
+            var oauth = await PipelineOAuth2
+                .ResolveAsync(configuredAuth, vars, ct, options.OAuth2, options.AllowInteractiveAuth)
+                .ConfigureAwait(false);
+            oauth2Token = oauth.Token;
+            if (oauth.Error is not null)
+                return Failure(inputs, composed, sw.ElapsedMilliseconds, oauth.Error, consoleAll) with { OAuth2Token = oauth2Token };
+            authToApply = oauth.Auth;
         }
-        if (!IsSupportedAuth(authToApply))
-            return Failure(inputs, composed, sw.ElapsedMilliseconds,
-                $"Auth type {authToApply!.Type} not supported by Collection Runner v1. Run via the request editor.",
-                consoleAll);
 
         var authResult = AuthApplier.Apply(authToApply, resolvedUrl, vars);
         if (!Uri.TryCreate(authResult.Url, UriKind.Absolute, out var uri))
@@ -193,7 +266,9 @@ public static class RequestPipeline
                 $"URL is not a valid absolute URI: {authResult.Url}", consoleAll);
 
         // 5. Compose body + headers (composed-inheritance headers + auth-emitted headers + request-level).
-        var (body, contentType) = ComposeBody(inputs.Request.Body, vars);
+        var composedBody = BodyComposer.Compose(inputs.Request.Body, vars, options.BasePath);
+        var body = composedBody.Body;
+        var contentType = composedBody.ContentType;
 
         // 5b. SOAP WS-Security / WS-Addressing: inject the configured headers into the
         //     envelope so runner/CLI sends match the request editor's behavior.
@@ -203,11 +278,18 @@ public static class RequestPipeline
 
         var headerList = ComposeHeaders(composed.Headers, vars);
         foreach (var h in authResult.Headers) headerList.Add(h);
-        if (!string.IsNullOrEmpty(contentType)
+        if (!string.IsNullOrEmpty(contentType) && composedBody.FilePath is null
             && !headerList.Any(h => string.Equals(h.Key, "Content-Type", StringComparison.OrdinalIgnoreCase)))
         {
             headerList.Add(new KeyValuePair<string, string>("Content-Type", contentType!));
         }
+
+        // 5c. Signatures cover the final method / URL / headers / body, so they go last.
+        var method = string.IsNullOrEmpty(inputs.Request.Method) ? "GET" : inputs.Request.Method.ToUpperInvariant();
+        AuthSigning.AppendSignatureHeaders(configuredAuth, method, uri, headerList, body, vars);
+
+        // {{var}} placeholders that survived interpolation go out as literal text; report them.
+        var unresolved = PlaceholderScanner.Collect(uri.ToString(), headerList, body);
 
         // 6. HTTP send. When settings carry an mTLS client cert, load it here (path and
         //    password support {{var}} interpolation) — a missing/bad cert fails the request
@@ -232,21 +314,32 @@ public static class RequestPipeline
         }
 
         var execRequest = new HttpExecutionRequest(
-            Method: new HttpMethod(string.IsNullOrEmpty(inputs.Request.Method) ? "GET" : inputs.Request.Method.ToUpperInvariant()),
+            Method: new HttpMethod(method),
             Url: uri,
             Headers: headerList,
             Body: body,
             ContentType: contentType,
+            MultipartFields: composedBody.MultipartFields,
+            FilePath: composedBody.FilePath,
             Options: new HttpRequestOptions(
                 FollowRedirects: inputs.Request.Settings.FollowRedirects,
                 VerifySsl: inputs.Request.Settings.VerifySsl,
-                UseCookies: inputs.Request.Settings.SendCookies,
+                UseCookies: inputs.Request.Settings.SendCookies && inputs.Request.Settings.SaveCookies,
+                NtlmCredential: AuthSigning.NtlmCredential(configuredAuth, vars),
                 ClientCertificate: clientCert));
 
         HttpExecutionResult httpResult;
         try
         {
             httpResult = await http.ExecuteAsync(execRequest, ct).ConfigureAwait(false);
+
+            // Digest: the first leg is the deliberate "ping" that surfaces realm + nonce; answer
+            // the challenge once. Final timing and body come from the second response.
+            if (AuthSigning.DigestRetryHeader(configuredAuth, httpResult, method, uri, vars) is { } digest)
+            {
+                headerList.Add(new KeyValuePair<string, string>("Authorization", digest));
+                httpResult = await http.ExecuteAsync(execRequest with { Headers = headerList }, ct).ConfigureAwait(false);
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -264,13 +357,39 @@ public static class RequestPipeline
         var captures = ScriptlessSteps.RunCaptures(
             ScriptlessSteps.CaptureRules(inputs.Request), snapshot, Merge(vars, scriptVars), scripting, ct);
         foreach (var (k, v) in captures.Runtime) scriptVars[k] = v;
-        var envAfterCaptures = Merge(inputs.EnvironmentVariables, captures.Environment);
+        env = Merge(env, captures.Environment);
         var globalMutations = Merge(chainGlobal, captures.Global);
+
+        Outputs Result(IReadOnlyList<TestOutcome> tests, string? error, int assertionCount) =>
+            new(
+                StatusCode: httpResult.StatusCode,
+                ReasonPhrase: httpResult.ReasonPhrase,
+                ElapsedMilliseconds: sw.ElapsedMilliseconds,
+                ResolvedUrl: uri.ToString(),
+                Method: inputs.Request.Method,
+                RequestHeaders: headerList,
+                RequestBody: body,
+                ResponseHeaders: httpResult.Headers,
+                ResponseBody: httpResult.Body,
+                Tests: tests,
+                RuntimeVariableMutations: scriptVars,
+                ConsoleMessages: consoleAll,
+                EnvVarMutations: Merge(chainEnv, EnvVarDelta(inputs.EnvironmentVariables, env)),
+                ErrorMessage: error)
+            {
+                Captures = captures.Outcomes,
+                AssertionCount = assertionCount,
+                ChainSteps = chainSteps,
+                GlobalVarMutations = globalMutations,
+                EnvVarDeletions = EnvVarRemovals(inputs.EnvironmentVariables, env),
+                RuntimeVariablesSet = Merge(chainRuntime, EnvVarDelta(Merge(runtimeIn, requestVars), scriptVars)),
+                UnresolvedVariables = unresolved,
+                Response = httpResult,
+                OAuth2Token = oauth2Token,
+            };
 
         // 8. Post-response script + tests. Combined-run, mirrors editor behavior.
         IReadOnlyList<TestOutcome> tests = Array.Empty<TestOutcome>();
-        IReadOnlyDictionary<string, string> envVarMutations =
-            Merge(chainEnv, EnvVarDelta(inputs.EnvironmentVariables, envAfterCaptures));
         if (!string.IsNullOrWhiteSpace(composed.PostResponseScript) ||
             !string.IsNullOrWhiteSpace(composed.TestsScript))
         {
@@ -286,41 +405,20 @@ public static class RequestPipeline
                 postScript: composed.PostResponseScript,
                 testsScript: composed.TestsScript,
                 response: responseApi,
-                envVars: envAfterCaptures,
-                collectionVars: MergeReadOnly(inputs.IterationVariables, composed.Vars),
-                requestVars: scriptVars,
+                envVars: env,
+                collectionVars: collectionView,
+                requestVars: Merge(runtimeIn, scriptVars),
                 request: null,
                 cancellationToken: ct);
 
             consoleAll.AddRange(post.ConsoleMessages);
             tests = post.TestOutcomes;
-            envVarMutations = Merge(chainEnv, EnvVarDelta(inputs.EnvironmentVariables, post.EnvVarMutations));
+            env = post.EnvVarMutations;
 
             foreach (var (k, v) in post.RuntimeVariables) scriptVars[k] = v;
 
             if (!post.IsSuccess && tests.Count == 0 && composed.Assertions.Count == 0)
-            {
-                return new Outputs(
-                    StatusCode: httpResult.StatusCode,
-                    ReasonPhrase: httpResult.ReasonPhrase,
-                    ElapsedMilliseconds: sw.ElapsedMilliseconds,
-                    ResolvedUrl: uri.ToString(),
-                    Method: inputs.Request.Method,
-                    RequestHeaders: headerList,
-                    RequestBody: body,
-                    ResponseHeaders: httpResult.Headers,
-                    ResponseBody: httpResult.Body,
-                    Tests: tests,
-                    RuntimeVariableMutations: scriptVars,
-                    ConsoleMessages: consoleAll,
-                    EnvVarMutations: envVarMutations,
-                    ErrorMessage: post.ErrorMessage)
-                {
-                    Captures = captures.Outcomes,
-                    ChainSteps = chainSteps,
-                    GlobalVarMutations = globalMutations,
-                };
-            }
+                return Result(tests, post.ErrorMessage, 0);
         }
 
         // 9. Scriptless assertions — evaluated against the final variable view; listed ahead of
@@ -330,38 +428,10 @@ public static class RequestPipeline
         if (assertions.Count > 0)
             tests = assertions.Select(a => a.ToTestOutcome()).Concat(tests).ToList();
 
-        return new Outputs(
-            StatusCode: httpResult.StatusCode,
-            ReasonPhrase: httpResult.ReasonPhrase,
-            ElapsedMilliseconds: sw.ElapsedMilliseconds,
-            ResolvedUrl: uri.ToString(),
-            Method: inputs.Request.Method,
-            RequestHeaders: headerList,
-            RequestBody: body,
-            ResponseHeaders: httpResult.Headers,
-            ResponseBody: httpResult.Body,
-            Tests: tests,
-            RuntimeVariableMutations: scriptVars,
-            ConsoleMessages: consoleAll,
-            EnvVarMutations: envVarMutations,
-            ErrorMessage: httpResult.ErrorMessage)
-        {
-            Captures = captures.Outcomes,
-            AssertionCount = assertions.Count,
-            ChainSteps = chainSteps,
-            GlobalVarMutations = globalMutations,
-        };
+        return Result(tests, httpResult.ErrorMessage, assertions.Count);
     }
 
     // ----- helpers ----------------------------------------------------------
-
-    private static bool IsSupportedAuth(AuthConfig? auth) =>
-        auth is null
-        || auth.Type is AuthType.None
-                     or AuthType.Inherit
-                     or AuthType.Bearer
-                     or AuthType.Basic
-                     or AuthType.ApiKey;
 
     private static Outputs Failure(
         Inputs in_, RequestComposition.Composed composed, long elapsedMs,
@@ -402,6 +472,13 @@ public static class RequestPipeline
         return delta ?? EmptyVars;
     }
 
+    /// <summary>Keys of <paramref name="before"/> missing from <paramref name="after"/> —
+    /// the <c>deleteEnvVar</c> calls a script made.</summary>
+    private static IReadOnlyList<string> EnvVarRemovals(
+        IReadOnlyDictionary<string, string> before,
+        IReadOnlyDictionary<string, string> after) =>
+        before.Keys.Where(k => !after.ContainsKey(k)).ToList();
+
     private static string ComposeUrl(string baseUrl, IList<KvPair> queryParams,
         IReadOnlyDictionary<string, string> vars)
     {
@@ -428,70 +505,6 @@ public static class RequestPipeline
                    Interpolator.Resolve(h.Name, vars),
                    Interpolator.Resolve(h.Value, vars)))
                .ToList();
-
-    /// <summary>Body composition for the runner. v1 covers the common modes: json/text/xml/sparql/
-    /// form-urlencoded/graphql. Multipart, binary-file, and raw streaming are out of scope —
-    /// callers that need those run via the editor.</summary>
-    private static (string? Body, string? ContentType) ComposeBody(
-        BodyConfig body,
-        IReadOnlyDictionary<string, string> vars)
-    {
-        switch (body.Mode)
-        {
-            case BodyMode.None:
-                return (null, null);
-            case BodyMode.Json:
-                return (string.IsNullOrEmpty(body.Content) ? null : Interpolator.Resolve(body.Content!, vars),
-                        "application/json");
-            case BodyMode.Xml:
-                return (string.IsNullOrEmpty(body.Content) ? null : Interpolator.Resolve(body.Content!, vars),
-                        "application/xml");
-            case BodyMode.Text:
-                return (string.IsNullOrEmpty(body.Content) ? null : Interpolator.Resolve(body.Content!, vars),
-                        "text/plain");
-            case BodyMode.Sparql:
-                return (string.IsNullOrEmpty(body.Content) ? null : Interpolator.Resolve(body.Content!, vars),
-                        "application/sparql-query");
-            case BodyMode.FormUrlEncoded:
-            {
-                var enabled = body.FormData.Where(f => f.Enabled && !string.IsNullOrEmpty(f.Name)).ToList();
-                if (enabled.Count == 0) return (string.Empty, "application/x-www-form-urlencoded");
-                var encoded = string.Join("&", enabled.Select(f =>
-                    Uri.EscapeDataString(Interpolator.Resolve(f.Name, vars)) + "=" +
-                    Uri.EscapeDataString(Interpolator.Resolve(f.Value, vars))));
-                return (encoded, "application/x-www-form-urlencoded");
-            }
-            case BodyMode.GraphQL:
-            {
-                var query = body.GraphQLQuery ?? string.Empty;
-                if (string.IsNullOrWhiteSpace(query)) return (null, null);
-                var resolvedQuery = Interpolator.Resolve(query, vars);
-                var rawVars = body.GraphQLVariables ?? string.Empty;
-                var resolvedVars = string.IsNullOrWhiteSpace(rawVars)
-                    ? "{}"
-                    : Interpolator.Resolve(rawVars, vars);
-                var trimmed = resolvedVars.TrimStart();
-                var varsJson = (trimmed.StartsWith('{') || trimmed.StartsWith('[')) ? resolvedVars : "{}";
-                // Multi-operation documents need an operationName or the server rejects the
-                // request — the runner has no picker, so send the first named operation
-                // (same rule the editor and codegen apply).
-                var opName = Vegha.Core.GraphQL.GraphQLDocumentAnalyzer.ResolveOperationNameForSend(resolvedQuery);
-                var json =
-                    "{\"query\":" + System.Text.Json.JsonSerializer.Serialize(resolvedQuery) +
-                    (opName is null
-                        ? string.Empty
-                        : ",\"operationName\":" + System.Text.Json.JsonSerializer.Serialize(opName)) +
-                    ",\"variables\":" + varsJson + "}";
-                return (json, "application/json");
-            }
-            default:
-                // Multipart and Binary unsupported in v1 — fall through to no body so the
-                // request still goes out but without the multipart envelope. Pipeline output
-                // ErrorMessage stays null; the caller sees a non-error result, just with a
-                // missing body. Acceptable as a v1 limitation.
-                return (null, null);
-        }
-    }
 
     private static Dictionary<string, string> Merge(params IReadOnlyDictionary<string, string>[] bags)
     {

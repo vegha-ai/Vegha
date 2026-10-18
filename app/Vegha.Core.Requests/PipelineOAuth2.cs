@@ -8,27 +8,35 @@ namespace Vegha.Core.Requests;
 /// <see cref="AuthType.OAuth2"/> config into a concrete Bearer/ApiKey auth by acquiring
 /// a token through <see cref="OAuth2TokenAcquirer"/> before the request is sent.
 ///
-/// Only non-interactive grants are supported here: <c>client_credentials</c> (the
-/// machine-to-machine staple) and <c>password</c>. <c>authorization_code</c> needs a
-/// browser round-trip and stays editor-only.
+/// <c>client_credentials</c> and <c>password</c> always work. <c>authorization_code</c>
+/// needs a browser round-trip, so it only runs when the host passes
+/// <c>allowInteractive</c> (the request editor, the VS Code sidecar) — headless hosts like
+/// the CLI and collection runner get a clear error instead of a hung browser wait.
 ///
-/// The acquirer instance is shared process-wide so its token cache spans all requests
-/// of a runner invocation — a 50-request collection fetches the token once, not 50 times.
+/// Without a host-supplied acquirer, a process-wide one is used so its token cache spans all
+/// requests of a runner invocation — a 50-request collection fetches the token once, not 50 times.
 /// </summary>
 public static class PipelineOAuth2
 {
     private static readonly Lazy<OAuth2TokenAcquirer> s_acquirer =
         new(() => new OAuth2TokenAcquirer(new HttpClient()));
 
+    /// <summary>Outcome of <see cref="ResolveAsync"/>: the auth to apply, or an error.
+    /// <see cref="Token"/> carries the raw token result for hosts that display it.</summary>
+    public sealed record Resolution(AuthConfig? Auth, string? Error, OAuth2TokenResult? Token = null);
+
     /// <summary>Resolves an OAuth2 auth config to an applicable auth (Bearer or ApiKey
     /// shaped per <c>add_token_to</c>/<c>header_prefix</c>), or an error message when the
     /// grant is unsupported or token acquisition fails. All config values support
     /// <c>{{var}}</c> interpolation (handled inside the acquirer).</summary>
-    public static async Task<(AuthConfig? Auth, string? Error)> ResolveAsync(
+    public static async Task<Resolution> ResolveAsync(
         AuthConfig auth,
         IReadOnlyDictionary<string, string> vars,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        OAuth2TokenAcquirer? acquirer = null,
+        bool allowInteractive = false)
     {
+        acquirer ??= s_acquirer.Value;
         string Get(string key) => auth.Parameters.TryGetValue(key, out var v) ? v : string.Empty;
 
         var grantType = Get("grant_type");
@@ -49,7 +57,7 @@ public static class PipelineOAuth2
         switch (grantType)
         {
             case "client_credentials":
-                token = await s_acquirer.Value.AcquireClientCredentialsAsync(
+                token = await acquirer.AcquireClientCredentialsAsync(
                     new OAuth2ClientCredentialsConfig(
                         TokenUrl: tokenUrl,
                         ClientId: clientId,
@@ -65,7 +73,7 @@ public static class PipelineOAuth2
                 break;
 
             case "password":
-                token = await s_acquirer.Value.AcquirePasswordAsync(
+                token = await acquirer.AcquirePasswordAsync(
                     new OAuth2PasswordConfig(
                         TokenUrl: tokenUrl,
                         ClientId: clientId,
@@ -82,15 +90,36 @@ public static class PipelineOAuth2
                     vars, cancellationToken).ConfigureAwait(false);
                 break;
 
+            case "authorization_code" when allowInteractive:
+                token = await acquirer.AcquireAuthorizationCodeAsync(
+                    new OAuth2AuthorizationCodeConfig(
+                        AuthorizationUrl: Get("authorization_url"),
+                        TokenUrl: tokenUrl,
+                        ClientId: clientId,
+                        ClientSecret: clientSecret,
+                        CallbackUrl: Get("callback_url"),
+                        Scope: string.IsNullOrWhiteSpace(scope) ? null : scope,
+                        State: string.IsNullOrWhiteSpace(Get("state")) ? null : Get("state"),
+                        // PKCE stays on unless explicitly disabled — the safe default for public clients.
+                        UsePkce: !string.Equals(Get("use_pkce"), "false", StringComparison.OrdinalIgnoreCase),
+                        CredentialsPlacement: placement,
+                        AdditionalParameters: tokenParams,
+                        TokenId: tokenId,
+                        TokenSource: tokenSource,
+                        RefreshTokenUrl: refreshUrl,
+                        RefreshParameters: refreshParams),
+                    vars, cancellationToken).ConfigureAwait(false);
+                break;
+
             default:
-                return (null,
+                return new Resolution(null,
                     $"OAuth2 grant type '{grantType}' requires an interactive browser and is not supported by the collection runner. Run via the request editor.");
         }
 
         if (!token.IsSuccess || string.IsNullOrEmpty(token.AccessToken))
-            return (null, token.ErrorMessage ?? "OAuth2 token acquisition failed.");
+            return new Resolution(null, token.ErrorMessage ?? "OAuth2 token acquisition failed.", token);
 
-        return (BuildTokenAuth(auth, token.AccessToken!), null);
+        return new Resolution(BuildTokenAuth(auth, token.AccessToken!), null, token);
     }
 
     /// <summary>Maps the acquired token onto an auth the <see cref="AuthApplier"/> can emit,

@@ -1498,7 +1498,7 @@ public partial class MainWindow : Window
         {
             var registry = App.Services.GetService<Vegha.Integrations.Secrets.SecretRegistry>();
             if (registry is not null)
-                Vegha.App.Secrets.SecretProviderRegistrar.Reload(registry);
+                Vegha.Core.Engine.SecretProviderCatalog.Reload(registry);
         }
         catch
         {
@@ -1535,32 +1535,11 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel mwvm)
             mwvm.InterfaceZoom = Math.Clamp(s.InterfaceZoom, 0.8, 2.0);
 
-        // HTTP executor: proxy, SSL session caching, request timeout, max body size, custom CAs.
-        var executor = App.Services?.GetService<Vegha.Core.Requests.HttpExecutor>();
-        if (executor is not null)
-        {
-            executor.UpdateTrustedCAs(Vegha.Core.Requests.CertificateLoader.Parse(s.CustomTrustCAs));
-            executor.UpdateProxy(Vegha.Core.Persistence.ProxyResolver.Build(s));
-            executor.UpdateCacheSslSessions(s.CacheSslSessions);
-            executor.UpdateTimeout(TimeSpan.FromSeconds(Math.Max(1, s.RequestTimeoutSeconds)));
-            executor.UpdateMaxBodyBytes((long)Math.Max(1, s.MaxBodySizeMb) * 1024 * 1024);
-        }
-
-        // History store: persistence enable + preview cap + retention policy.
-        var history = App.Services?.GetService<Vegha.Core.History.HistoryStore>();
-        if (history is not null)
-        {
-            history.Enabled = s.SaveResponsesToHistory;
-            // PreviewMaxChars caps how much of the response we persist as the body preview
-            // column. Multiply by 1024 (rough chars per KB for UTF-8 prose) and clamp to a
-            // reasonable upper bound so a 2 GB body-cap doesn't try to write a 2 GB row.
-            history.MaxPreviewChars = Math.Min(int.MaxValue, Math.Max(1, s.MaxBodySizeMb) * 1024 * 1024);
-            history.MaxRetained = Math.Max(1, s.HistoryRetentionMaxEntries);
-            history.MaxAge = s.HistoryRetentionDays > 0
-                ? TimeSpan.FromDays(s.HistoryRetentionDays)
-                : TimeSpan.Zero;
-        }
-
+        // HTTP executor + history store: shared with the CLI and VS Code sidecar.
+        Vegha.Core.Engine.EngineSettings.Apply(
+            s,
+            App.Services?.GetService<Vegha.Core.Requests.HttpExecutor>(),
+            App.Services?.GetService<Vegha.Core.History.HistoryStore>());
     }
 
     private void ApplyEditorResources(AppSettings s)

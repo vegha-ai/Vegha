@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\app\Vegha.Core.Domain\Vegha.Core.Domain.csproj" />
+    <ProjectReference Include="..\app\Vegha.Core.Engine\Vegha.Core.Engine.csproj" />
     <ProjectReference Include="..\app\Vegha.Core.FileFormat\Vegha.Core.FileFormat.csproj" />
     <ProjectReference Include="..\app\Vegha.Core.Importers\Vegha.Core.Importers.csproj" />
     <ProjectReference Include="..\app\Vegha.Core.Interpolation\Vegha.Core.Interpolation.csproj" />
@@ -15,7 +16,5 @@
     <ProjectReference Include="..\app\Vegha.Core.Requests\Vegha.Core.Requests.csproj" />
     <ProjectReference Include="..\app\Vegha.Core.Scripting\Vegha.Core.Scripting.csproj" />
     <ProjectReference Include="..\app\Vegha.Integrations.Secrets.Abstractions\Vegha.Integrations.Secrets.Abstractions.csproj" />
-    <ProjectReference Include="..\app\Vegha.Integrations.Secrets.Azure\Vegha.Integrations.Secrets.Azure.csproj" />
-    <ProjectReference Include="..\app\Vegha.Integrations.Secrets.Aws\Vegha.Integrations.Secrets.Aws.csproj" />
   </ItemGroup>
 </Project>

@@ -2,6 +2,7 @@ using FluentAssertions;
 using Vegha.App.ViewModels;
 using Vegha.App.ViewModels.Scriptless;
 using Vegha.App.ViewModels.Services;
+using Vegha.Core.Engine;
 using Vegha.Core.Domain;
 using Vegha.Core.Scripting.Testing;
 using Xunit;

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Vegha.App.ViewModels.Services;
+using Vegha.Core.Engine;
 
 namespace Vegha.App.ViewModels.Scriptless;
 
