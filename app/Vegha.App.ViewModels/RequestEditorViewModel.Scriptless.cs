@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Vegha.App.ViewModels.Scriptless;
 using Vegha.App.ViewModels.Services;
+using Vegha.Core.Engine;
 using Vegha.Core.Domain;
 using Vegha.Core.Interpolation;
 using Vegha.Core.Requests;

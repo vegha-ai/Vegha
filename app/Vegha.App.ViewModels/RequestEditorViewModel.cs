@@ -1462,7 +1462,7 @@ public partial class RequestEditorViewModel : ObservableObject
         Vegha.Core.History.HistoryStore? historyStore = null,
         Vegha.Integrations.Secrets.SecretRegistry? secretRegistry = null,
         Services.GraphQLSchemaCache? schemaCache = null,
-        Services.RuntimeVariableStore? runtimeStore = null,
+        Vegha.Core.Engine.RuntimeVariableStore? runtimeStore = null,
         LastResponseCache? responseCache = null)
     {
         _executor = executor;

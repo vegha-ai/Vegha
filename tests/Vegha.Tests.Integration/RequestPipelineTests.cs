@@ -245,7 +245,7 @@ public class RequestPipelineTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task UnsupportedAuth_returns_clear_error_without_calling_HTTP()
+    public async Task OAuth1_signs_request_with_authorization_header()
     {
         _server.Given(Request.Create().WithPath("/anything").UsingAnyMethod())
             .RespondWith(Response.Create().WithStatusCode(200));
@@ -253,14 +253,21 @@ public class RequestPipelineTests : IAsyncLifetime
         var auth = new AuthConfig
         {
             Type = AuthType.OAuth1,
-            Parameters = new Dictionary<string, string>(),
+            Parameters = new Dictionary<string, string>
+            {
+                ["consumerKey"] = "ck-{{env}}",
+                ["consumerSecret"] = "cs",
+                ["signatureMethod"] = "HMAC-SHA1",
+            },
         };
-        var inputs = BuildInputs("GET", _server.Urls[0] + "/anything", auth: auth);
+        var inputs = BuildInputs("GET", _server.Urls[0] + "/anything", auth: auth,
+            envVars: new Dictionary<string, string> { ["env"] = "dev" });
         var result = await RequestPipeline.ExecuteAsync(inputs, _http, _script);
 
-        result.StatusCode.Should().Be(0);
-        result.ErrorMessage.Should().NotBeNull();
-        result.ErrorMessage!.Should().Contain("OAuth1").And.Contain("not supported");
+        result.ErrorMessage.Should().BeNull();
+        result.StatusCode.Should().Be(200);
+        var sent = _server.LogEntries.Single().RequestMessage.Headers!["Authorization"].Single();
+        sent.Should().StartWith("OAuth ").And.Contain("oauth_consumer_key=\"ck-dev\"").And.Contain("oauth_signature=");
     }
 
     [Fact]

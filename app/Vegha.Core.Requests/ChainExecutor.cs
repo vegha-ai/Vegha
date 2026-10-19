@@ -167,7 +167,8 @@ public static class ChainExecutor
         HttpExecutor http,
         JintHost scripting,
         RequestComposition.WorkspaceContext? workspace = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        RequestPipeline.Options? options = null)
     {
         if (links.Count == 0) return ChainResult.Empty;
 
@@ -218,7 +219,7 @@ public static class ChainExecutor
                     IterationVariables: runtimeNow,
                     Workspace: workspace,
                     Chain: context.Push(canonical)),
-                http, scripting, ct).ConfigureAwait(false);
+                http, scripting, ct, options).ConfigureAwait(false);
 
             var captured = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var c in outputs.Captures.Where(c => c.Applied)) captured[c.Name] = c.Value.ToVariableString();

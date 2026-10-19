@@ -28,7 +28,7 @@ internal static class ServiceRegistration
             return new SettingsWindowViewModel(
                 store: sp.GetRequiredService<AppSettingsStore>(),
                 shortcutRows: KeyboardShortcutsCatalog.All,
-                secretProviderFactory: Vegha.App.Secrets.SecretProviderRegistrar.TryCreate,
+                secretProviderFactory: Vegha.Core.Engine.SecretProviderCatalog.TryCreate,
                 appVersion: updates?.CurrentVersion,
                 updatesSupported: updates?.IsSupported ?? false,
                 git: sp.GetService<Vegha.Integrations.Git.GitIntegration>());
@@ -82,7 +82,7 @@ internal static class ServiceRegistration
         // Scriptless testing / request chaining session state: runtime variables (captures,
         // bru.setVar) and each request's last response (linked "when-stale" requests). Shared by
         // every editor tab and handed to runner tabs.
-        services.AddSingleton<Vegha.App.ViewModels.Services.RuntimeVariableStore>();
+        services.AddSingleton<Vegha.Core.Engine.RuntimeVariableStore>();
         services.AddSingleton<Vegha.Core.Requests.LastResponseCache>(_ => new Vegha.Core.Requests.LastResponseCache());
 
         // Per-tab editor: transient. The OpenTabsViewModel asks for a fresh editor
@@ -104,7 +104,7 @@ internal static class ServiceRegistration
                 logger: sp.GetRequiredService<ILogger<Vegha.App.ViewModels.Tabs.OpenTabsViewModel>>())
             {
                 ResponseCache = sp.GetRequiredService<Vegha.Core.Requests.LastResponseCache>(),
-                RuntimeVariablesProvider = sp.GetRequiredService<Vegha.App.ViewModels.Services.RuntimeVariableStore>().Snapshot,
+                RuntimeVariablesProvider = sp.GetRequiredService<Vegha.Core.Engine.RuntimeVariableStore>().Snapshot,
             });
 
         services.AddSingleton<CollectionsViewModel>(sp =>
@@ -184,7 +184,7 @@ internal static class ServiceRegistration
                 sp.GetRequiredService<ILogger<EnvironmentsViewModel>>())
             {
                 Runtime = new Vegha.App.ViewModels.Scriptless.RuntimeVariablesViewModel(
-                    sp.GetRequiredService<Vegha.App.ViewModels.Services.RuntimeVariableStore>(),
+                    sp.GetRequiredService<Vegha.Core.Engine.RuntimeVariableStore>(),
                     (name, value) => collections.ApplyScriptEnvVarMutations(new EnvVarMutationEventArgs(
                         new Dictionary<string, string> { [name] = value }, Array.Empty<string>()))),
             };

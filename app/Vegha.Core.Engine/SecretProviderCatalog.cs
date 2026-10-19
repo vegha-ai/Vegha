@@ -3,20 +3,21 @@ using Vegha.Integrations.Secrets;
 using Vegha.Integrations.Secrets.Aws;
 using Vegha.Integrations.Secrets.Azure;
 
-namespace Vegha.App.Secrets;
+namespace Vegha.Core.Engine;
 
 /// <summary>
 /// Builds <see cref="ISecretProvider"/> adapters from the persisted, encrypted
 /// <see cref="SecretProviderConfig"/> entries and (re)populates the
-/// <see cref="SecretRegistry"/>. Run once at startup and again whenever the Secret Manager
-/// settings page changes, so <c>secret://&lt;name&gt;/path#field</c> URIs resolve against
-/// the user's configured vaults.
+/// <see cref="SecretRegistry"/>. Hosts run it once at startup and again whenever the secret
+/// manager configuration changes, so <c>secret://&lt;name&gt;/path#field</c> URIs resolve
+/// against the user's configured vaults. Shared by the desktop app, the CLI and the VS Code
+/// sidecar so all three resolve the same references the same way.
 ///
 /// Providers are keyed by the user's config <see cref="SecretProviderConfig.Name"/> — not
 /// the adapter type — so several vaults of the same kind can coexist and a URI like
 /// <c>secret://prod-azure/api-key</c> targets a specific one.
 /// </summary>
-public static class SecretProviderRegistrar
+public static class SecretProviderCatalog
 {
     /// <summary>Clears the registry and re-registers every configured provider. A config
     /// whose adapter rejects it (missing required fields, unknown type) is skipped so one
@@ -48,8 +49,8 @@ public static class SecretProviderRegistrar
         }
         catch
         {
-            // Malformed config — skip it. The Secret Manager settings page is where the
-            // user fixes the entry; a bad one shouldn't break registration of the others.
+            // Malformed config — skip it. The secret manager settings are where the user
+            // fixes the entry; a bad one shouldn't break registration of the others.
             return null;
         }
     }

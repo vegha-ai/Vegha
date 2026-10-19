@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Vegha.Core.Engine</RootNamespace>
+  </PropertyGroup>
+
+  <!-- UI-free host layer over the Core libraries, shared by the desktop app, the CLI and the
+       VS Code sidecar: session state (runtime variables, environment overlays), the composed
+       send path (pipeline + history), collection runs, and secret-provider wiring. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Vegha.Core.Domain\Vegha.Core.Domain.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Flow\Vegha.Core.Flow.csproj" />
+    <ProjectReference Include="..\Vegha.Core.History\Vegha.Core.History.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Persistence\Vegha.Core.Persistence.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Requests\Vegha.Core.Requests.csproj" />
+    <ProjectReference Include="..\Vegha.Core.Scripting\Vegha.Core.Scripting.csproj" />
+    <ProjectReference Include="..\Vegha.Integrations.Secrets.Abstractions\Vegha.Integrations.Secrets.Abstractions.csproj" />
+    <ProjectReference Include="..\Vegha.Integrations.Secrets.Aws\Vegha.Integrations.Secrets.Aws.csproj" />
+    <ProjectReference Include="..\Vegha.Integrations.Secrets.Azure\Vegha.Integrations.Secrets.Azure.csproj" />
+  </ItemGroup>
+</Project>

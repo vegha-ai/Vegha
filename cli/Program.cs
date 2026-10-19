@@ -3,7 +3,9 @@ using System.Xml.Linq;
 using Vegha.Core.Importers;
 using Vegha.Core.Requests;
 using Vegha.Core.Scripting;
-using Vegha.Integrations.Secrets;
+using Vegha.Core.Engine;
+using Vegha.Core.Engine.Reports;
+using Vegha.Core.Flow;
 
 namespace Vegha.Cli;
 
@@ -109,11 +111,6 @@ internal static class Program
     private static readonly IReadOnlyDictionary<string, string> s_noVars =
         new Dictionary<string, string>();
 
-    /// <summary>One request's result, retained so a JUnit report can be emitted.</summary>
-    private sealed record RunResult(
-        string Name, string ClassName, long ElapsedMs,
-        bool Failed, bool Warned, int TestCount, int FailedTests, string? Detail);
-
     private static async Task<int> RunCollectionAsync(string path, string[] args)
     {
         // Collections are Bruno-style .bru folders — load them with the same
@@ -126,15 +123,47 @@ internal static class Program
         var nameFilter = ArgValue(args, "--name");
         var envName = ArgValue(args, "--env");
         var outPath = ArgValue(args, "--out");
-        var reporter = ArgValue(args, "--reporter");
+        var dataPath = ArgValue(args, "--data");
         var slowMs = int.TryParse(ArgValue(args, "--slow"), out var parsedSlow) ? parsedSlow : SlowThresholdMs;
+        var delayMs = int.TryParse(ArgValue(args, "--delay"), out var parsedDelay) ? Math.Max(0, parsedDelay) : 0;
+        var bail = args.Contains("--bail");
 
-        if (reporter is not null && !string.Equals(reporter, "junit", StringComparison.OrdinalIgnoreCase))
+        var iterationsArg = ArgValue(args, "--iterations");
+        var iterations = 1;
+        if (iterationsArg is not null && (!int.TryParse(iterationsArg, out iterations) || iterations < 1))
         {
-            Console.Error.WriteLine($"Unknown --reporter '{reporter}'. Supported: junit.");
+            Console.Error.WriteLine($"--iterations must be a positive integer (got '{iterationsArg}').");
             return 1;
         }
-        if (outPath is not null) reporter ??= "junit";
+
+        var reporters = (ArgValue(args, "--reporter") ?? (outPath is null ? string.Empty : "junit"))
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(r => r.ToLowerInvariant())
+            .Distinct()
+            .ToList();
+        var unknown = reporters.Where(r => !RunReportWriter.Formats.Contains(r)).ToList();
+        if (unknown.Count > 0)
+        {
+            Console.Error.WriteLine($"Unknown --reporter '{string.Join(", ", unknown)}'. Supported: {string.Join(", ", RunReportWriter.Formats)}.");
+            return 1;
+        }
+        if (reporters.Count > 0 && outPath is null)
+        {
+            Console.Error.WriteLine("--reporter needs --out <file> (or a base path when several reporters are given).");
+            return 1;
+        }
+
+        var cliVars = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var pair in ArgValues(args, "--env-var"))
+        {
+            var eq = pair.IndexOf('=');
+            if (eq <= 0)
+            {
+                Console.Error.WriteLine($"--env-var expects name=value (got '{pair}').");
+                return 1;
+            }
+            cliVars[pair[..eq]] = pair[(eq + 1)..];
+        }
 
         // Glyphs need UTF-8; harmless when the console is already UTF-8 or redirected.
         try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { /* non-fatal */ }
@@ -180,6 +209,35 @@ internal static class Program
             WriteSeg("……… ", ConsoleColor.DarkGray);
             WriteSeg("✓\n", ConsoleColor.Green);
         }
+        // --env-var overrides win over the selected environment (CI injects secrets this way).
+        foreach (var (k, v) in cliVars) envVars[k] = v;
+
+        // --- Iteration data ----------------------------------------------
+        IterationDataSource? data = null;
+        if (dataPath is not null)
+        {
+            WriteSeg($"Loading data '{Path.GetFileName(dataPath)}' ", ConsoleColor.DarkGray);
+            try { data = await IterationDataSource.LoadAsync(dataPath).ConfigureAwait(false); }
+            catch (Exception ex)
+            {
+                WriteSeg("✗\n", ConsoleColor.Red);
+                WriteSeg(ex.Message + "\n", ConsoleColor.Red);
+                return 1;
+            }
+            WriteSeg("……… ", ConsoleColor.DarkGray);
+            WriteSeg($"✓ {data.RowCount} row{(data.RowCount == 1 ? "" : "s")}\n", ConsoleColor.Green);
+            // One iteration per data row unless --iterations narrows it.
+            if (iterationsArg is null && data.RowCount > 0) iterations = data.RowCount;
+        }
+
+        // A CI run is isolated: in-memory cookie jar, no history rows — but the same
+        // secret-manager config and settings.json the desktop app uses.
+        using var services = new EngineServices(new EngineOptions
+        {
+            ClientName = "cli",
+            PersistCookies = false,
+            UseHistory = false,
+        });
 
         // --- Resolve secret:// references carried by environment values ---
         var secretCount = envVars.Values.Count(v =>
@@ -189,9 +247,7 @@ internal static class Program
             WriteSeg($"Resolving {secretCount} secret{(secretCount == 1 ? "" : "s")} ", ConsoleColor.DarkGray);
             try
             {
-                var registry = new SecretRegistry();
-                LoadSecretProviders(registry);
-                envVars = await registry.ResolveSecretsAsync(envVars).ConfigureAwait(false);
+                envVars = await services.Secrets.ResolveSecretsAsync(envVars).ConfigureAwait(false);
                 WriteSeg("…… ", ConsoleColor.DarkGray);
                 WriteSeg("✓\n", ConsoleColor.Green);
             }
@@ -215,104 +271,128 @@ internal static class Program
         }
 
         // --- Execute each request through the shared pipeline ------------
-        // RequestPipeline applies variable interpolation, auth, and pre/post
-        // scripts + tests — the same engine the desktop app's runner uses.
-        using var http = new HttpClient();
-        var executor = new HttpExecutor(http);
-        var scripting = new JintHost();
-
+        // RequestPipeline applies variable interpolation, every auth type, and pre/post
+        // scripts + tests — the same engine the desktop app's runner and VS Code use.
         int passed = 0, failed = 0, warned = 0;
-        var results = new List<RunResult>(items.Count);
+        var entries = new List<RunReportEntry>(items.Count * iterations);
+        var startedAt = DateTimeOffset.Now;
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        var pipelineOptions = services.PipelineOptions with { BasePath = root };
 
         // Linked requests (chain:pre-request) resolve against the collection on disk and share one
         // response cache, so a "when-stale" login only runs once per CLI invocation.
-        var chainContext = new ChainContext(collection, root);
-        // Variables captured by earlier requests (runtime captures / bru.setVar, plus env and
-        // global captures) flow into later ones — Bruno CLI behavior.
-        var carried = new Dictionary<string, string>(StringComparer.Ordinal);
+        var chainContext = new ChainContext(collection, root, services.ResponseCache);
+        var bailed = false;
 
-        foreach (var (request, chain) in items)
+        for (var iteration = 0; iteration < iterations && !bailed; iteration++)
         {
-            var inputs = new RequestPipeline.Inputs(
-                Collection: collection,
-                FolderChain: chain,
-                Request: request,
-                EnvironmentVariables: envVars,
-                IterationVariables: carried.Count == 0 ? s_noVars : new Dictionary<string, string>(carried),
-                Chain: chainContext);
+            if (iterations > 1)
+                WriteSeg($"{(iteration == 0 ? "" : "\n")}Iteration {iteration + 1}/{iterations}\n", ConsoleColor.Cyan);
 
-            var o = await RequestPipeline.ExecuteAsync(inputs, executor, scripting).ConfigureAwait(false);
-            foreach (var (k, v) in o.RuntimeVariableMutations) carried[k] = v;
-            foreach (var (k, v) in o.EnvVarMutations) carried[k] = v;
-            foreach (var (k, v) in o.GlobalVarMutations) carried[k] = v;
+            // Variables captured by earlier requests (runtime captures / bru.setVar, plus env and
+            // global captures) flow into later ones within an iteration — Bruno CLI behavior.
+            // Each iteration starts from its data row.
+            var row = data?.GetRow(iteration) ?? s_noVars;
+            var carried = new Dictionary<string, string>(StringComparer.Ordinal);
 
-            var hasTests = o.Tests.Count > 0;
-            var errored = o.ErrorMessage is not null;
-            var isFailed = errored
-                || (hasTests && o.FailedTests > 0)
-                || (!hasTests && (o.StatusCode == 0 || o.StatusCode >= 400));
-            var isWarn = !isFailed && o.ElapsedMilliseconds >= slowMs;
-
-            var label = Label(request.Method, DisplayPath(o.ResolvedUrl));
-            var timing = $"{o.ElapsedMilliseconds} ms";
-            var className = chain.Count == 0
-                ? collection.Name
-                : string.Join(".", chain.Select(f => f.Name));
-
-            string? detail;
-            if (isFailed)
+            for (var i = 0; i < items.Count; i++)
             {
-                failed++;
-                detail = errored ? Oneline(o.ErrorMessage!)
-                    : hasTests ? $"{o.FailedTests}/{o.Tests.Count} tests failed"
-                    : $"HTTP {o.StatusCode}";
-                WriteSeg("  ✗  ", ConsoleColor.Red);
-                Console.Write(label);
-                WriteSeg("  " + timing, ConsoleColor.DarkYellow);
-                WriteSeg("  " + detail + "\n", ConsoleColor.Red);
-            }
-            else if (isWarn)
-            {
-                warned++;
-                detail = "slow";
-                WriteSeg("  ⚠  ", ConsoleColor.DarkYellow);
-                Console.Write(label);
-                WriteSeg("  " + timing, ConsoleColor.DarkYellow);
-                WriteSeg("  slow\n", ConsoleColor.DarkYellow);
-            }
-            else
-            {
-                passed++;
-                detail = null;
-                WriteSeg("  ✓  ", ConsoleColor.Green);
-                Console.Write(label);
-                WriteSeg("  " + timing, ConsoleColor.DarkYellow);
-                if (hasTests)
-                    WriteSeg($"  {o.Tests.Count} test{(o.Tests.Count == 1 ? "" : "s")}", ConsoleColor.DarkGray);
-                Console.WriteLine();
-            }
+                var (request, chain) = items[i];
+                if (delayMs > 0 && (i > 0 || iteration > 0))
+                    await Task.Delay(delayMs).ConfigureAwait(false);
 
-            // Linked requests (chain:pre-request) that ran or were skipped for this request.
-            foreach (var step in o.ChainSteps)
-            {
-                var what = step.Failed ? step.Error
-                    : step.Ran ? $"{step.StatusCode} · {step.ElapsedMilliseconds} ms"
-                      + (step.Captured.Count > 0 ? " → " + string.Join(" ", step.Captured.Keys.Select(k => "{{" + k + "}}")) : "")
-                    : "skipped — " + step.SkipReason;
-                WriteSeg($"       ↳ ran first: {step.Name}  {what}\n",
-                    step.Failed ? ConsoleColor.Red : ConsoleColor.DarkGray);
-            }
-            // Failed assertions / tests: name the check and why, so CI logs are actionable.
-            if (isFailed && hasTests)
-            {
-                foreach (var t in o.Tests.Where(t => !t.Passed))
-                    WriteSeg($"       ✗ {t.Name}: {t.FailureMessage}\n", ConsoleColor.Red);
-            }
+                var inputs = new RequestPipeline.Inputs(
+                    Collection: collection,
+                    FolderChain: chain,
+                    Request: request,
+                    EnvironmentVariables: envVars,
+                    IterationVariables: Overlay(row, carried),
+                    Chain: chainContext);
 
-            results.Add(new RunResult(
-                request.Name, className, o.ElapsedMilliseconds,
-                isFailed, isWarn, o.Tests.Count, o.FailedTests, detail));
+                var o = await RequestPipeline.ExecuteAsync(
+                    inputs, services.Http, services.Scripting, default, pipelineOptions).ConfigureAwait(false);
+                foreach (var (k, v) in o.RuntimeVariableMutations) carried[k] = v;
+                foreach (var (k, v) in o.EnvVarMutations) carried[k] = v;
+                foreach (var (k, v) in o.GlobalVarMutations) carried[k] = v;
+
+                var hasTests = o.Tests.Count > 0;
+                var errored = o.ErrorMessage is not null;
+                var isFailed = errored
+                    || (hasTests && o.FailedTests > 0)
+                    || (!hasTests && (o.StatusCode == 0 || o.StatusCode >= 400));
+                var isWarn = !isFailed && o.ElapsedMilliseconds >= slowMs;
+
+                var label = Label(request.Method, DisplayPath(o.ResolvedUrl));
+                var timing = $"{o.ElapsedMilliseconds} ms";
+                var group = chain.Count == 0
+                    ? collection.Name
+                    : string.Join(".", chain.Select(f => f.Name));
+
+                string? detail;
+                if (isFailed)
+                {
+                    failed++;
+                    detail = errored ? Oneline(o.ErrorMessage!)
+                        : hasTests ? $"{o.FailedTests}/{o.Tests.Count} tests failed"
+                        : $"HTTP {o.StatusCode}";
+                    WriteSeg("  ✗  ", ConsoleColor.Red);
+                    Console.Write(label);
+                    WriteSeg("  " + timing, ConsoleColor.DarkYellow);
+                    WriteSeg("  " + detail + "\n", ConsoleColor.Red);
+                }
+                else if (isWarn)
+                {
+                    warned++;
+                    detail = "slow";
+                    WriteSeg("  ⚠  ", ConsoleColor.DarkYellow);
+                    Console.Write(label);
+                    WriteSeg("  " + timing, ConsoleColor.DarkYellow);
+                    WriteSeg("  slow\n", ConsoleColor.DarkYellow);
+                }
+                else
+                {
+                    passed++;
+                    detail = null;
+                    WriteSeg("  ✓  ", ConsoleColor.Green);
+                    Console.Write(label);
+                    WriteSeg("  " + timing, ConsoleColor.DarkYellow);
+                    if (hasTests)
+                        WriteSeg($"  {o.Tests.Count} test{(o.Tests.Count == 1 ? "" : "s")}", ConsoleColor.DarkGray);
+                    Console.WriteLine();
+                }
+
+                // Linked requests (chain:pre-request) that ran or were skipped for this request.
+                foreach (var step in o.ChainSteps)
+                {
+                    var what = step.Failed ? step.Error
+                        : step.Ran ? $"{step.StatusCode} · {step.ElapsedMilliseconds} ms"
+                          + (step.Captured.Count > 0 ? " → " + string.Join(" ", step.Captured.Keys.Select(k => "{{" + k + "}}")) : "")
+                        : "skipped — " + step.SkipReason;
+                    WriteSeg($"       ↳ ran first: {step.Name}  {what}\n",
+                        step.Failed ? ConsoleColor.Red : ConsoleColor.DarkGray);
+                }
+                if (o.UnresolvedVariables.Count > 0)
+                    WriteSeg($"       ⚠ unresolved: {string.Join(", ", o.UnresolvedVariables.Select(n => "{{" + n + "}}"))}\n",
+                        ConsoleColor.DarkYellow);
+                // Failed assertions / tests: name the check and why, so CI logs are actionable.
+                if (isFailed && hasTests)
+                {
+                    foreach (var t in o.Tests.Where(t => !t.Passed))
+                        WriteSeg($"       ✗ {t.Name}: {t.FailureMessage}\n", ConsoleColor.Red);
+                }
+
+                entries.Add(new RunReportEntry(
+                    request.Name, group, iteration, request.Method, o.ResolvedUrl, o.StatusCode,
+                    o.ElapsedMilliseconds, isFailed, isWarn, detail,
+                    o.Tests.Select(t => new RunReportTest(t.Name, t.Passed, t.FailureMessage)).ToList()));
+
+                if (isFailed && bail)
+                {
+                    bailed = true;
+                    WriteSeg("\n  --bail: stopping after the first failure\n", ConsoleColor.Red);
+                    break;
+                }
+            }
         }
         sw.Stop();
 
@@ -323,22 +403,39 @@ internal static class Program
         var summary = $"  {passed} passed, {failed} failed, {warned} warning{(warned == 1 ? "" : "s")} in {secs} s";
         WriteSeg(summary + "\n", failed > 0 ? ConsoleColor.Red : ConsoleColor.Green);
 
-        // --- JUnit report -------------------------------------------------
-        if (reporter is not null && outPath is not null)
+        // --- Reports ------------------------------------------------------
+        if (reporters.Count > 0 && outPath is not null)
         {
-            try
+            var report = new RunReport(collection.Name, startedAt, sw.ElapsedMilliseconds, iterations, entries);
+            foreach (var format in reporters)
             {
-                WriteJUnitReport(outPath, collection.Name, results, sw.ElapsedMilliseconds / 1000.0);
-                WriteSeg($"  Report written to {outPath}\n", ConsoleColor.DarkGray);
-            }
-            catch (Exception ex)
-            {
-                WriteSeg($"  Failed to write report: {ex.Message}\n", ConsoleColor.Red);
-                return 1;
+                // One reporter writes exactly --out; several share --out as a base name.
+                var target = reporters.Count == 1
+                    ? outPath
+                    : Path.ChangeExtension(outPath, RunReportWriter.ExtensionFor(format));
+                try
+                {
+                    RunReportWriter.Write(report, format, target);
+                    WriteSeg($"  Report written to {target}\n", ConsoleColor.DarkGray);
+                }
+                catch (Exception ex)
+                {
+                    WriteSeg($"  Failed to write {format} report: {ex.Message}\n", ConsoleColor.Red);
+                    return 1;
+                }
             }
         }
 
         return failed > 0 ? 1 : 0;
+    }
+
+    private static IReadOnlyDictionary<string, string> Overlay(
+        IReadOnlyDictionary<string, string> row, Dictionary<string, string> carried)
+    {
+        if (carried.Count == 0) return row;
+        var merged = new Dictionary<string, string>(row, StringComparer.Ordinal);
+        foreach (var (k, v) in carried) merged[k] = v;
+        return merged;
     }
 
     /// <summary>Path component of a resolved URL, for the per-request line.</summary>
@@ -350,76 +447,6 @@ internal static class Program
     {
         var line = s.ReplaceLineEndings(" ").Trim();
         return line.Length > 70 ? line[..69] + "…" : line;
-    }
-
-    /// <summary>Registers the user's configured secret-manager providers — the same
-    /// encrypted config the desktop app's Secret Manager settings page writes — so
-    /// <c>secret://&lt;name&gt;/path#field</c> URIs resolve. A missing or unreadable
-    /// store simply yields an empty registry.</summary>
-    private static void LoadSecretProviders(SecretRegistry registry)
-    {
-        try
-        {
-            var store = new Vegha.Core.Persistence.SecretProviderConfigStore();
-            foreach (var cfg in store.Load())
-            {
-                try
-                {
-                    ISecretProvider? provider = cfg.Type switch
-                    {
-                        "azure" => Vegha.Integrations.Secrets.Azure.AzureKeyVaultProvider.FromConfig(cfg.Settings),
-                        "aws" => Vegha.Integrations.Secrets.Aws.AwsSecretsProvider.FromConfig(cfg.Settings),
-                        _ => null,
-                    };
-                    if (provider is not null) registry.Register(cfg.Name, provider);
-                }
-                catch { /* skip a malformed provider entry */ }
-            }
-        }
-        catch { /* no configured providers — proceed with an empty registry */ }
-    }
-
-    /// <summary>Writes a JUnit XML report: one &lt;testcase&gt; per request, with a
-    /// &lt;failure&gt; child when the request errored, returned 4xx/5xx, or had a
-    /// failing post-response test.</summary>
-    private static void WriteJUnitReport(
-        string outPath, string collectionName, IReadOnlyList<RunResult> results, double totalSeconds)
-    {
-        var ci = System.Globalization.CultureInfo.InvariantCulture;
-        var failures = results.Count(r => r.Failed);
-
-        var cases = results.Select(r =>
-        {
-            var tc = new XElement("testcase",
-                new XAttribute("name", r.Name),
-                new XAttribute("classname", string.IsNullOrEmpty(r.ClassName) ? collectionName : r.ClassName),
-                new XAttribute("time", (r.ElapsedMs / 1000.0).ToString("0.000", ci)));
-            if (r.Failed)
-                tc.Add(new XElement("failure",
-                    new XAttribute("message", r.Detail ?? "failed"),
-                    r.Detail ?? "failed"));
-            return tc;
-        });
-
-        var suite = new XElement("testsuite",
-            new XAttribute("name", collectionName),
-            new XAttribute("tests", results.Count),
-            new XAttribute("failures", failures),
-            new XAttribute("time", totalSeconds.ToString("0.000", ci)),
-            cases);
-
-        var doc = new XDocument(
-            new XDeclaration("1.0", "utf-8", null),
-            new XElement("testsuites",
-                new XAttribute("name", collectionName),
-                new XAttribute("tests", results.Count),
-                new XAttribute("failures", failures),
-                new XAttribute("time", totalSeconds.ToString("0.000", ci)),
-                suite));
-
-        var dir = Path.GetDirectoryName(Path.GetFullPath(outPath));
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        doc.Save(outPath);
     }
 
     /// <summary>Method + target padded to a fixed width so the timing column lines up.</summary>
@@ -557,6 +584,12 @@ internal static class Program
         return null;
     }
 
+    /// <summary>Every value of a repeatable option (<c>--env-var a=1 --env-var b=2</c>).</summary>
+    private static IEnumerable<string> ArgValues(string[] args, string name)
+    {
+        for (var i = 0; i < args.Length - 1; i++) if (args[i] == name) yield return args[i + 1];
+    }
+
     private static void PrintUsage()
     {
         Console.Error.WriteLine("""
@@ -565,8 +598,13 @@ internal static class Program
               vegha run <collection> [options]
                   --name <request>      run only the named request
                   --env <name>          select an environment for variable resolution
-                  --reporter junit      emit a report (with --out)
-                  --out <file>          write the report to <file>
+                  --env-var <k=v>       set/override a variable (repeatable)
+                  --iterations <n>      run the collection n times (default 1)
+                  --data <file>         CSV/JSON rows; one iteration per row
+                  --delay <ms>          pause between requests
+                  --bail                stop at the first failing request
+                  --reporter <list>     junit, json, html (comma-separated; with --out)
+                  --out <file>          report path (a base name when several reporters)
                   --slow <ms>           warn on requests slower than <ms> (default 1000)
 
               vegha import <source> <destination-folder>

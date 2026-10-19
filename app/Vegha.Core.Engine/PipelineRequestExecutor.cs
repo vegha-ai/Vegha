@@ -3,7 +3,7 @@ using Vegha.Core.Flow;
 using Vegha.Core.Requests;
 using Vegha.Core.Scripting;
 
-namespace Vegha.App.ViewModels.Runner;
+namespace Vegha.Core.Engine;
 
 /// <summary>Bridges <see cref="CollectionRunOrchestrator"/>'s executor delegate to the
 /// <see cref="RequestPipeline.ExecuteAsync"/> headless pipeline. Threads runtime variables
@@ -23,6 +23,7 @@ public sealed class PipelineRequestExecutor
     private readonly bool _turnOffLogs;
     private readonly bool _keepVariableValues;
     private readonly LastResponseCache? _responseCache;
+    private readonly RequestPipeline.Options? _pipelineOptions;
 
     /// <summary>Per-iteration accumulator of runtime vars set by <c>bru.setVar</c> in earlier
     /// requests of that same iteration. Keyed by iteration index so workers don't trample
@@ -38,7 +39,8 @@ public sealed class PipelineRequestExecutor
         bool turnOffLogs = false,
         bool keepVariableValues = true,
         LastResponseCache? responseCache = null,
-        IReadOnlyDictionary<string, string>? initialRuntimeVariables = null)
+        IReadOnlyDictionary<string, string>? initialRuntimeVariables = null,
+        RequestPipeline.Options? pipelineOptions = null)
     {
         _http = http;
         _scripting = scripting;
@@ -49,6 +51,7 @@ public sealed class PipelineRequestExecutor
         _keepVariableValues = keepVariableValues;
         _responseCache = responseCache;
         _initialRuntimeVariables = initialRuntimeVariables;
+        _pipelineOptions = pipelineOptions;
     }
 
     /// <summary>Session runtime variables at run start — every iteration begins with them
@@ -89,7 +92,7 @@ public sealed class PipelineRequestExecutor
                 Workspace: _workspace,
                 Chain: chainContext);
 
-            var outputs = await RequestPipeline.ExecuteAsync(inputs, _http, _scripting, ct).ConfigureAwait(false);
+            var outputs = await RequestPipeline.ExecuteAsync(inputs, _http, _scripting, ct, _pipelineOptions).ConfigureAwait(false);
 
             // Carry variable mutations forward only when "Keep variable values" is on. When off,
             // each request starts from the iteration's data row with no chained-in overlay.
