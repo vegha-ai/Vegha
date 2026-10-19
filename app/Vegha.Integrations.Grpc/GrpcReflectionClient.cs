@@ -78,9 +78,10 @@ public sealed class GrpcReflectionClient : IAsyncDisposable
 
     private static byte[] BuildListServicesRequest()
     {
-        // ServerReflectionRequest { string list_services = 3; }
+        // ServerReflectionRequest { string list_services = 7; } (3 is file_by_filename — a
+        // server answers that with "File not found", which used to read as "no services").
         var stream = new MemoryStream();
-        WriteTag(stream, fieldNumber: 3, wireType: 2);
+        WriteTag(stream, fieldNumber: 7, wireType: 2);
         WriteVarint(stream, 0);
         return stream.ToArray();
     }
@@ -107,8 +108,9 @@ public sealed class GrpcReflectionClient : IAsyncDisposable
         while (!input.IsAtEnd)
         {
             var tag = input.ReadTag();
-            if (WireFormat.GetTagFieldNumber(tag) == 6)
-                ParseListServiceResponse(input.ReadBytes().ToByteArray(), services);
+            var field = WireFormat.GetTagFieldNumber(tag);
+            if (field == 6) ParseListServiceResponse(input.ReadBytes().ToByteArray(), services);
+            else if (field == ErrorResponseField) throw ReflectionError(input.ReadBytes().ToByteArray());
             else input.SkipLastField();
         }
         return services;
@@ -146,8 +148,9 @@ public sealed class GrpcReflectionClient : IAsyncDisposable
         while (!input.IsAtEnd)
         {
             var tag = input.ReadTag();
-            if (WireFormat.GetTagFieldNumber(tag) == 4)
-                return ParseFileDescriptorResponseInner(input.ReadBytes().ToByteArray());
+            var field = WireFormat.GetTagFieldNumber(tag);
+            if (field == 4) return ParseFileDescriptorResponseInner(input.ReadBytes().ToByteArray());
+            if (field == ErrorResponseField) throw ReflectionError(input.ReadBytes().ToByteArray());
             input.SkipLastField();
         }
         return Array.Empty<byte[]>();
@@ -164,6 +167,28 @@ public sealed class GrpcReflectionClient : IAsyncDisposable
             else input.SkipLastField();
         }
         return protos;
+    }
+
+    /// <summary>ServerReflectionResponse.error_response.</summary>
+    private const int ErrorResponseField = 7;
+
+    /// <summary>ErrorResponse { int32 error_code = 1; string error_message = 2; } as an exception.</summary>
+    private static InvalidOperationException ReflectionError(byte[] bytes)
+    {
+        var input = new CodedInputStream(bytes);
+        var code = 0;
+        var message = string.Empty;
+        while (!input.IsAtEnd)
+        {
+            var tag = input.ReadTag();
+            switch (WireFormat.GetTagFieldNumber(tag))
+            {
+                case 1: code = input.ReadInt32(); break;
+                case 2: message = input.ReadString(); break;
+                default: input.SkipLastField(); break;
+            }
+        }
+        return new InvalidOperationException($"Server reflection error {code}: {message}");
     }
 
     private static void WriteTag(Stream s, int fieldNumber, int wireType)

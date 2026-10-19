@@ -144,6 +144,10 @@ public sealed record RequestItem
     /// and for SOAP requests with no WS-* configuration. Persisted as the <c>soap { }</c> block.</summary>
     public SoapConfig? Soap { get; init; }
 
+    /// <summary>gRPC call target for <see cref="RequestKind.Grpc"/> requests (the URL holds
+    /// the server address). Persisted in the <c>grpc { }</c> verb block.</summary>
+    public GrpcConfig? Grpc { get; init; }
+
     /// <summary>Absolute path to the <c>.bru</c> file this request was loaded from. Set by
     /// <c>CollectionLoader</c> at load time so the UI can resolve the on-disk file without
     /// re-reading and re-parsing every sibling <c>.bru</c> to recover it. Transient: it is
@@ -151,6 +155,18 @@ public sealed record RequestItem
     /// each load. Null for in-memory requests that aren't backed by a file yet (e.g. a fresh
     /// cURL import before it's persisted).</summary>
     public string? SourcePath { get; init; }
+}
+
+/// <summary>Which RPC a gRPC request calls. The message itself is the request body (JSON,
+/// encoded against the server's reflected schema at send time).</summary>
+public sealed record GrpcConfig
+{
+    /// <summary><c>/package.Service/Method</c>.</summary>
+    public string Method { get; init; } = string.Empty;
+
+    /// <summary><c>unary</c>, <c>server-streaming</c>, <c>client-streaming</c> or
+    /// <c>bidi-streaming</c>; null until resolved from reflection.</summary>
+    public string? MethodType { get; init; }
 }
 
 /// <summary>SOAP WS-* configuration applied to the outgoing envelope at send time. Each
