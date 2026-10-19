@@ -9,14 +9,19 @@ namespace Vegha.Core.Exporters;
 /// <summary>File-name and JSON helpers shared by every format exporter.</summary>
 internal static class ExportNaming
 {
-    /// <summary>Same rule as <c>BruCollectionWriter.Sanitize</c>: invalid file-name chars
-    /// become <c>_</c>, blank names become "untitled". Also strips '/' and '\' on every OS
+    /// <summary>Characters Windows rejects in file names. An export made on macOS or Linux is
+    /// often opened on Windows, so these are replaced on every OS — on Unix
+    /// <see cref="Path.GetInvalidFileNameChars"/> is only '/' and NUL.</summary>
+    private static readonly char[] PortableInvalid = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+
+    /// <summary>Invalid file-name chars (this OS's, the Windows set above, and control
+    /// characters) become <c>_</c>; blank names become "untitled". '/' and '\' never survive,
     /// so a name never introduces an extra zip directory level.</summary>
     public static string Sanitize(string? name)
     {
         var invalid = Path.GetInvalidFileNameChars();
         var s = new string((name ?? string.Empty)
-            .Select(c => invalid.Contains(c) || c == '/' || c == '\\' ? '_' : c)
+            .Select(c => invalid.Contains(c) || PortableInvalid.Contains(c) || char.IsControl(c) ? '_' : c)
             .ToArray()).Trim().TrimEnd('.');
         return string.IsNullOrEmpty(s) ? "untitled" : s;
     }

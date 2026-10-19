@@ -49,7 +49,15 @@ public class GraphQLWsClientTests : IAsyncLifetime
                 var ctx = await _listener.GetContextAsync();
                 if (!ctx.Request.IsWebSocketRequest) { ctx.Response.StatusCode = 400; ctx.Response.Close(); continue; }
                 var wsCtx = await ctx.AcceptWebSocketAsync(_acceptSubProtocol);
-                _ = Task.Run(() => _serverScript!(wsCtx.WebSocket, ct));
+                _ = Task.Run(async () =>
+                {
+                    await _serverScript!(wsCtx.WebSocket, ct);
+                    // On Unix (managed HttpListener) WebSocket.Abort() leaves the socket open, so a
+                    // scripted "hard drop" never reaches the client; drop the connection too.
+                    // Windows' http.sys already closes it, and aborting there disturbs other tests.
+                    if (!OperatingSystem.IsWindows() && wsCtx.WebSocket.State == WebSocketState.Aborted)
+                        ctx.Response.Abort();
+                });
             }
         }
         catch (HttpListenerException) { }

@@ -44,6 +44,9 @@ jobs:
   package:
     name: package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # The Intel Mac build is new (cross-built on the arm64 runner); until it has shipped
+    # once, its failure must not hold back every other platform's release.
+    continue-on-error: ${{ matrix.optional == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -57,6 +60,10 @@ jobs:
           - os: macos-14
             rid: osx-arm64
             artifact-suffix: macos-arm64
+          - os: macos-14
+            rid: osx-x64
+            artifact-suffix: macos-x64
+            optional: true
           - os: ubuntu-latest
             rid: linux-x64
             artifact-suffix: linux-x64
@@ -117,12 +124,12 @@ jobs:
             --password "$MAC_NOTARY_PASSWORD"
           # Run pack-mac.sh — publish → sign → dmg → notarize → staple
           chmod +x eng/pack-mac.sh
-          ./eng/pack-mac.sh --version ${{ steps.ver.outputs.version }}
+          ./eng/pack-mac.sh --version ${{ steps.ver.outputs.version }} --runtime ${{ matrix.rid }}
 
       - name: Build macOS DMG (unsigned, no secrets)
         if: matrix.os == 'macos-14' && env.MAC_DEVELOPER_ID_BASE64 == ''
         run: |
-          ./eng/pack-mac.sh --version ${{ steps.ver.outputs.version }} --skip-notarize
+          ./eng/pack-mac.sh --version ${{ steps.ver.outputs.version }} --runtime ${{ matrix.rid }} --skip-notarize
 
       # ============================================================
       # Windows + Linux packaging. On Windows, when the Azure Trusted Signing
@@ -215,6 +222,10 @@ jobs:
           stage "artifacts/vegha-*-windows-arm64/*Setup.exe" "Vegha-win-arm64-Setup.exe"
           stage "artifacts/vegha-*-macos-arm64/*.dmg"        "Vegha-osx-arm64.dmg"
           stage "artifacts/vegha-*-linux-x64/*.AppImage"     "Vegha-linux-x64.AppImage"
+          # Intel Mac is optional (see the package job): ship it when it built.
+          intel=( artifacts/vegha-*-macos-x64/*.dmg )
+          if [ ${#intel[@]} -gt 0 ]; then stage "artifacts/vegha-*-macos-x64/*.dmg" "Vegha-osx-x64.dmg"
+          else echo "::warning::No Intel Mac dmg — releasing without Vegha-osx-x64.dmg."; fi
 
           ( cd release && sha256sum * > SHA256SUMS.txt )
           echo "Release assets:"
@@ -265,6 +276,7 @@ jobs:
             [windows-x64]=win-x64
             [windows-arm64]=win-arm64
             [macos-arm64]=osx-arm64
+            [macos-x64]=osx-x64
             [linux-x64]=linux-x64
           )
 
