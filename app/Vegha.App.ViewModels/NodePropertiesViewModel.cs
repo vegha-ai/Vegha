@@ -77,7 +77,7 @@ public partial class NodePropertiesViewModel : ObservableObject
         TestsScript = collection.TestsScript ?? string.Empty;
         Docs = collection.Docs ?? string.Empty;
         SeedScriptless(collection.Assertions, collection.ChainLinks);
-        LinkableRequestPaths = LinkablePathsOf(collection);
+        SetLinkableCollection(collection);
         ApplyAuth(collection.Auth);
         if (collection.Presets is { } presets)
         {
@@ -117,6 +117,18 @@ public partial class NodePropertiesViewModel : ObservableObject
         foreach (var l in chainLinks) ChainLinks.Add(Scriptless.ChainLinkRow.FromStorage(l));
         KvAutoAppend.EnsureTrailingBlank(Assertions, () => new Scriptless.AssertionRow(), r => r.IsBlank);
         KvAutoAppend.EnsureTrailingBlank(ChainLinks, () => new Scriptless.ChainLinkRow(), r => r.IsBlank);
+    }
+
+    private Scriptless.ChainLinksEditor? _chainEditor;
+
+    /// <summary>The linked-requests editor (pickers, reorder) over <see cref="ChainLinks"/>.</summary>
+    public Scriptless.ChainLinksEditor ChainEditor => _chainEditor ??= new Scriptless.ChainLinksEditor(ChainLinks);
+
+    /// <summary>Offers the requests of <paramref name="collection"/> (the owner) to the pickers.</summary>
+    public void SetLinkableCollection(Collection collection)
+    {
+        LinkableRequestPaths = LinkablePathsOf(collection);
+        ChainEditor.Candidates = Scriptless.ChainCandidate.Of(collection, null);
     }
 
     /// <summary>Every request path in a collection, for the linked-request picker.</summary>

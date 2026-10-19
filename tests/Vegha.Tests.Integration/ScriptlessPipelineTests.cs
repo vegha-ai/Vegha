@@ -180,6 +180,23 @@ public class ScriptlessPipelineTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_collection_link_never_runs_the_request_before_itself()
+    {
+        var login = Login();
+        var me = Me();
+        var c = new Collection { Name = "c", Requests = { login, me }, ChainLinks = { new KvPair("Login.bru", "always") } };
+
+        var direct = await RequestPipeline.ExecuteAsync(Inputs(c, login, new ChainContext(c, null)), _http, _script);
+        direct.ErrorMessage.Should().BeNull();
+        direct.ChainSteps.Should().BeEmpty();
+
+        var o = await RequestPipeline.ExecuteAsync(Inputs(c, me, new ChainContext(c, null)), _http, _script);
+        o.ErrorMessage.Should().BeNull();
+        o.ChainSteps.Should().ContainSingle().Which.Should().Match<ChainStep>(s => s.Ran && s.Nested.Count == 0);
+        o.StatusCode.Should().Be(200);
+    }
+
+    [Fact]
     public async Task Chain_links_are_ignored_without_a_chain_context()
     {
         var me = Me(new KvPair("Login.bru", "always"));

@@ -123,6 +123,7 @@ public partial class RequestEditorViewModel : ObservableObject
         _parentCollection = collection;
         _parentFolderChain = folderChain ?? Array.Empty<Vegha.Core.Domain.Folder>();
         RefreshInheritanceHints();
+        RefreshChainCatalog();
         // Collection / folder vars now resolve — re-highlight {{var}} tokens.
         VariablesSnapshotChanged?.Invoke(this, EventArgs.Empty);
     }

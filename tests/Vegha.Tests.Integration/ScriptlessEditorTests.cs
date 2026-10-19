@@ -162,4 +162,34 @@ public class ScriptlessEditorTests : IAsyncLifetime
         saved.PostResponseVars.Should().ContainSingle().Which.Should().Be(new KvPair("uid", "res.body.user.nope"));
         saved.Assertions.Should().Contain(new KvPair("res.status", "eq 200"));
     }
+
+    [Fact]
+    public void Chain_tab_offers_other_requests_shows_inherited_links_and_opens_a_linked_request()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "vegha-chain-" + Guid.NewGuid().ToString("N"));
+        var login = LoginItem(dir);
+        var me = MeItem(dir, new KvPair("Login.bru", "when-empty token"));
+        var collection = new Collection { Name = "c", Requests = { login, me }, ChainLinks = { new KvPair("Login.bru", "when-stale 1h") } };
+
+        var editor = NewEditor();
+        editor.LoadFromRequestItem(me, me.SourcePath);
+        editor.SetParentContext(collection, Array.Empty<Folder>());
+        var chain = editor.ChainEditor;
+
+        chain.Candidates.Select(c => c.Name).Should().Equal(new[] { "Login" }, "the request itself can't be linked");
+        chain.Inherited.Should().ContainSingle().Which.Should().Be(
+            new InheritedChainLink("collection", "POST", "Login", "when the last run is older than 1h", true));
+        var row = editor.ChainLinks[0];
+        row.Target!.Name.Should().Be("Login");
+        row.VariableName.Should().Be("token");
+
+        LinkedRequestOpenEventArgs? opened = null;
+        editor.OpenLinkedRequestRequested += (_, e) => opened = e;
+        chain.OpenCommand.Execute(row);
+        opened!.Request.Should().BeSameAs(login);
+
+        editor.IsDirty.Should().BeFalse("resolving the rows is not an edit");
+        row.ModeOption = ScriptlessOptions.ChainModeFor(ChainRunMode.Always);
+        editor.IsDirty.Should().BeTrue();
+    }
 }

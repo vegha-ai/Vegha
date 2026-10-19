@@ -191,6 +191,11 @@ public static class ChainExecutor
             var (request, folderChain) = resolved.Value;
             var canonical = context.PathOf(request, folderChain);
 
+            // A folder / collection link to a request inside that scope (a collection-wide
+            // Login) reaches the request itself: it never runs before itself.
+            if (context.Stack.Count > 0 && string.Equals(context.Stack[^1], canonical, StringComparison.OrdinalIgnoreCase))
+                continue;
+
             if (context.Stack.Contains(canonical, StringComparer.OrdinalIgnoreCase))
                 return Fail(steps, runtime, env, global, canonical, request.Name,
                     $"Linked request cycle: {string.Join(" → ", context.Stack.Append(canonical))}");
