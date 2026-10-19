@@ -10,9 +10,23 @@ namespace Vegha.Tests.Unit.Integrations.Git;
 /// when git isn't installed (same policy as <see cref="GitProcessRunnerTests"/>).</summary>
 public sealed class GitSyncFlowTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "vegha-sync-" + Guid.NewGuid().ToString("N"));
+    // Real path: on macOS the temp dir is under /var, a symlink to /private/var, and git
+    // reports repo roots by their resolved path.
+    private readonly string _root = Path.Combine(RealPath(Path.GetTempPath()), "vegha-sync-" + Guid.NewGuid().ToString("N"));
     private readonly GitService _git;
     private readonly bool _available;
+
+    private static string RealPath(string path)
+    {
+        var full = Path.GetFullPath(path);
+        var current = Path.GetPathRoot(full)!;
+        foreach (var segment in full[current.Length..].Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var next = Path.Combine(current, segment);
+            current = new DirectoryInfo(next).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? next;
+        }
+        return current;
+    }
 
     public GitSyncFlowTests()
     {
