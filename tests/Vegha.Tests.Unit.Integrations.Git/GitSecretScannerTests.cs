@@ -63,4 +63,15 @@ public sealed class GitSecretScannerTests : IDisposable
         findings[0].Path.Should().Be("get.bru");
         findings[0].Line.Should().Be(5);
     }
+
+    [Theory]
+    [InlineData("  token: ghp_0123456789abcdefghijklmnopqrstuvwxyzAB", "ghp_0123456789abcdefghijklmnopqrstuvwxyzAB")]
+    [InlineData("  password: \"S3cret!Passw0rd\"", "S3cret!Passw0rd")]
+    public void SharedPatterns_ReportWhereTheSecretIs(string line, string secret)
+    {
+        // Editors (the VS Code extension's diagnostics) underline exactly the secret.
+        var m = Vegha.Core.Domain.Security.SecretPatterns.ScanLine(line)!;
+        line.Substring(m.Start, m.Length).Should().Be(secret);
+        m.MaskedLine.Should().NotContain(secret);
+    }
 }
