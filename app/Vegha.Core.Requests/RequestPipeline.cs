@@ -227,7 +227,7 @@ public static class RequestPipeline
         }
 
         // 3. Resolve URL with interpolation + query params.
-        var resolvedUrl = ComposeUrl(inputs.Request.Url, inputs.Request.Params, vars);
+        var resolvedUrl = ComposeUrl(inputs.Request.Url, inputs.Request.Params, inputs.Request.PathParams, vars);
         if (string.IsNullOrEmpty(resolvedUrl))
             return Failure(inputs, composed, sw.ElapsedMilliseconds, "URL is empty.", consoleAll);
 
@@ -479,22 +479,78 @@ public static class RequestPipeline
         IReadOnlyDictionary<string, string> after) =>
         before.Keys.Where(k => !after.ContainsKey(k)).ToList();
 
-    private static string ComposeUrl(string baseUrl, IList<KvPair> queryParams,
+    /// <summary>Interpolates the URL, substitutes <c>:name</c> path parameters, and appends the
+    /// enabled query parameters. A parameter the URL already carries with the same value is not
+    /// appended again: Bruno-authored files keep the query string in the URL *and* mirror it in
+    /// <c>params:query</c>, while Vegha-authored files keep them apart — both send it once.</summary>
+    public static string ComposeUrl(string baseUrl, IList<KvPair> queryParams, IList<KvPair> pathParams,
         IReadOnlyDictionary<string, string> vars)
     {
         if (string.IsNullOrWhiteSpace(baseUrl)) return string.Empty;
-        var resolvedBase = Interpolator.Resolve(baseUrl, vars);
+        var resolvedBase = ApplyPathParams(Interpolator.Resolve(baseUrl, vars), pathParams, vars);
         var enabled = queryParams.Where(p => p.Enabled && !string.IsNullOrEmpty(p.Name)).ToList();
         if (enabled.Count == 0) return resolvedBase;
 
-        var separator = resolvedBase.Contains('?') ? "&" : "?";
-        var qs = string.Join("&", enabled.Select(p =>
+        var present = ExistingQuery(resolvedBase);
+        var toAppend = new List<(string Name, string Value)>();
+        foreach (var p in enabled)
         {
-            var n = Interpolator.Resolve(p.Name, vars);
-            var v = Interpolator.Resolve(p.Value, vars);
-            return $"{Uri.EscapeDataString(n)}={Uri.EscapeDataString(v)}";
-        }));
-        return resolvedBase + separator + qs;
+            var pair = (Interpolator.Resolve(p.Name, vars), Interpolator.Resolve(p.Value, vars));
+            // Each occurrence in the URL absorbs one matching param, so repeated keys still work.
+            if (!present.Remove(pair)) toAppend.Add(pair);
+        }
+        if (toAppend.Count == 0) return resolvedBase;
+
+        var separator = resolvedBase.Contains('?') ? (resolvedBase.EndsWith('?') || resolvedBase.EndsWith('&') ? "" : "&") : "?";
+        return resolvedBase + separator + string.Join("&",
+            toAppend.Select(p => $"{Uri.EscapeDataString(p.Name)}={Uri.EscapeDataString(p.Value)}"));
+    }
+
+    /// <summary>Replaces whole path segments of the form <c>:name</c> with the matching enabled
+    /// path parameter (URL-encoded). Only the path is touched — never the scheme, the
+    /// <c>host:port</c> authority or the query string.</summary>
+    private static string ApplyPathParams(string url, IList<KvPair> pathParams, IReadOnlyDictionary<string, string> vars)
+    {
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var p in pathParams)
+            if (p.Enabled && !string.IsNullOrEmpty(p.Name)) values[p.Name.TrimStart(':')] = Interpolator.Resolve(p.Value, vars);
+        if (values.Count == 0) return url;
+
+        var schemeEnd = url.IndexOf("://", StringComparison.Ordinal);
+        var pathStart = url.IndexOf('/', schemeEnd < 0 ? 0 : schemeEnd + 3);
+        if (pathStart < 0) return url;
+        var queryStart = url.IndexOfAny(new[] { '?', '#' }, pathStart);
+        var path = queryStart < 0 ? url[pathStart..] : url[pathStart..queryStart];
+        var segments = path.Split('/');
+        for (var i = 0; i < segments.Length; i++)
+        {
+            if (segments[i].Length > 1 && segments[i][0] == ':' && values.TryGetValue(segments[i][1..], out var v))
+                segments[i] = Uri.EscapeDataString(v);
+        }
+        return url[..pathStart] + string.Join('/', segments) + (queryStart < 0 ? string.Empty : url[queryStart..]);
+    }
+
+    /// <summary>The decoded (name, value) pairs already in a URL's query string, as a multiset.</summary>
+    private static List<(string Name, string Value)> ExistingQuery(string url)
+    {
+        var q = url.IndexOf('?');
+        var list = new List<(string, string)>();
+        if (q < 0) return list;
+        var end = url.IndexOf('#', q);
+        foreach (var part in (end < 0 ? url[(q + 1)..] : url[(q + 1)..end]).Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            var name = eq < 0 ? part : part[..eq];
+            var value = eq < 0 ? string.Empty : part[(eq + 1)..];
+            list.Add((Decode(name), Decode(value)));
+        }
+        return list;
+
+        static string Decode(string s)
+        {
+            try { return Uri.UnescapeDataString(s.Replace('+', ' ')); }
+            catch (UriFormatException) { return s; }
+        }
     }
 
     private static List<KeyValuePair<string, string>> ComposeHeaders(

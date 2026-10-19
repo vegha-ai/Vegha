@@ -10,22 +10,18 @@ using Vegha.Core.Flow;
 namespace Vegha.Cli;
 
 /// <summary>
-/// Vegha CLI. Two modes:
-///   vegha run &lt;collection&gt; [--name &lt;request&gt;]
-///   vegha --protocol json
+/// Vegha CLI:
+///   vegha run &lt;collection&gt; [options]   — run requests/collections, for CI (see PrintUsage)
+///   vegha import &lt;source&gt; &lt;destination&gt;
 ///
-/// The JSON-RPC mode (--protocol json) reads requests on stdin, writes responses on
-/// stdout, one JSON message per line. This is what the VSCode extension talks to —
-/// the executor stays a long-lived process so it can keep cookies + tokens warm.
+/// Requests run through the same Engine as the desktop app and the VS Code extension
+/// (whose long-lived engine is the separate vegha-sidecar process).
 /// </summary>
 internal static class Program
 {
     public static async Task<int> Main(string[] args)
     {
         if (args.Length == 0) { PrintUsage(); return 1; }
-
-        if (args[0] == "--protocol" && args.Length > 1 && args[1] == "json")
-            return await JsonProtocolLoopAsync().ConfigureAwait(false);
 
         if (args[0] == "run" && args.Length >= 2)
             return await RunCollectionAsync(args[1], args).ConfigureAwait(false);
@@ -35,74 +31,6 @@ internal static class Program
 
         PrintUsage();
         return 1;
-    }
-
-    private static async Task<int> JsonProtocolLoopAsync()
-    {
-        using var http = new HttpClient();
-        var executor = new HttpExecutor(http);
-
-        string? line;
-        while ((line = await Console.In.ReadLineAsync().ConfigureAwait(false)) is not null)
-        {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            try
-            {
-                using var doc = JsonDocument.Parse(line);
-                var root = doc.RootElement;
-                var method = root.GetProperty("method").GetString();
-                var id = root.TryGetProperty("id", out var idEl) ? idEl.ToString() : null;
-                JsonElement paramsEl = default;
-                root.TryGetProperty("params", out paramsEl);
-
-                var responseObj = method switch
-                {
-                    "executeRequest" => await HandleExecuteRequest(executor, paramsEl).ConfigureAwait(false),
-                    "ping" => (object)new { ok = true },
-                    _ => new { error = $"unknown method '{method}'" },
-                };
-
-                var envelope = new { id, result = responseObj };
-                Console.WriteLine(JsonSerializer.Serialize(envelope));
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(JsonSerializer.Serialize(new { error = ex.Message }));
-            }
-        }
-        return 0;
-    }
-
-    private static async Task<object> HandleExecuteRequest(HttpExecutor executor, JsonElement p)
-    {
-        var method = p.TryGetProperty("method", out var m) ? m.GetString() : "GET";
-        var url = p.GetProperty("url").GetString()!;
-        string? body = p.TryGetProperty("body", out var b) ? b.GetString() : null;
-        string? contentType = p.TryGetProperty("contentType", out var ct) ? ct.GetString() : null;
-        var headers = new List<KeyValuePair<string, string>>();
-        if (p.TryGetProperty("headers", out var hs) && hs.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var prop in hs.EnumerateObject())
-                headers.Add(new(prop.Name, prop.Value.GetString() ?? string.Empty));
-        }
-
-        var request = new HttpExecutionRequest(
-            new HttpMethod(method ?? "GET"),
-            new Uri(url),
-            Headers: headers,
-            Body: body,
-            ContentType: contentType);
-
-        var result = await executor.ExecuteAsync(request).ConfigureAwait(false);
-        return new
-        {
-            status = result.StatusCode,
-            statusText = result.ReasonPhrase,
-            headers = result.Headers.ToDictionary(h => h.Key, h => h.Value),
-            body = result.Body,
-            elapsedMs = result.ElapsedMilliseconds,
-            error = result.ErrorMessage,
-        };
     }
 
     /// <summary>A request slower than this many ms is flagged as a warning. Override with --slow.</summary>
@@ -608,7 +536,6 @@ internal static class Program
                   --slow <ms>           warn on requests slower than <ms> (default 1000)
 
               vegha import <source> <destination-folder>
-              vegha --protocol json
             """);
     }
 }

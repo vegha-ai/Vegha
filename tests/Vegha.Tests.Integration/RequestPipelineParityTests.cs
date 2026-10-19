@@ -351,3 +351,46 @@ public class RequestPipelineParityTests : IAsyncLifetime
         return port;
     }
 }
+
+/// <summary>URL composition: path parameters and Bruno's mirrored query strings.</summary>
+public class RequestPipelineUrlTests
+{
+    private static readonly IReadOnlyDictionary<string, string> Vars =
+        new Dictionary<string, string> { ["host"] = "api.test:8443", ["id"] = "42" };
+
+    private static IList<KvPair> Kv(params (string N, string V)[] p) => p.Select(x => new KvPair(x.N, x.V)).ToList();
+
+    [Theory]
+    [InlineData("https://{{host}}/users/:id", "https://api.test:8443/users/42")]
+    [InlineData("https://{{host}}/users/:id/posts/:post?x=:id", "https://api.test:8443/users/42/posts/a%20b?x=:id")]
+    [InlineData("https://{{host}}/users/:unknown", "https://api.test:8443/users/:unknown")]
+    public void Path_params_replace_whole_segments_only(string url, string expected)
+    {
+        RequestPipeline.ComposeUrl(url, Kv(), Kv(("id", "{{id}}"), ("post", "a b")), Vars).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Query_params_already_in_the_url_are_not_duplicated()
+    {
+        // Bruno layout: the URL carries the query and params:query mirrors it.
+        RequestPipeline.ComposeUrl("https://x/s?status=available&tag=a%20b",
+                Kv(("status", "available"), ("tag", "a b"), ("page", "2")), Kv(), Vars)
+            .Should().Be("https://x/s?status=available&tag=a%20b&page=2");
+    }
+
+    [Fact]
+    public void Vegha_layout_appends_params_and_keeps_repeated_keys()
+    {
+        RequestPipeline.ComposeUrl("https://x/s", Kv(("t", "1"), ("t", "2")), Kv(), Vars)
+            .Should().Be("https://x/s?t=1&t=2");
+        RequestPipeline.ComposeUrl("https://x/s?t=1", Kv(("t", "1"), ("t", "1")), Kv(), Vars)
+            .Should().Be("https://x/s?t=1&t=1", "one URL occurrence absorbs one param");
+    }
+
+    [Fact]
+    public void Disabled_params_are_ignored()
+    {
+        var p = new List<KvPair> { new("a", "1", enabled: false) };
+        RequestPipeline.ComposeUrl("https://x/:a", p, p, Vars).Should().Be("https://x/:a");
+    }
+}
