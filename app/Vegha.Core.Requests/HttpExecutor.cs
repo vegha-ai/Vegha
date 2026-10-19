@@ -102,7 +102,13 @@ public sealed class HttpExecutor
         // block on SQLite. Wait for that load before the first send so persisted session
         // cookies actually attach to the outgoing request.
         if (_cookieStore is not null)
+        {
             await _cookieStore.ReadyAsync.ConfigureAwait(false);
+            // Another Vegha process (desktop / VS Code / CLI) may have written the shared jar.
+            try { await _cookieStore.RefreshIfChangedAsync(cancellationToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) { throw; }
+            catch { /* best-effort; send with the in-memory jar */ }
+        }
         var timing = new RequestTiming();
         var decompression = ResolveDecompression(request.Headers);
         var (client, ownedClient) = GetClientFor(request.Options, decompression);

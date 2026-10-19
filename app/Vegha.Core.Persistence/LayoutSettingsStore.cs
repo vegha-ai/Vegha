@@ -53,7 +53,7 @@ public sealed class LayoutSettingsStore
             try
             {
                 var json = JsonSerializer.Serialize(Clamp(settings), s_jsonOptions);
-                File.WriteAllText(_filePath, json);
+                AtomicFile.WriteAllText(_filePath, json);
             }
             catch
             {

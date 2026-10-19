@@ -426,4 +426,39 @@ public class HistoryStoreTests : IDisposable
         var a = await store.GetRecentAsync(limit: 100, workspaceId: "/ws/A");
         a.Should().ContainSingle(r => r.Url == "https://a/1");
     }
+
+    [Fact]
+    public async Task TwoStores_ConcurrentAppends_AllRowsLand()
+    {
+        // Desktop app and VS Code sidecar append to one history.db at the same time. Each
+        // store has its own write lock, so only SQLite's cross-connection locking (WAL +
+        // busy_timeout) keeps these from failing with SQLITE_BUSY / SQLITE_LOCKED.
+        var desktop = new HistoryStore(_tempDb) { ClientName = "desktop" };
+        var sidecar = new HistoryStore(_tempDb) { ClientName = "vscode" };
+        const int perStore = 150;
+
+        async Task Hammer(HistoryStore s, string host)
+        {
+            for (var i = 0; i < perStore; i++)
+                await s.AppendAsync("GET", $"https://{host}/{i}", 200, 1, "body", null, workspaceId: "/ws");
+        }
+        await Task.WhenAll(
+            Task.Run(() => Hammer(desktop, "desk")),
+            Task.Run(() => Hammer(sidecar, "side")));
+
+        (await desktop.CountAsync("/ws")).Should().Be(perStore * 2);
+        (await sidecar.GetRecentAsync(limit: 1000, workspaceId: "/ws"))
+            .Should().Contain(r => r.Url == "https://desk/0").And.Contain(r => r.Url == "https://side/0");
+    }
+
+    [Fact]
+    public void Schema_UsesWalJournal()
+    {
+        _ = Store();
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_tempDb}");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "PRAGMA journal_mode;";
+        ((string)cmd.ExecuteScalar()!).Should().BeEquivalentTo("wal");
+    }
 }

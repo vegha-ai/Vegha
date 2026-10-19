@@ -63,7 +63,7 @@ public sealed class WorkspaceStore
                 // schemaVersion: 0 file behind that would re-trigger migration next launch.
                 var toSave = state with { SchemaVersion = 5 };
                 var json = JsonSerializer.Serialize(toSave, s_jsonOptions);
-                File.WriteAllText(_filePath, json);
+                AtomicFile.WriteAllText(_filePath, json);
             }
             catch
             {

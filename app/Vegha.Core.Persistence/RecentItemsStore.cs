@@ -60,7 +60,7 @@ public sealed class RecentItemsStore
             current.RemoveAll(r => string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase));
             current.Insert(0, new RecentItem(path, when));
             if (current.Count > MaxItems) current.RemoveRange(MaxItems, current.Count - MaxItems);
-            try { File.WriteAllText(_filePath, JsonSerializer.Serialize(current, s_json)); }
+            try { AtomicFile.WriteAllText(_filePath, JsonSerializer.Serialize(current, s_json)); }
             catch { /* best-effort */ }
         }
     }
@@ -72,7 +72,7 @@ public sealed class RecentItemsStore
             var current = Load().ToList();
             if (current.RemoveAll(r => string.Equals(r.Path, path, StringComparison.OrdinalIgnoreCase)) == 0)
                 return;
-            try { File.WriteAllText(_filePath, JsonSerializer.Serialize(current, s_json)); }
+            try { AtomicFile.WriteAllText(_filePath, JsonSerializer.Serialize(current, s_json)); }
             catch { /* best-effort */ }
         }
     }

@@ -116,4 +116,93 @@ public class CookieJarStoreTests : IDisposable
         snap.Should().ContainSingle();
         snap[0].Expires.Should().BeNull();
     }
+
+    // ---- Two stores on one file stand in for desktop + VS Code sidecar processes ----
+
+    [Fact]
+    public async Task TwoStores_PersistDoesNotClobberTheOthersCookies()
+    {
+        var desktop = new CookieJarStore(_tempDb);
+        var sidecar = new CookieJarStore(_tempDb);
+        await desktop.LoadAsync();
+        await sidecar.LoadAsync();
+
+        desktop.Container.Add(new Cookie("desk", "1", "/", "a.test"));
+        await desktop.PersistAsync();
+        sidecar.Container.Add(new Cookie("side", "2", "/", "b.test"));
+        await sidecar.PersistAsync();
+
+        // The old full-table rewrite would have dropped "desk" here.
+        var fresh = new CookieJarStore(_tempDb);
+        await fresh.LoadAsync();
+        fresh.GetAll().Select(c => c.Name).Should().BeEquivalentTo(new[] { "desk", "side" });
+        // Each persist also merges in what the other wrote.
+        sidecar.GetAll().Select(c => c.Name).Should().BeEquivalentTo(new[] { "desk", "side" });
+    }
+
+    [Fact]
+    public async Task TwoStores_RefreshPicksUpOtherWritesAndKeepsUnsavedLocalOnes()
+    {
+        var desktop = new CookieJarStore(_tempDb);
+        var sidecar = new CookieJarStore(_tempDb);
+        await desktop.LoadAsync();
+        await sidecar.LoadAsync();
+
+        await desktop.UpsertAsync("api.test", "/", "session", "from-desktop");
+        sidecar.Container.Add(new Cookie("local", "unsaved", "/", "api.test"));
+
+        await sidecar.RefreshIfChangedAsync();
+
+        sidecar.GetAll().Should().Contain(c => c.Name == "session" && c.Value == "from-desktop");
+        sidecar.GetAll().Should().Contain(c => c.Name == "local");
+        var fresh = new CookieJarStore(_tempDb);
+        await fresh.LoadAsync();
+        fresh.GetAll().Select(c => c.Name).Should().Contain("local");
+    }
+
+    [Fact]
+    public async Task TwoStores_RemovalInOneReachesTheOtherAndIsNotResurrected()
+    {
+        var desktop = new CookieJarStore(_tempDb);
+        var sidecar = new CookieJarStore(_tempDb);
+        await desktop.UpsertAsync("api.test", "/", "session", "x");
+        await sidecar.LoadAsync();
+        sidecar.GetAll().Should().ContainSingle();
+
+        await desktop.RemoveAsync("api.test", "/", "session");
+        await sidecar.RefreshIfChangedAsync();
+        sidecar.GetAll().Should().BeEmpty();
+
+        // The sidecar's next persist (after any request) must not write it back.
+        await sidecar.PersistAsync();
+        var fresh = new CookieJarStore(_tempDb);
+        await fresh.LoadAsync();
+        fresh.GetAll().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task TwoStores_ValueChangeInOneReplacesValueInTheOther()
+    {
+        var desktop = new CookieJarStore(_tempDb);
+        var sidecar = new CookieJarStore(_tempDb);
+        await desktop.UpsertAsync("api.test", "/", "token", "old");
+        await sidecar.LoadAsync();
+
+        await desktop.UpsertAsync("api.test", "/", "token", "new");
+        await sidecar.RefreshIfChangedAsync();
+
+        sidecar.GetAll().Should().ContainSingle().Which.Value.Should().Be("new");
+    }
+
+    [Fact]
+    public async Task RefreshIfChanged_IsNoOpWhenNothingMoved()
+    {
+        var store = new CookieJarStore(_tempDb);
+        await store.UpsertAsync("api.test", "/", "a", "1");
+        var before = store.Container.Count;
+
+        await store.RefreshIfChangedAsync();
+
+        store.Container.Count.Should().Be(before);
+    }
 }

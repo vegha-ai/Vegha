@@ -70,7 +70,7 @@ public sealed class AppSettingsStore
         {
             try
             {
-                File.WriteAllText(_filePath, JsonSerializer.Serialize(settings, s_jsonOptions));
+                AtomicFile.WriteAllText(_filePath, JsonSerializer.Serialize(settings, s_jsonOptions));
                 _cached = settings;
             }
             catch { /* best-effort */ }

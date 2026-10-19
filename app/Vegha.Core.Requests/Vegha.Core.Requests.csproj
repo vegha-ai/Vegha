@@ -16,4 +16,7 @@
     <ProjectReference Include="..\Vegha.Core.Interpolation\Vegha.Core.Interpolation.csproj" />
     <ProjectReference Include="..\Vegha.Core.Scripting\Vegha.Core.Scripting.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\SqliteMultiProcess.cs" Link="Shared\SqliteMultiProcess.cs" />
+  </ItemGroup>
 </Project>

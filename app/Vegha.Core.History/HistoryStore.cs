@@ -1,12 +1,15 @@
 using System.Data;
 using Dapper;
 using Microsoft.Data.Sqlite;
+using Vegha.Core.Shared;
 
 namespace Vegha.Core.History;
 
 /// <summary>
 /// SQLite-backed history store. Default path: <c>%LocalAppData%/Vegha/history.db</c>.
 /// Stores up to <see cref="MaxRetained"/> entries; oldest are pruned on insert.
+/// The desktop app, CLI and VS Code sidecar append to the same file concurrently — see
+/// <see cref="SqliteMultiProcess"/> for the connection settings that make that safe.
 /// </summary>
 public sealed class HistoryStore : IDisposable
 {
@@ -40,6 +43,10 @@ public sealed class HistoryStore : IDisposable
     /// disables age pruning. Wired from AppSettings.HistoryRetentionDays by the App layer.</summary>
     public TimeSpan MaxAge { get; set; } = TimeSpan.FromDays(365);
 
+    /// <summary>Which host wrote the row (<c>desktop</c>, <c>vscode</c>, <c>cli</c>), recorded
+    /// on every append. Null leaves the column empty, matching rows from older builds.</summary>
+    public string? ClientName { get; set; }
+
     public string DatabasePath { get; }
 
     public HistoryStore() : this(DefaultDatabasePath()) { }
@@ -48,12 +55,7 @@ public sealed class HistoryStore : IDisposable
     {
         DatabasePath = databasePath;
         Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
-        _connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared,
-        }.ToString();
+        _connectionString = SqliteMultiProcess.ConnectionString(databasePath);
 
         EnsureSchema();
     }
@@ -66,7 +68,8 @@ public sealed class HistoryStore : IDisposable
 
     private void EnsureSchema()
     {
-        using var conn = OpenConnection();
+        using var conn = SqliteMultiProcess.Open(_connectionString);
+        SqliteMultiProcess.EnableWal(conn);
         conn.Execute("""
             CREATE TABLE IF NOT EXISTS history (
                 id                       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,11 +90,15 @@ public sealed class HistoryStore : IDisposable
         //   • workspace_id  — folder path of the owning workspace so history is per-workspace.
         //   • request_kind  — "graphql" etc. so the sidebar can badge non-plain-HTTP rows;
         //                     null for plain HTTP and rows written by older builds.
+        //   • client        — host that wrote the row (see ClientName); null on older rows.
+        // Two processes racing the same upgrade both tolerate the loser's duplicate-column error.
         try { conn.Execute("ALTER TABLE history ADD COLUMN request_blob TEXT;"); }
         catch (Microsoft.Data.Sqlite.SqliteException) { /* column already present */ }
         try { conn.Execute("ALTER TABLE history ADD COLUMN workspace_id TEXT;"); }
         catch (Microsoft.Data.Sqlite.SqliteException) { /* column already present */ }
         try { conn.Execute("ALTER TABLE history ADD COLUMN request_kind TEXT;"); }
+        catch (Microsoft.Data.Sqlite.SqliteException) { /* column already present */ }
+        try { conn.Execute("ALTER TABLE history ADD COLUMN client TEXT;"); }
         catch (Microsoft.Data.Sqlite.SqliteException) { /* column already present */ }
 
         // Per-workspace paging index. Created after the ALTER so the column exists.
@@ -120,8 +127,8 @@ public sealed class HistoryStore : IDisposable
             using var conn = OpenConnection();
             var id = await conn.ExecuteScalarAsync<long>(
                 """
-                INSERT INTO history (timestamp_utc, method, url, status_code, duration_ms, response_body_preview, error_message, request_blob, workspace_id, request_kind)
-                VALUES (@Ts, @Method, @Url, @Status, @Duration, @Preview, @Error, @Blob, @Workspace, @Kind);
+                INSERT INTO history (timestamp_utc, method, url, status_code, duration_ms, response_body_preview, error_message, request_blob, workspace_id, request_kind, client)
+                VALUES (@Ts, @Method, @Url, @Status, @Duration, @Preview, @Error, @Blob, @Workspace, @Kind, @Client);
                 SELECT last_insert_rowid();
                 """,
                 new
@@ -136,6 +143,7 @@ public sealed class HistoryStore : IDisposable
                     Blob = requestBlob,
                     Workspace = string.IsNullOrEmpty(workspaceId) ? null : workspaceId,
                     Kind = string.IsNullOrEmpty(requestKind) ? null : requestKind,
+                    Client = string.IsNullOrEmpty(ClientName) ? null : ClientName,
                 }).ConfigureAwait(false);
 
             await PruneInternalAsync(conn).ConfigureAwait(false);
@@ -381,12 +389,7 @@ public sealed class HistoryStore : IDisposable
 
     // ============================== helpers ==============================
 
-    private IDbConnection OpenConnection()
-    {
-        var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        return conn;
-    }
+    private IDbConnection OpenConnection() => SqliteMultiProcess.Open(_connectionString);
 
     private static string? Truncate(string? s, int max)
     {
