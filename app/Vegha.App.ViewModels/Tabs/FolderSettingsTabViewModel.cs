@@ -42,7 +42,7 @@ public sealed partial class FolderSettingsTabViewModel : NodeSettingsTabViewMode
         SetProps(new NodePropertiesViewModel(NodePropertiesViewModel.Kind.Folder, model));
         // Linked-request picker offers every request in the owning collection.
         if (_collections.FindRootForDirectory(folder.Path)?.Collection is { } owner)
-            Props.LinkableRequestPaths = NodePropertiesViewModel.LinkablePathsOf(owner);
+            Props.SetLinkableCollection(owner);
         RequestCount = folder.Folder is null ? 0 : CollectionsViewModel.CountRequestsInFolderPublic(folder.Folder);
     }
 

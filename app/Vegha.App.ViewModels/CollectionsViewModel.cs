@@ -210,11 +210,37 @@ public partial class CollectionsViewModel : ObservableObject
         // OpenTabs' sink (every editor it builds is subscribed).
         _requestEditor.EnvironmentVariablesMutated += (_, e) => ApplyScriptEnvVarMutations(e);
         if (_openTabs is not null)
+        {
             _openTabs.EnvVarMutationSink = ApplyScriptEnvVarMutations;
+            _openTabs.ParentContextResolver = ResolveParentContextForFile;
+        }
+    }
+
+    /// <summary>The loaded collection and folder chain that own the request file at
+    /// <paramref name="sourcePath"/>, or null when no open collection contains it.</summary>
+    public (Collection Collection, IReadOnlyList<Folder> FolderChain)? ResolveParentContextForFile(string sourcePath)
+    {
+        string full;
+        try { full = System.IO.Path.GetFullPath(sourcePath); }
+        catch { return null; }
+        foreach (var root in Roots)
+        {
+            if (root is not CollectionRootViewModel { Collection: { } collection }) continue;
+            foreach (var (request, chain) in Vegha.Core.Requests.ChainContext.EnumerateRequests(collection))
+            {
+                if (request.SourcePath is null) continue;
+                if (string.Equals(System.IO.Path.GetFullPath(request.SourcePath), full, StringComparison.OrdinalIgnoreCase))
+                    return (collection, chain);
+            }
+        }
+        return null;
     }
 
     private void OnRootsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
+        // Collections loading after tabs were restored (or reloading after an edit) give the
+        // open request tabs their collection context.
+        _openTabs?.RefreshParentContexts();
         // Mirror the CollectionRootViewModel subset into AvailableCollections so the picker
         // updates as collections are loaded / removed. Folders + requests aren't pickable.
         //

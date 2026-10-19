@@ -275,6 +275,10 @@ public partial class OpenTabsViewModel : ObservableObject
         IReadOnlyList<Vegha.Core.Domain.Folder>? folderChain = null,
         string? collectionPath = null)
     {
+        // Callers that only know the file (session restore, save-as, linked requests) still get
+        // the collection context — inheritance and the Chain tab's request list depend on it.
+        if (collection is null && ResolveParent(sourcePath) is { } resolved)
+            (collection, folderChain) = resolved;
         var id = sourcePath ?? "request:" + request.Name + ":" + Guid.NewGuid().ToString("N");
         var existing = Tabs.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
@@ -294,6 +298,22 @@ public partial class OpenTabsViewModel : ObservableObject
         return tab;
     }
 
+    /// <summary>Finds the collection and folder chain that own a request file. Supplied by the
+    /// collections tree; null until it is wired (tests, early startup).</summary>
+    public Func<string, (Vegha.Core.Domain.Collection Collection, IReadOnlyList<Vegha.Core.Domain.Folder> FolderChain)?>? ParentContextResolver { get; set; }
+
+    private (Vegha.Core.Domain.Collection, IReadOnlyList<Vegha.Core.Domain.Folder>)? ResolveParent(string? sourcePath) =>
+        string.IsNullOrEmpty(sourcePath) || ParentContextResolver is null ? null : ParentContextResolver(sourcePath);
+
+    /// <summary>Re-resolves every open request tab's collection context — after collections load
+    /// (tabs restored at startup open before them) or reload (edits, renames, settings saves).</summary>
+    public void RefreshParentContexts()
+    {
+        foreach (var tab in Tabs.OfType<HttpRequestTabViewModel>())
+            if (ResolveParent(tab.SourcePath) is { } resolved)
+                tab.SetParentContext(resolved.Item1, resolved.Item2);
+    }
+
     private HttpRequestTabViewModel BuildHttpTab(
         RequestItem request, string? sourcePath, string id,
         Vegha.Core.Domain.Collection? collection,
@@ -309,6 +329,9 @@ public partial class OpenTabsViewModel : ObservableObject
         tab.SetParentContext(collection, folderChain);
         // Saving a draft (no file) bubbles up so the host can promote it into a collection.
         editor.SaveAsRequested += (_, _) => SaveAsRequested?.Invoke(this, tab);
+        // "Open" on a Chain-tab card opens the linked request beside this one.
+        editor.OpenLinkedRequestRequested += (_, e) =>
+            OpenOrActivate(e.Request, e.Request.SourcePath, collection: null, e.FolderChain, collectionPath);
         return tab;
     }
 
@@ -379,7 +402,8 @@ public partial class OpenTabsViewModel : ObservableObject
         var existing = Tabs.FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
         if (existing is HttpRequestTabViewModel e) return e;
 
-        var tab = BuildHttpTab(item, sourcePath, id, collection: null, folderChain: null, collectionPath: collectionPath);
+        var parent = ResolveParent(sourcePath);
+        var tab = BuildHttpTab(item, sourcePath, id, parent?.Item1, parent?.Item2, collectionPath);
         tab.WorkspaceId = workspaceId;
         tab.IsScratch = isScratch;
         tab.Name = name;

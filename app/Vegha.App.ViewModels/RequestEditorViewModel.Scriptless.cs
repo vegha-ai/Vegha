@@ -56,6 +56,71 @@ public partial class RequestEditorViewModel
     /// <summary>Badge for the Tests tab: captures + assertions.</summary>
     public int ScriptlessCount => CapturesCount + AssertionsCount;
 
+    private ChainLinksEditor? _chainEditor;
+
+    /// <summary>The linked-requests editor (request picker catalog, reorder, open) over <see cref="ChainLinks"/>.</summary>
+    public ChainLinksEditor ChainEditor => _chainEditor ??= CreateChainEditor();
+
+    /// <summary>Raised when the Chain tab asks to open a linked request in its own tab.</summary>
+    public event EventHandler<LinkedRequestOpenEventArgs>? OpenLinkedRequestRequested;
+
+    private ChainLinksEditor CreateChainEditor()
+    {
+        var editor = new ChainLinksEditor(ChainLinks) { CanOpen = true };
+        editor.OpenRequested += (_, target) =>
+        {
+            if (_parentCollection is null) return;
+            var resolved = new ChainContext(_parentCollection, null).Resolve(target.Path);
+            if (resolved is { } r)
+                OpenLinkedRequestRequested?.Invoke(this, new LinkedRequestOpenEventArgs(r.Request, r.FolderChain));
+        };
+        VariablesSnapshotChanged += (_, _) => editor.KnownVariables = KnownVariableNames();
+        RefreshChainCatalog(editor);
+        return editor;
+    }
+
+    /// <summary>Re-reads the linkable requests and the links inherited from the collection and
+    /// folders (after a reparent, reload or save).</summary>
+    private void RefreshChainCatalog(ChainLinksEditor? editor = null)
+    {
+        editor ??= _chainEditor;
+        if (editor is null) return;
+        editor.Candidates = _parentCollection is null
+            ? Array.Empty<ChainCandidate>()
+            : ChainCandidate.Of(_parentCollection, null, SourcePath);
+        editor.KnownVariables = KnownVariableNames();
+        var inherited = new List<InheritedChainLink>();
+        if (_parentCollection is not null)
+        {
+            void Add(string source, IEnumerable<KvPair> links)
+            {
+                foreach (var l in links.Where(l => !string.IsNullOrWhiteSpace(l.Name)))
+                {
+                    var target = editor.Resolve(l.Name);
+                    inherited.Add(new InheritedChainLink(source, target?.MethodLabel ?? string.Empty, target?.Name ?? l.Name,
+                        DescribeCondition(ChainLinkSpec.Parse(l.Value)), l.Enabled));
+                }
+            }
+            Add("collection", _parentCollection.ChainLinks);
+            foreach (var f in _parentFolderChain) Add("folder " + f.Name, f.ChainLinks);
+        }
+        editor.SetInherited(inherited);
+    }
+
+    private IReadOnlyList<string> KnownVariableNames()
+    {
+        try { return ResolveCurrentVariables().Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList(); }
+        catch { return Array.Empty<string>(); }
+    }
+
+    internal static string DescribeCondition(ChainLinkSpec spec) => spec.Mode switch
+    {
+        ChainRunMode.WhenEmpty => $"when {{{{{spec.Argument.Trim().Trim('{', '}')}}}}} is empty",
+        ChainRunMode.WhenStale => $"when the last run is older than {spec.Argument}",
+        ChainRunMode.When => $"when {spec.Argument}",
+        _ => "always",
+    };
+
     /// <summary>Paths of every other request in the parent collection — the Chain row's picker.</summary>
     public IReadOnlyList<string> LinkableRequestPaths
     {

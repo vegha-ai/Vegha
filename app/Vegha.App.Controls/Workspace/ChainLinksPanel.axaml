@@ -17,13 +17,11 @@
                 <StackPanel Spacing="2">
                     <TextBlock Text="RUN FIRST (LINKED REQUESTS)" Classes="sectionHeaderMinor" />
                     <TextBlock Classes="helpText" TextWrapping="Wrap"
-                               Text="Requests from this collection that run before this one — their captured variables are available here. Folder and collection settings can add links for every request inside them." />
+                               Text="Requests from this collection that run, in order, before this one — whatever they capture is available here as {{variable}}. Folder and collection settings can add links for every request inside them." />
                 </StackPanel>
             </Border>
-            <ScrollViewer MaxHeight="150" HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,6">
-                <ws:ChainLinksTable ItemsSource="{Binding ChainLinks}"
-                                    RequestPaths="{Binding LinkableRequestPaths}"
-                                    RemoveCommand="{Binding RemoveChainLinkCommand}" />
+            <ScrollViewer MaxHeight="380" HorizontalScrollBarVisibility="Disabled" Margin="0,0,0,6">
+                <ws:ChainLinksTable Editor="{Binding ChainEditor}" />
             </ScrollViewer>
         </StackPanel>
     </Border>

@@ -4,53 +4,237 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:sl="using:Vegha.App.ViewModels.Scriptless"
              xmlns:ws="using:Vegha.App.Controls.Workspace"
-             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="120"
+             xmlns:conv="using:Vegha.App.Controls.Converters"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="400"
              x:Class="Vegha.App.Controls.Workspace.ChainLinksTable"
              x:Name="Root">
-    <!-- Linked-request rows: [✓] request picker | run when ▾ | argument | ✕. Shared by the
-         request Pre-request tab and folder / collection settings. -->
+    <!-- Linked requests as cards (Thunder Client "Pre Run" style): pick the request from a
+         searchable list, pick when it runs, and fill the condition from pickers — the stored
+         `path: condition` text is shown, never required. Shared by the request Pre-request tab
+         and folder / collection settings. -->
     <UserControl.Styles>
         <StyleInclude Source="avares://Vegha.App.Controls/Workspace/ScriptlessTableStyles.axaml" />
+        <Style Selector="Border.chainCard">
+            <Setter Property="BorderBrush" Value="{DynamicResource Border1Brush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Background" Value="{DynamicResource Bg1Brush}" />
+            <Setter Property="Padding" Value="10,6,10,8" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style Selector="Border.chainCard.disabled > StackPanel">
+            <Setter Property="Opacity" Value="0.55" />
+        </Style>
+        <Style Selector="TextBlock.fieldLabel">
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.method">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="MinWidth" Value="40" />
+        </Style>
+        <Style Selector="TextBlock.muted">
+            <Setter Property="Foreground" Value="{DynamicResource Text3Brush}" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.mono">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+        </Style>
+        <Style Selector="Button.link">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.iconBtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="5,0" />
+            <Setter Property="Foreground" Value="{DynamicResource Text2Brush}" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.iconBtn:disabled /template/ ContentPresenter">
+            <Setter Property="Opacity" Value="0.3" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Grid.fields > :is(Control)">
+            <Setter Property="Margin" Value="0,3" />
+        </Style>
+        <Style Selector="AutoCompleteBox.picker">
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
     </UserControl.Styles>
-    <ItemsControl ItemsSource="{Binding #Root.ItemsSource}">
-        <ItemsControl.ItemContainerTheme>
-            <ControlTheme TargetType="ContentPresenter">
-                <Setter Property="HorizontalAlignment" Value="Stretch" />
-                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            </ControlTheme>
-        </ItemsControl.ItemContainerTheme>
-        <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="sl:ChainLinkRow">
-                <Grid ColumnDefinitions="32,2.4*,1.4*,1.4*,32" Margin="0,3,0,0">
-                    <CheckBox Grid.Column="0" IsChecked="{Binding Enabled}" IsVisible="{Binding !IsBlank}"
-                              HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    <AutoCompleteBox Grid.Column="1" Classes="cell"
-                                     Text="{Binding RequestPath, Mode=TwoWay}"
-                                     ItemsSource="{Binding $parent[ws:ChainLinksTable].RequestPaths}"
-                                     Watermark="Pick a request — e.g. auth/Login.bru"
-                                     FilterMode="Contains"
-                                     MinimumPrefixLength="0"
-                                     MaxDropDownHeight="260" />
-                    <ComboBox Grid.Column="2" Classes="cell"
-                              ItemsSource="{x:Static sl:ScriptlessOptions.ChainModes}"
-                              SelectedItem="{Binding ModeOption}">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="sl:ChainModeOption">
-                                <TextBlock Text="{Binding Label}" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <TextBox Grid.Column="3" Classes="cell"
-                             Text="{Binding Argument}"
-                             Watermark="{Binding ArgumentHint}"
-                             IsVisible="{Binding TakesArgument}" />
-                    <Button Grid.Column="4" Classes="rowRemove" IsVisible="{Binding !IsBlank}"
-                            Command="{Binding $parent[ws:ChainLinksTable].RemoveCommand}"
-                            CommandParameter="{Binding}" ToolTip.Tip="Remove">
-                        <TextBlock Text="✕" FontSize="11" />
-                    </Button>
-                </Grid>
-            </DataTemplate>
-        </ItemsControl.ItemTemplate>
-    </ItemsControl>
+
+    <StackPanel Margin="14,2,14,6" Spacing="0">
+        <!-- Links applied before this one by the collection / enclosing folders. -->
+        <StackPanel IsVisible="{Binding #Root.Editor.HasInherited, FallbackValue=False}" Margin="0,0,0,8" Spacing="2">
+            <TextBlock Classes="muted" Text="Already run first by the enclosing folders / collection:" />
+            <ItemsControl ItemsSource="{Binding #Root.Editor.Inherited}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="sl:InheritedChainLink">
+                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,1"
+                                    Opacity="{Binding Enabled, Converter={x:Static ws:ChainLinksTable.EnabledOpacity}}">
+                            <Border Background="{DynamicResource Bg3Brush}" CornerRadius="7" Padding="6,0">
+                                <TextBlock Text="{Binding Source}" FontSize="10" Foreground="{DynamicResource Text2Brush}" />
+                            </Border>
+                            <TextBlock Classes="method" MinWidth="0" Text="{Binding Method}"
+                                       Foreground="{Binding Method, Converter={x:Static conv:MethodToBrushConverter.Instance}}" />
+                            <TextBlock Text="{Binding Name}" FontSize="12" Foreground="{DynamicResource Text0Brush}" />
+                            <TextBlock Classes="muted" Text="{Binding Condition, StringFormat='— {0}'}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+
+        <ItemsControl ItemsSource="{Binding #Root.Editor.Rows}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="sl:ChainLinkRow">
+                    <Panel>
+                        <!-- A linked request. -->
+                        <Border Classes="chainCard" Classes.disabled="{Binding !Enabled}" IsVisible="{Binding !IsBlank}">
+                            <StackPanel Spacing="6">
+                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+                                    <TextBlock Grid.Column="0" Text="{Binding StepLabel}" FontWeight="SemiBold" FontSize="11"
+                                               Foreground="{DynamicResource Text2Brush}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                    <CheckBox Grid.Column="1" IsChecked="{Binding Enabled}" Content="Enabled" FontSize="11"
+                                              ToolTip.Tip="Disabled links are kept but skipped" />
+                                    <Button Grid.Column="3" Classes="iconBtn" Content="↑" ToolTip.Tip="Run earlier"
+                                            IsEnabled="{Binding !IsFirst}"
+                                            Command="{Binding #Root.Editor.MoveUpCommand}" CommandParameter="{Binding}" />
+                                    <Button Grid.Column="4" Classes="iconBtn" Content="↓" ToolTip.Tip="Run later"
+                                            IsEnabled="{Binding !IsLast}"
+                                            Command="{Binding #Root.Editor.MoveDownCommand}" CommandParameter="{Binding}" />
+                                    <Button Grid.Column="5" Classes="rowRemove" Width="24" ToolTip.Tip="Remove"
+                                            Command="{Binding #Root.Editor.RemoveCommand}" CommandParameter="{Binding}">
+                                        <TextBlock Text="✕" FontSize="11" />
+                                    </Button>
+                                </Grid>
+
+                                <Grid Classes="fields" ColumnDefinitions="96,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                                    <TextBlock Grid.Row="0" Classes="fieldLabel" Text="Request" />
+                                    <Grid Grid.Row="0" Grid.Column="1" ColumnDefinitions="Auto,*">
+                                    <TextBlock Grid.Column="0" Classes="method" Margin="2,0,6,0"
+                                               Text="{Binding Target.MethodLabel, FallbackValue=''}"
+                                               Foreground="{Binding Target.Method, Converter={x:Static conv:MethodToBrushConverter.Instance}, FallbackValue={x:Null}}" />
+                                    <AutoCompleteBox Grid.Column="1" Classes="cell picker"
+                                                     ItemsSource="{Binding AvailableCandidates}"
+                                                     SelectedItem="{Binding SelectedCandidate, Mode=TwoWay}"
+                                                     FilterMode="Custom"
+                                                     ItemFilter="{x:Static ws:ChainLinksTable.CandidateFilter}"
+                                                     ItemTemplate="{x:Static ws:ChainLinksTable.CandidateTemplate}"
+                                                     MinimumPrefixLength="0" MaxDropDownHeight="320"
+                                                     Watermark="Type to search requests by name, folder or method…"
+                                                     GotFocus="OnPickerGotFocus" LostFocus="OnPickerLostFocus" />
+                                    <TextBlock Grid.Column="1" Classes="muted" HorizontalAlignment="Right" Margin="0,0,14,0"
+                                               IsHitTestVisible="False"
+                                               Text="{Binding Target.Folder, FallbackValue=''}" />
+                                    </Grid>
+                                    <Button Grid.Row="0" Grid.Column="2" Classes="link" Content="Open"
+                                            ToolTip.Tip="Open the linked request"
+                                            IsVisible="{Binding #Root.Editor.CanOpen, FallbackValue=False}"
+                                            Command="{Binding #Root.Editor.OpenCommand}" CommandParameter="{Binding}" />
+
+                                    <TextBlock Grid.Row="1" Classes="fieldLabel" Text="Condition" />
+                                    <ComboBox Grid.Row="1" Grid.Column="1" Classes="cell"
+                                              ItemsSource="{x:Static sl:ScriptlessOptions.ChainModes}"
+                                              SelectedItem="{Binding ModeOption}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="sl:ChainModeOption">
+                                                <TextBlock Text="{Binding Label}" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+
+                                    <!-- when-empty: which variable -->
+                                    <TextBlock Grid.Row="2" Classes="fieldLabel" Text="Variable" IsVisible="{Binding IsWhenEmpty}" />
+                                    <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" IsVisible="{Binding IsWhenEmpty}">
+                                        <TextBlock Classes="muted mono" Text="{}{{" Margin="0,0,3,0" />
+                                        <AutoCompleteBox Classes="cell" MinWidth="220"
+                                                         Text="{Binding VariableName, Mode=TwoWay}"
+                                                         ItemsSource="{Binding VariableSuggestions}"
+                                                         FilterMode="Contains" MinimumPrefixLength="0"
+                                                         Watermark="token" />
+                                        <TextBlock Classes="muted mono" Text="}}" Margin="0,0,0,0" />
+                                    </StackPanel>
+
+                                    <!-- when-stale: max age -->
+                                    <TextBlock Grid.Row="3" Classes="fieldLabel" Text="Older than" IsVisible="{Binding IsWhenStale}" />
+                                    <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsWhenStale}">
+                                        <TextBox Classes="cell" Width="70" Text="{Binding StaleAmount}" />
+                                        <ComboBox Classes="cell" Width="110"
+                                                  ItemsSource="{x:Static sl:ChainLinkRow.AgeUnits}"
+                                                  SelectedItem="{Binding StaleUnit}" />
+                                        <TextBlock Classes="muted" Text="— otherwise reuse the last run" />
+                                    </StackPanel>
+
+                                    <!-- when: variable  operator  value -->
+                                    <TextBlock Grid.Row="4" Classes="fieldLabel" Text="Run when" IsVisible="{Binding IsWhenCondition}" />
+                                    <Grid Grid.Row="4" Grid.Column="1" ColumnDefinitions="Auto,180,Auto,170,*" IsVisible="{Binding IsWhenCondition}">
+                                        <TextBlock Grid.Column="0" Classes="muted mono" Text="{}{{" Margin="0,0,3,0" />
+                                        <AutoCompleteBox Grid.Column="1" Classes="cell"
+                                                         Text="{Binding ConditionVariable, Mode=TwoWay}"
+                                                         ItemsSource="{Binding VariableSuggestions}"
+                                                         FilterMode="Contains" MinimumPrefixLength="0"
+                                                         Watermark="role" />
+                                        <TextBlock Grid.Column="2" Classes="muted mono" Text="}}" Margin="0,0,4,0" />
+                                        <ComboBox Grid.Column="3" Classes="cell"
+                                                  ItemsSource="{x:Static sl:ChainLinkRow.ConditionOperators}"
+                                                  SelectedItem="{Binding ConditionOperator}" />
+                                        <TextBox Grid.Column="4" Classes="cell" Text="{Binding ConditionValue}" Watermark="value or {{variable}}" />
+                                    </Grid>
+                                </Grid>
+
+                                <!-- What the linked request provides, hints, and the stored form. -->
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasCaptures}">
+                                            <TextBlock Classes="muted" Text="Captures" />
+                                            <TextBlock Classes="mono" FontSize="11" Foreground="{DynamicResource Text1Brush}"
+                                                       VerticalAlignment="Center" Text="{Binding CapturesText}" />
+                                        </StackPanel>
+                                        <Button Classes="link" IsVisible="{Binding ShowEmptySuggestion}"
+                                                Content="{Binding EmptySuggestionText}"
+                                                ToolTip.Tip="Skip this request while the variable already has a value"
+                                                Command="{Binding RunWhenEmptyCommand}" />
+                                        <TextBlock Classes="muted" IsVisible="{Binding ShowNoCaptures}" Text="{Binding NoCapturesText}"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock IsVisible="{Binding IsUnresolved}" Text="{Binding UnresolvedText}" FontSize="11"
+                                                   Foreground="{DynamicResource StatusWarnBrush}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Classes="muted mono" FontSize="10" Text="{Binding StoredText}"
+                                               ToolTip.Tip="How this link is saved in the .bru file"
+                                               MaxWidth="320" TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- The trailing ghost row: choosing a request adds a link. -->
+                        <AutoCompleteBox Classes="cell picker" IsVisible="{Binding IsBlank}" Margin="0,0,0,4"
+                                         ItemsSource="{Binding AvailableCandidates}"
+                                         SelectedItem="{Binding SelectedCandidate, Mode=TwoWay}"
+                                         FilterMode="Custom"
+                                         ItemFilter="{x:Static ws:ChainLinksTable.CandidateFilter}"
+                                         ItemTemplate="{x:Static ws:ChainLinksTable.CandidateTemplate}"
+                                         MinimumPrefixLength="0" MaxDropDownHeight="320"
+                                         Watermark="+ Add a request to run first — type to search…"
+                                         GotFocus="OnPickerGotFocus" LostFocus="OnPickerLostFocus" />
+                    </Panel>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock Classes="muted" TextWrapping="Wrap"
+                   IsVisible="{Binding !#Root.Editor.HasCandidates, FallbackValue=False}"
+                   Text="No other requests in this collection to link yet." />
+    </StackPanel>
 </UserControl>
