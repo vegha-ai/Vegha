@@ -16,7 +16,10 @@ namespace Vegha.Core.Importers;
 /// </summary>
 public static class BruCollectionWriter
 {
-    public static void Write(string rootDirectory, Collection collection)
+    /// <param name="includeEnvironments">Also write <see cref="Collection.Environments"/> as
+    /// <c>environments/{name}.bru</c> (secret values are left out of the file, as Vegha does
+    /// for every environment). Off by default for callers that place environments themselves.</param>
+    public static void Write(string rootDirectory, Collection collection, bool includeEnvironments = false)
     {
         Directory.CreateDirectory(rootDirectory);
 
@@ -26,6 +29,16 @@ public static class BruCollectionWriter
             BruMetaEmitter.EmitCollection(collection));
 
         WriteFolderContents(rootDirectory, collection.Requests, collection.Folders);
+
+        if (includeEnvironments && collection.Environments.Count > 0)
+        {
+            var envDir = Path.Combine(rootDirectory, "environments");
+            Directory.CreateDirectory(envDir);
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var env in collection.Environments)
+                File.WriteAllText(Path.Combine(envDir, UniqueStem(used, Sanitize(env.Name)) + ".bru"),
+                    BruMetaEmitter.EmitEnvironment(env, includeSecretValues: false));
+        }
     }
 
     private static void WriteFolderContents(string dir, IList<RequestItem> requests, IList<Folder> folders)

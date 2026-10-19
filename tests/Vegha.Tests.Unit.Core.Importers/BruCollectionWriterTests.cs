@@ -164,4 +164,40 @@ public class BruCollectionWriterTests : IDisposable
         r.Body.Content.Should().Contain(":GetWeatherReq");
         r.Body.Content.Should().Contain(":city>?</");
     }
+
+    [Fact]
+    public void Write_WithEnvironments_WritesThemLoadableAndWithoutSecretValues()
+    {
+        var c = new Collection
+        {
+            Name = "Imported",
+            Requests = new List<RequestItem> { new() { Name = "Ping", Url = "{{baseUrl}}/ping" } },
+            Environments = new List<Vegha.Core.Domain.Environment>
+            {
+                new()
+                {
+                    Name = "dev",
+                    Variables = new List<KvPair> { new("baseUrl", "http://localhost"), new("token", "s3cr3t") },
+                    SecretVariables = new List<string> { "token" },
+                },
+            },
+        };
+
+        BruCollectionWriter.Write(_tempDir, c, includeEnvironments: true);
+
+        var envFile = Path.Combine(_tempDir, "environments", "dev.bru");
+        File.ReadAllText(envFile).Should().NotContain("s3cr3t");
+        var loaded = CollectionLoader.Load(_tempDir);
+        loaded.Environments.Should().ContainSingle(e => e.Name == "dev");
+        loaded.Environments[0].Variables.Should().Contain(v => v.Name == "baseUrl" && v.Value == "http://localhost");
+        loaded.Environments[0].SecretVariables.Should().Contain("token");
+    }
+
+    [Fact]
+    public void Write_WithoutTheFlag_LeavesEnvironmentsToTheCaller()
+    {
+        var c = new Collection { Name = "x", Environments = new List<Vegha.Core.Domain.Environment> { new() { Name = "dev" } } };
+        BruCollectionWriter.Write(_tempDir, c);
+        Directory.Exists(Path.Combine(_tempDir, "environments")).Should().BeFalse();
+    }
 }
