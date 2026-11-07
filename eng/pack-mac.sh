@@ -270,21 +270,23 @@ else
     echo "Submitting $DMG_PATH to notarytool (profile: $NOTARY_PROFILE) ..."
     xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
     echo "Stapling ticket to DMG..."
-    # stapler fetches the ticket from Apple's CloudKit endpoint, which drops
-    # connections now and then ("The network connection was lost", exit 68) even
-    # though the notarization itself was Accepted. Retry a few times before
-    # failing the build — the v1.5.0 arm64 build died on exactly this.
+    # Stapling is best-effort. stapler (staple AND validate) talks to Apple's
+    # CloudKit ticket endpoint, which drops connections on the GitHub macOS
+    # runners ("The network connection was lost", exit 68) even though the
+    # notarization above was Accepted — two v1.5.0 arm64 builds died on it.
+    # A notarized-but-unstapled DMG still passes Gatekeeper (it fetches the
+    # ticket online), so retry a few times and then warn instead of failing.
     stapled=0
     for attempt in 1 2 3 4 5; do
         if xcrun stapler staple "$DMG_PATH"; then stapled=1; break; fi
         echo "stapler attempt $attempt failed; retrying in $((attempt * 15))s..." >&2
         sleep $((attempt * 15))
     done
-    if [[ $stapled -ne 1 ]]; then
-        echo "Error: stapling failed after 5 attempts." >&2
-        exit 68
+    if [[ $stapled -eq 1 ]]; then
+        xcrun stapler validate "$DMG_PATH" || echo "Warning: stapler validate could not reach Apple; ticket was stapled, continuing." >&2
+    else
+        echo "Warning: stapling failed after 5 attempts; shipping notarized but unstapled DMG (Gatekeeper fetches the ticket online)." >&2
     fi
-    xcrun stapler validate "$DMG_PATH"
 fi
 
 echo ""
