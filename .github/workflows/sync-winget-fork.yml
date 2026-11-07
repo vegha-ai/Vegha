@@ -10,6 +10,13 @@ name: Sync winget fork
 # matter how far behind it is (forks share upstream's object store) and
 # needs no clone. Runs with WINGET_TOKEN, the PAT that owns the fork.
 #
+# TOKEN REQUIREMENT: WINGET_TOKEN must be a classic PAT with BOTH `public_repo`
+# AND `workflow` scopes. Upstream winget-pkgs commits touch .github/workflows/*,
+# and GitHub refuses to let a PAT without `workflow` move a ref that changes
+# workflow files (422 "refusing to allow a Personal Access Token to create or
+# update workflow"), which breaks both this sync and wingetcreate's own
+# merge-upstream attempt. Diagnosed 2026-11-07 on the v1.5.0 release.
+#
 # Called by release.yml before the winget job; also runnable by hand.
 on:
   workflow_dispatch:
