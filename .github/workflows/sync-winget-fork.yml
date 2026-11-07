@@ -1,0 +1,38 @@
+name: Sync winget fork
+
+# Fast-forwards <owner>/winget-pkgs (the fork wingetcreate pushes Vegha.Vegha
+# PR branches through) to microsoft/winget-pkgs master. wingetcreate tries
+# GitHub's merge-upstream API itself, but that fails once the fork has fallen
+# far behind ("The forked repository could not be synced with the upstream
+# commits") — v1.5.0's winget job died on that at 13.8k commits behind.
+#
+# Pointing the fork's master ref straight at upstream's commit works no
+# matter how far behind it is (forks share upstream's object store) and
+# needs no clone. Runs with WINGET_TOKEN, the PAT that owns the fork.
+#
+# Called by release.yml before the winget job; also runnable by hand.
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+      FORK: ${{ github.repository_owner }}/winget-pkgs
+    steps:
+      - name: Point fork master at upstream master
+        if: env.GH_TOKEN != ''
+        run: |
+          set -euo pipefail
+          sha=$(gh api repos/microsoft/winget-pkgs/git/ref/heads/master --jq .object.sha)
+          before=$(gh api "repos/$FORK/git/ref/heads/master" --jq .object.sha)
+          echo "upstream master: $sha"
+          echo "fork master:     $before"
+          if [ "$sha" = "$before" ]; then echo "Fork already in sync."; exit 0; fi
+          gh api -X PATCH "repos/$FORK/git/refs/heads/master" -f sha="$sha" -F force=true --jq .object.sha
+          echo "Fork master now at $sha."
+      - name: Skipped (no token)
+        if: env.GH_TOKEN == ''
+        run: echo "::warning::WINGET_TOKEN secret absent — fork not synced."
