@@ -57,10 +57,10 @@ jobs:
           - os: windows-latest
             rid: win-arm64
             artifact-suffix: windows-arm64
-          - os: macos-14
+          - os: macos-15
             rid: osx-arm64
             artifact-suffix: macos-arm64
-          - os: macos-14
+          - os: macos-15
             rid: osx-x64
             artifact-suffix: macos-x64
             optional: true
@@ -86,14 +86,14 @@ jobs:
         run: echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
 
       - name: Install Velopack CLI
-        if: matrix.os != 'macos-14'
+        if: matrix.os != 'macos-15'
         run: dotnet tool install -g vpk
 
       # macOS uses pack-mac.sh which handles publish → sign → notarize → dmg
       # in the correct order. Velopack (Pack-Installer.ps1) packages AFTER publish
       # which means the app is already bundled before signing — too late to sign.
       - name: Build macOS DMG (sign + notarize)
-        if: matrix.os == 'macos-14' && env.MAC_DEVELOPER_ID_BASE64 != ''
+        if: matrix.os == 'macos-15' && env.MAC_DEVELOPER_ID_BASE64 != ''
         env:
           MAC_DEVELOPER_ID_BASE64: ${{ secrets.MAC_DEVELOPER_ID_BASE64 }}
           MAC_DEVELOPER_ID_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_PASSWORD }}
@@ -127,7 +127,7 @@ jobs:
           ./eng/pack-mac.sh --version ${{ steps.ver.outputs.version }} --runtime ${{ matrix.rid }}
 
       - name: Build macOS DMG (unsigned, no secrets)
-        if: matrix.os == 'macos-14' && env.MAC_DEVELOPER_ID_BASE64 == ''
+        if: matrix.os == 'macos-15' && env.MAC_DEVELOPER_ID_BASE64 == ''
         run: |
           ./eng/pack-mac.sh --version ${{ steps.ver.outputs.version }} --runtime ${{ matrix.rid }} --skip-notarize
 
@@ -141,7 +141,7 @@ jobs:
       # Linux never signs ($IsWindows is false on the ubuntu runner).
       # ============================================================
       - name: Build Velopack installer (Windows + Linux)
-        if: matrix.os != 'macos-14'
+        if: matrix.os != 'macos-15'
         shell: pwsh
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}

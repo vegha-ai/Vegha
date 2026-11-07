@@ -39,7 +39,7 @@ env:
 
 jobs:
   package:
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       MAS_APP_CERT_P12_BASE64: ${{ secrets.MAS_APP_CERT_P12_BASE64 }}
       MAS_APP_CERT_PASSWORD: ${{ secrets.MAS_APP_CERT_PASSWORD }}
