@@ -331,9 +331,18 @@ jobs:
   # cannot do. If the secret is absent, submission is skipped and you submit the
   # 'winget-manifests' artifact manually with `wingetcreate submit`.
   # ============================================================
+  # wingetcreate submit pushes a branch to <owner>/winget-pkgs and opens the PR
+  # from there; it refuses when that fork is too far behind upstream. Sync it
+  # first (see sync-winget-fork.yml).
+  sync-winget-fork:
+    name: sync winget fork
+    needs: publish
+    uses: ./.github/workflows/sync-winget-fork.yml
+    secrets: inherit
+
   winget:
     name: winget submit
-    needs: publish
+    needs: [publish, sync-winget-fork]
     runs-on: windows-latest
     env:
       WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
