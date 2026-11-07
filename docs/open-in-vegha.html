@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open in Vegha</title>
+  <!--
+    "Open in Vegha" landing page — the web half of vegha:// deep links.
+
+    Usage:  open-in-vegha.html?url=<url-encoded git repository URL>[&branch=…][&folder=…]
+    Example: ?url=https%3A%2F%2Fgithub.com%2Fusebruno%2Fgithub-rest-api-collection.git
+
+    Clicking the button navigates to
+        vegha://import/git?url=<url>[&branch=…][&folder=…]
+    The OS hands that to the installed Vegha, which opens its "Open from Git" dialog with
+    the fields pre-filled (the user still confirms the clone). Browsers show their own
+    "Open Vegha?" prompt first. If nothing is installed, nothing happens — hence the
+    download link. The app side lives in app/Vegha.App/Services/DeepLinks.cs.
+  -->
+  <style>
+    :root { color-scheme: light dark; --accent: #2f6fed; --fg: #1f2937; --muted: #6b7280; --card: #fff; --bg: #f3f4f6; }
+    @media (prefers-color-scheme: dark) { :root { --fg: #e5e7eb; --muted: #9ca3af; --card: #1f2937; --bg: #111827; } }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body { display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
+    .card { background: var(--card); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.12); padding: 28px 24px; max-width: 420px; width: 100%; text-align: center; }
+    h1 { font-size: 1.25rem; margin: 0 0 6px; }
+    .repo { color: var(--muted); font-size: .9rem; word-break: break-all; margin: 0 0 20px; }
+    button { width: 100%; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-size: 1.05rem; font-weight: 600; padding: 12px 20px; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    p.help { color: var(--muted); font-size: .9rem; margin: 16px 0 0; }
+    a { color: inherit; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Open in Vegha</h1>
+    <p class="repo" id="repo"></p>
+    <button id="open" disabled>Open in Vegha</button>
+    <p class="help">Don't have the app yet? <a href="https://github.com/vegha-ai/vegha/releases/latest" target="_blank" rel="noopener">Download Vegha</a></p>
+  </div>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var url = (params.get('url') || '').trim();
+      var repo = document.getElementById('repo');
+      var button = document.getElementById('open');
+      if (!url) { repo.textContent = 'No repository URL was given.'; return; }
+      repo.textContent = url;
+      var link = 'vegha://import/git?url=' + encodeURIComponent(url);
+      ['branch', 'folder'].forEach(function (key) {
+        var value = (params.get(key) || '').trim();
+        if (value) link += '&' + key + '=' + encodeURIComponent(value);
+      });
+      button.disabled = false;
+      button.onclick = function () { window.location.href = link; };
+    })();
+  </script>
+</body>
+</html>
