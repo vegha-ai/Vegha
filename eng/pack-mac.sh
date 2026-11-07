@@ -270,7 +270,21 @@ else
     echo "Submitting $DMG_PATH to notarytool (profile: $NOTARY_PROFILE) ..."
     xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
     echo "Stapling ticket to DMG..."
-    xcrun stapler staple "$DMG_PATH"
+    # stapler fetches the ticket from Apple's CloudKit endpoint, which drops
+    # connections now and then ("The network connection was lost", exit 68) even
+    # though the notarization itself was Accepted. Retry a few times before
+    # failing the build — the v1.5.0 arm64 build died on exactly this.
+    stapled=0
+    for attempt in 1 2 3 4 5; do
+        if xcrun stapler staple "$DMG_PATH"; then stapled=1; break; fi
+        echo "stapler attempt $attempt failed; retrying in $((attempt * 15))s..." >&2
+        sleep $((attempt * 15))
+    done
+    if [[ $stapled -ne 1 ]]; then
+        echo "Error: stapling failed after 5 attempts." >&2
+        exit 68
+    fi
+    xcrun stapler validate "$DMG_PATH"
 fi
 
 echo ""
