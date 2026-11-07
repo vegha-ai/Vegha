@@ -36,6 +36,16 @@
         BackgroundColor="transparent">
         <uap:DefaultTile ShortName="Vegha" />
       </uap:VisualElements>
+      <!-- vegha:// links ("Open in Vegha" buttons on web pages). The Store registers the
+           scheme on install; the app receives the URL as its command-line argument
+           (Program.Main → Services/DeepLinks). -->
+      <Extensions>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="vegha">
+            <uap:DisplayName>Vegha</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+      </Extensions>
     </Application>
   </Applications>
 

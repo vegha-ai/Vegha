@@ -158,6 +158,14 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
     <key>NSHighResolutionCapable</key> <true/>
     <key>NSPrincipalClass</key>        <string>NSApplication</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
+    <!-- vegha:// links: keep in sync with app/Vegha.App/Resources/Info.plist (MAS build). -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>    <string>com.vegha.vegha.links</string>
+            <key>CFBundleURLSchemes</key> <array><string>vegha</string></array>
+        </dict>
+    </array>
 </dict>
 </plist>
 EOF

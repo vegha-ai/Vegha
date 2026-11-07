@@ -22,6 +22,18 @@ public partial class App : Application
         Program.Trace("FII:start");
         // Every dialog gets the Settings-style themed title bar (logo + title + ✕).
         Vegha.App.Controls.Services.DialogChrome.Register();
+        // macOS hands vegha:// links to the already-running app as an "open URL" activation
+        // (there is no argv on that path). Queue them; MainWindow drains the queue once it
+        // can show dialogs. Windows/Linux links come in through argv — see Program.Main.
+        if (TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime activatable)
+        {
+            activatable.Activated += (_, e) =>
+            {
+                if (e is ProtocolActivatedEventArgs { Kind: ActivationKind.OpenUri, Uri: { } uri })
+                    Vegha.App.Services.DeepLinks.Enqueue(uri.OriginalString);
+            };
+        }
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // Show a lightweight splash immediately. Building the DI graph + resolving

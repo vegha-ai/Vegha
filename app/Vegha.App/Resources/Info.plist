@@ -19,8 +19,10 @@
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
+			<!-- vegha:// links (web "Open in Vegha" buttons, OAuth callbacks). Delivered to
+			     the running app via IActivatableLifetime.Activated (App.axaml.cs). -->
 			<key>CFBundleURLName</key>
-			<string>Vegha OAuth callback</string>
+			<string>com.vegha.vegha.links</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>vegha</string>

@@ -33,6 +33,24 @@ class Program
 #endif
         Trace("Main:post-velopack");
 
+        // vegha:// links (see Services/DeepLinks). Windows and Linux start a brand-new
+        // process for every link the browser hands over; if a Vegha is already running, pass
+        // the link to it and exit, otherwise keep the link for the main window to open once
+        // it's up. macOS delivers links to the running app itself (App.axaml.cs).
+        if (Vegha.App.Services.DeepLinks.FindInArgs(args) is { } deepLink)
+        {
+            if (Vegha.App.Services.DeepLinks.TryForwardToRunningInstance(deepLink))
+            {
+                Trace("Main:deeplink-forwarded-to-running-instance");
+                return;
+            }
+            Vegha.App.Services.DeepLinks.Enqueue(deepLink);
+        }
+        Vegha.App.Services.DeepLinks.StartListener();
+        // Keep the OS pointed at this binary (per-user, idempotent). Off the startup path so
+        // the registry/desktop-file check never delays first paint.
+        System.Threading.Tasks.Task.Run(Vegha.App.Services.DeepLinks.RegisterProtocolHandler);
+
         // Capture any unhandled exception to %LocalAppData%/Vegha/crash.log so the user
         // can share the stack trace when the app dies mid-action.
         AppDomain.CurrentDomain.UnhandledException += (_, e) => LogCrash(e.ExceptionObject as Exception);

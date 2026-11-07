@@ -405,6 +405,10 @@ public partial class MainWindow : Window
 
                 var appSettings = _appSettingsStore?.Load() ?? AppSettings.Default;
                 if (!appSettings.WelcomeShown) await ShowWelcomeAsync(appSettings);
+
+                // vegha:// links: open whatever arrived while we were starting (the link that
+                // launched us, or ones forwarded by a second instance), then live ones.
+                Vegha.App.Services.DeepLinks.AttachHandler(HandleDeepLinkAsync);
             }
             catch (Exception ex)
             {
@@ -1872,14 +1876,42 @@ public partial class MainWindow : Window
         git.Reload();
     }
 
+    /// <summary>Opens the UI a <c>vegha://</c> link asks for (see
+    /// <see cref="Vegha.App.ViewModels.Services.DeepLinkRequest"/>). A link only ever
+    /// <i>pre-fills</i> a dialog: any web page can trigger one, so nothing is cloned or
+    /// imported until the user confirms in the dialog.</summary>
+    private async Task HandleDeepLinkAsync(Vegha.App.Services.DeepLinkArrival arrival)
+    {
+        if (WindowState == global::Avalonia.Controls.WindowState.Minimized)
+            WindowState = global::Avalonia.Controls.WindowState.Normal;
+        Activate();
+
+        if (arrival.Request is not { } request)
+        {
+            await new Vegha.App.Controls.Git.GitChoiceDialog("Vegha link", "Couldn't open this link",
+                arrival.Error ?? "The link is not valid.", null, arrival.Raw, "OK").ShowDialog<bool>(this);
+            return;
+        }
+
+        switch (request.Kind)
+        {
+            case Vegha.App.ViewModels.Services.DeepLinkKind.ImportGit:
+                await ShowCloneRepoDialogAsync(request.Url, request.Branch, request.Folder);
+                break;
+        }
+    }
+
     /// <summary>"Open from Git": clone in place, then open as a workspace or link the
-    /// collections it contains into the active workspace.</summary>
-    private async Task ShowCloneRepoDialogAsync(string? initialUrl)
+    /// collections it contains into the active workspace. <paramref name="branch"/> and
+    /// <paramref name="subFolder"/> pre-fill the dialog (vegha:// links carry them).</summary>
+    private async Task ShowCloneRepoDialogAsync(string? initialUrl, string? branch = null, string? subFolder = null)
     {
         var stack = GitStack;
         if (stack is null) return;
         var settings = App.Services.GetService<Vegha.Core.Persistence.AppSettingsStore>()?.Load();
         var vm = new ViewModels.Git.CloneRepoViewModel(stack, settings, initialUrl);
+        if (!string.IsNullOrEmpty(branch)) vm.Branch = branch;
+        if (!string.IsNullOrEmpty(subFolder)) vm.SubFolder = subFolder;
         vm.ConfigureCredentialsRequested += async (_, host) =>
         {
             await ShowGitCredentialsDialogAsync(host, vm.EffectiveUrl);
